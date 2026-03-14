@@ -32,6 +32,9 @@ export const ticketsApi = {
     api.post(`tickets/${id}/screenshots`, data),
   listScreenshots: (id: string) => api.get(`tickets/${id}/screenshots`),
   deleteScreenshot: (ticketId: string, screenshotId: string | number) => api.delete(`tickets/${ticketId}/screenshots/${screenshotId}`),
+  /** Fetch screenshot image with auth (Bearer). Use responseType blob and createObjectURL for <img>. */
+  getScreenshotImage: (ticketId: string, screenshotId: number | string) =>
+    api.get(`tickets/${ticketId}/screenshots/${screenshotId}/image`, { responseType: 'blob' }),
 }
 
 export const uploadApi = {

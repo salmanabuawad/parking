@@ -1,0 +1,20 @@
+node_modules/
+
+# Video and image files (uploads, generated)
+*.mp4
+*.webm
+*.mov
+*.avi
+*.mkv
+*.m4v
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.webp
+*.bmp
+*.heic
+
+# Backend video/image storage
+backend/videos/
+videos/

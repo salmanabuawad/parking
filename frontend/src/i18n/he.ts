@@ -75,6 +75,19 @@ export const he = {
     error: 'שגיאה',
     openTicket: 'פתח דוח',
   },
+  settings: {
+    title: 'הגדרות',
+    intro: 'הגדר עוצמת טשטוש ומסלול עבירות.',
+    blurKernelSize: 'גודל גרעין טשטוש',
+    blurKernelLabel: 'גודל גרעין טשטוש (0=כבוי, 3=קל, 5–51=חזק)',
+    useViolationPipeline: 'השתמש במסלול עבירות (YOLO + טשטוש סלקטיבי)',
+    save: 'שמור',
+    saving: 'שומר...',
+  },
+  queue: {
+    blurKernelSize: 'גודל גרעין טשטוש',
+    blurKernelHint: '(0=כבוי, 3=קל, 5–51=חזק)',
+  },
   tickets: {
     title: 'דוחות',
     all: 'הכול',

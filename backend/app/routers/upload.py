@@ -23,8 +23,8 @@ def _parse_captured_at(s: str) -> datetime:
 @router.post("/violation")
 async def upload_violation(
     video: UploadFile,
-    latitude: float = Form(...),
-    longitude: float = Form(...),
+    latitude: Optional[float] = Form(None),
+    longitude: Optional[float] = Form(None),
     captured_at: str = Form(...),
     license_plate: str = Form("11111"),
     violation_zone: Optional[str] = Form(None),
@@ -52,15 +52,17 @@ async def upload_violation(
     raw_path.write_bytes(data)
     rel_path = f"raw/{fname}"
 
+    lat = latitude if latitude is not None else 0.0
+    lng = longitude if longitude is not None else 0.0
     job = job_repo.create(
         raw_video_path=rel_path,
         status="queued",
-        latitude=latitude,
-        longitude=longitude,
+        latitude=lat,
+        longitude=lng,
         captured_at=captured_dt,
         license_plate=license_plate,
         violation_zone=violation_zone or "red_white",
-        description=description or f"Mobile upload at {latitude:.6f}, {longitude:.6f}",
+        description=description or f"Mobile upload at {lat:.6f}, {lng:.6f}",
         submitted_by=submitted_by,
     )
 

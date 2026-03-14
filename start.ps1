@@ -16,7 +16,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 2. Start backend (port 8002 to avoid conflict with other apps on 8000)
 Write-Host "`n[2/5] Starting backend (http://localhost:8002)..." -ForegroundColor Yellow
-Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$env:PYTHONUNBUFFERED=1; cd '$PWD'; python -m uvicorn main:app --reload --host 0.0.0.0 --port 8002"
+Start-Process powershell -ArgumentList "-NoExit", "-Command", "`$env:PYTHONUNBUFFERED=1; cd '$PWD'; python run_backend.py"
 Set-Location ..
 
 # 3. Start upload worker (processes video queue)
