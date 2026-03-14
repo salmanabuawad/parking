@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, cameras, sample, settings as settings_router, ticket_screenshots, tickets, upload
+from app.routers import auth, cameras, sample, settings as settings_router, tickets, upload, ticket_screenshots
 
 app = FastAPI(title="Parking Enforcement API")
 app.include_router(auth.router, prefix="/api")
@@ -32,11 +32,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 @app.get("/")
 def root():
     return {"status": "ok", "message": "Parking Enforcement API"}
-
 
 @app.get("/health")
 def health():

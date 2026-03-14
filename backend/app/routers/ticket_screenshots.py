@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import base64
-import re
-from datetime import datetime, timezone
+import mimetypes
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -15,78 +16,54 @@ from app.config import settings
 from app.database import get_db
 from app.models import Admin, Ticket, TicketScreenshot
 
-router = APIRouter(prefix="/tickets", tags=["ticket-screenshots"])
-
-_DATA_URL_RE = re.compile(r"^data:image/(?P<fmt>png|jpeg|jpg|webp);base64,(?P<data>.+)$", re.IGNORECASE)
+router = APIRouter(prefix="/tickets", tags=["ticket_screenshots"])
 
 
-class TicketScreenshotCreate(BaseModel):
-    image_base64: str = Field(..., description="Blurred screenshot as data URL")
-    frame_time_seconds: float = Field(..., ge=0)
-    video_timestamp: Optional[datetime] = None
-    source_video_id: Optional[str] = None
-    captured_by_ui: Optional[str] = None
+class ScreenshotCreate(BaseModel):
+    image_base64: str
+    frame_time_sec: Optional[float] = None
+    captured_at: Optional[str] = None
 
 
-class TicketScreenshotResponse(BaseModel):
+class ScreenshotResponse(BaseModel):
     id: int
     ticket_id: int
+    image_url: str
     storage_path: str
-    frame_time_seconds: float
-    video_timestamp: Optional[datetime] = None
-    source_video_id: Optional[str] = None
+    frame_time_sec: Optional[float] = None
+    captured_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     created_by: Optional[str] = None
-    media_url: str
-
-    class Config:
-        from_attributes = True
 
 
-def _screenshots_root() -> Path:
-    root = settings.videos_dir / "screenshots"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+class ScreenshotListItem(ScreenshotResponse):
+    pass
 
 
-def _detect_image_format(raw: bytes) -> str | None:
-    """Detect image format from magic bytes (replacement for imghdr, removed in Python 3.13)."""
-    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "png"
-    if raw.startswith(b"\xff\xd8\xff"):
-        return "jpeg"
-    if raw.startswith(b"RIFF") and len(raw) >= 12 and raw[8:12] == b"WEBP":
-        return "webp"
-    return None
-
-
-def _decode_image(data_url: str) -> tuple[bytes, str]:
-    match = _DATA_URL_RE.match(data_url.strip())
-    if not match:
-        raise HTTPException(status_code=400, detail="image_base64 must be a valid image data URL")
-
-    encoded = match.group("data")
+def _decode_base64_image(data_url: str) -> tuple[bytes, str]:
+    header, payload = data_url.split(",", 1) if "," in data_url else ("", data_url)
+    mime_type = "image/png"
+    if header.startswith("data:") and ";base64" in header:
+        mime_type = header[5:].split(";", 1)[0] or mime_type
     try:
-        raw = base64.b64decode(encoded, validate=True)
+        return base64.b64decode(payload), mime_type
     except Exception as exc:
-        raise HTTPException(status_code=400, detail="Could not decode screenshot payload") from exc
-
-    if not raw:
-        raise HTTPException(status_code=400, detail="Screenshot payload is empty")
-
-    detected = _detect_image_format(raw)
-    ext = {
-        "jpeg": ".jpg",
-        "png": ".png",
-        "webp": ".webp",
-    }.get(detected or match.group("fmt").lower(), ".png")
-    return raw, ext
+        raise HTTPException(status_code=400, detail="Invalid base64 image payload") from exc
 
 
-@router.post("/{ticket_id}/screenshots", response_model=TicketScreenshotResponse)
-def create_ticket_screenshot(
+def _parse_captured_at(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+@router.post("/{ticket_id}/screenshots", response_model=ScreenshotResponse)
+def save_ticket_screenshot(
     ticket_id: int,
-    payload: TicketScreenshotCreate,
+    payload: ScreenshotCreate,
     db: Session = Depends(get_db),
     admin: Admin = Depends(get_current_user),
 ):
@@ -94,52 +71,47 @@ def create_ticket_screenshot(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    image_bytes, ext = _decode_image(payload.image_base64)
-    ticket_dir = _screenshots_root() / f"ticket_{ticket_id}"
-    ticket_dir.mkdir(parents=True, exist_ok=True)
+    image_bytes, mime_type = _decode_base64_image(payload.image_base64)
+    extension = mimetypes.guess_extension(mime_type) or ".png"
 
-    ts = payload.video_timestamp or ticket.captured_at or datetime.now(timezone.utc)
-    safe_stamp = ts.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ") if ts.tzinfo else ts.strftime("%Y%m%dT%H%M%S")
-    filename = f"shot_{safe_stamp}_{int(payload.frame_time_seconds * 1000):09d}{ext}"
-    file_path = ticket_dir / filename
+    base_dir = Path(settings.videos_dir) / "screenshots" / f"ticket_{ticket_id}"
+    base_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    filename = f"shot_{timestamp}{extension}"
+    file_path = base_dir / filename
     file_path.write_bytes(image_bytes)
 
-    rel_path = str(file_path.relative_to(settings.videos_dir)).replace("\\", "/")
-    record = TicketScreenshot(
+    stored_rel = str(Path("screenshots") / f"ticket_{ticket_id}" / filename)
+    screenshot = TicketScreenshot(
         ticket_id=ticket_id,
-        storage_path=rel_path,
-        frame_time_seconds=payload.frame_time_seconds,
-        video_timestamp=payload.video_timestamp,
-        source_video_id=payload.source_video_id,
+        storage_path=stored_rel.replace("\\", "/"),
+        frame_time_sec=payload.frame_time_sec,
+        captured_at=_parse_captured_at(payload.captured_at),
         created_by=getattr(admin, "username", None),
     )
-    db.add(record)
+    db.add(screenshot)
     db.commit()
-    db.refresh(record)
+    db.refresh(screenshot)
 
-    return TicketScreenshotResponse(
-        id=record.id,
-        ticket_id=record.ticket_id,
-        storage_path=record.storage_path,
-        frame_time_seconds=record.frame_time_seconds,
-        video_timestamp=record.video_timestamp,
-        source_video_id=record.source_video_id,
-        created_at=record.created_at,
-        created_by=record.created_by,
-        media_url=f"/api/tickets/{ticket_id}/screenshots/{record.id}/image",
+    return ScreenshotResponse(
+        id=screenshot.id,
+        ticket_id=ticket_id,
+        image_url=f"/api/tickets/{ticket_id}/screenshots/{screenshot.id}/image",
+        storage_path=screenshot.storage_path,
+        frame_time_sec=screenshot.frame_time_sec,
+        captured_at=screenshot.captured_at,
+        created_at=screenshot.created_at,
+        created_by=screenshot.created_by,
     )
 
 
-@router.get("/{ticket_id}/screenshots", response_model=list[TicketScreenshotResponse])
+@router.get("/{ticket_id}/screenshots", response_model=list[ScreenshotListItem])
 def list_ticket_screenshots(
     ticket_id: int,
     db: Session = Depends(get_db),
     admin: Admin = Depends(get_current_user),
 ):
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
-
     rows = (
         db.query(TicketScreenshot)
         .filter(TicketScreenshot.ticket_id == ticket_id)
@@ -147,16 +119,15 @@ def list_ticket_screenshots(
         .all()
     )
     return [
-        TicketScreenshotResponse(
+        ScreenshotListItem(
             id=row.id,
             ticket_id=row.ticket_id,
+            image_url=f"/api/tickets/{ticket_id}/screenshots/{row.id}/image",
             storage_path=row.storage_path,
-            frame_time_seconds=row.frame_time_seconds,
-            video_timestamp=row.video_timestamp,
-            source_video_id=row.source_video_id,
+            frame_time_sec=row.frame_time_sec,
+            captured_at=row.captured_at,
             created_at=row.created_at,
             created_by=row.created_by,
-            media_url=f"/api/tickets/{ticket_id}/screenshots/{row.id}/image",
         )
         for row in rows
     ]
@@ -169,8 +140,6 @@ def get_ticket_screenshot_image(
     db: Session = Depends(get_db),
     admin: Admin = Depends(get_current_user),
 ):
-    from fastapi.responses import FileResponse
-
     row = (
         db.query(TicketScreenshot)
         .filter(TicketScreenshot.id == screenshot_id, TicketScreenshot.ticket_id == ticket_id)
@@ -178,10 +147,9 @@ def get_ticket_screenshot_image(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Screenshot not found")
-
-    file_path = settings.videos_dir / row.storage_path
+    file_path = Path(settings.videos_dir) / row.storage_path
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="Screenshot file not found")
+        raise HTTPException(status_code=404, detail="Screenshot file missing")
     return FileResponse(file_path)
 
 
@@ -199,11 +167,9 @@ def delete_ticket_screenshot(
     )
     if not row:
         raise HTTPException(status_code=404, detail="Screenshot not found")
-
-    file_path = settings.videos_dir / row.storage_path
+    file_path = Path(settings.videos_dir) / row.storage_path
     if file_path.exists():
         file_path.unlink()
-
     db.delete(row)
     db.commit()
-    return {"ok": True, "message": "Screenshot deleted"}
+    return {"ok": True}

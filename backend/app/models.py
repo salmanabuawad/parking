@@ -1,6 +1,8 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Enum, Boolean, JSON, LargeBinary, Float
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, LargeBinary, Float
 from sqlalchemy.sql import func
+
 from .database import Base
+
 import enum
 
 
@@ -20,9 +22,12 @@ class ParamSource(str, enum.Enum):
 
 class Camera(Base):
     """Street camera configuration.
-    Params can be defined manually or from manufacturer manual."""
+
+    Params can be defined manually or from manufacturer manual.
+    """
 
     __tablename__ = "cameras"
+
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     location = Column(String(255), nullable=True)
@@ -41,6 +46,7 @@ class CameraVideo(Base):
     """Video stored in DB, linked to a camera (e.g. sample footage)."""
 
     __tablename__ = "camera_videos"
+
     id = Column(Integer, primary_key=True, index=True)
     camera_id = Column(Integer, nullable=True)
     name = Column(String(100), nullable=True)
@@ -51,7 +57,10 @@ class CameraVideo(Base):
 
 
 class Admin(Base):
+    """Admin user for ticket review/approval."""
+
     __tablename__ = "admins"
+
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
@@ -72,6 +81,7 @@ class ViolationZone(str, enum.Enum):
 
 class Ticket(Base):
     __tablename__ = "tickets"
+
     id = Column(Integer, primary_key=True, index=True)
     license_plate = Column(String(20), nullable=False)
     plate_detection_reason = Column(Text, nullable=True)
@@ -97,29 +107,28 @@ class Ticket(Base):
     finalized_at = Column(DateTime(timezone=True), nullable=True)
 
 
-class TicketScreenshot(Base):
-    __tablename__ = "ticket_screenshots"
-
-    id = Column(Integer, primary_key=True, index=True)
-    ticket_id = Column(Integer, nullable=False, index=True)
-    storage_path = Column(String(500), nullable=False)
-    frame_time_seconds = Column(Float, nullable=False)
-    video_timestamp = Column(DateTime(timezone=True), nullable=True)
-    source_video_id = Column(String(100), nullable=True)
-    created_by = Column(String(50), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-
-
 class AppConfig(Base):
+    """App-wide config (blur level, pipeline options).
+
+    Single row, editable from UI.
+    """
+
     __tablename__ = "app_config"
+
     id = Column(Integer, primary_key=True, index=True)
     blur_kernel_size = Column(Integer, default=3, nullable=False)
+    blur_expand_ratio = Column(Float, default=0.18, nullable=False)
+    temporal_blur_enabled = Column(Boolean, default=True, nullable=False)
+    temporal_blur_max_misses = Column(Integer, default=6, nullable=False)
     use_violation_pipeline = Column(Boolean, default=True, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class UploadJob(Base):
+    """Queue for mobile uploads: accept video, return ACK, process in background."""
+
     __tablename__ = "upload_jobs"
+
     id = Column(Integer, primary_key=True, index=True)
     raw_video_id = Column(Integer, nullable=True)
     raw_video_path = Column(String(500), nullable=True)

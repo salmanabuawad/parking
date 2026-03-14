@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ticketsApi } from '../api'
@@ -21,13 +20,17 @@ interface TicketForm {
 
 function pickMetadataStartAt(ticket: TicketReviewRecord | null): string | null {
   const params = ticket?.video_params || {}
+  const nestedMetadata = typeof params['metadata'] === 'object' && params['metadata'] !== null
+    ? (params['metadata'] as Record<string, unknown>)
+    : {}
   const candidates = [
     params['capture_time'],
     params['creation_time'],
     params['video_start_time'],
     params['recorded_at'],
-    (params['metadata'] as Record<string, unknown> | undefined)?.['creation_time'],
+    ticket?.captured_at,
     ticket?.created_at,
+    nestedMetadata['creation_time'],
   ]
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) return candidate
@@ -44,12 +47,10 @@ export default function TicketReview() {
   const [ticket, setTicket] = useState<TicketReviewRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-
   const [videoError, setVideoError] = useState<string | null>(null)
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
   const [videoMode, setVideoMode] = useState<'processed' | 'raw'>('processed')
   const [videoRetryKey, setVideoRetryKey] = useState(0)
-
   const [shots, setShots] = useState<SavedScreenshot[]>([])
 
   const [form, setForm] = useState<TicketForm>({
@@ -65,7 +66,6 @@ export default function TicketReview() {
 
   useEffect(() => {
     if (!id) return
-
     setLoading(true)
     ticketsApi
       .get(id)
@@ -94,38 +94,50 @@ export default function TicketReview() {
     let cancelled = false
     let localUrl: string | null = null
 
+    const replaceBlobUrl = (blob: Blob, mode: 'processed' | 'raw', error: string | null = null) => {
+      localUrl = URL.createObjectURL(blob)
+      if (currentBlobUrl.current) URL.revokeObjectURL(currentBlobUrl.current)
+      currentBlobUrl.current = localUrl
+      setVideoBlobUrl(localUrl)
+      setVideoMode(mode)
+      setVideoError(error)
+    }
+
     const load = async () => {
       setVideoError(null)
       try {
-        const processed = await ticketsApi.getProcessedVideo(id)
+        const processed = await ticketsApi.getProcessedVideo(id, videoRetryKey || Date.now())
         if (cancelled) return
         const processedBlob = processed.data instanceof Blob ? processed.data : new Blob([processed.data], { type: 'video/mp4' })
         if (processedBlob.size > 100) {
-          localUrl = URL.createObjectURL(processedBlob)
-          if (currentBlobUrl.current) URL.revokeObjectURL(currentBlobUrl.current)
-          currentBlobUrl.current = localUrl
-          setVideoBlobUrl(localUrl)
-          setVideoMode('processed')
+          replaceBlobUrl(processedBlob, 'processed')
           return
         }
       } catch {
-        // continue to raw fallback
+        // Continue to fallback below.
       }
 
       try {
-        const raw = await ticketsApi.getVideo(id, videoRetryKey || Date.now())
+        const blurred = await ticketsApi.getVideo(id, videoRetryKey || Date.now())
+        if (cancelled) return
+        const blurredBlob = blurred.data instanceof Blob ? blurred.data : new Blob([blurred.data], { type: 'video/mp4' })
+        if (blurredBlob.size > 100) {
+          replaceBlobUrl(blurredBlob, 'processed')
+          return
+        }
+      } catch {
+        // Continue to raw fallback below.
+      }
+
+      try {
+        const raw = await ticketsApi.getRawVideo(id, videoRetryKey || Date.now())
         if (cancelled) return
         const rawBlob = raw.data instanceof Blob ? raw.data : new Blob([raw.data], { type: 'video/mp4' })
         if (rawBlob.size <= 100) {
           setVideoError(he.review.videoError)
           return
         }
-        localUrl = URL.createObjectURL(rawBlob)
-        if (currentBlobUrl.current) URL.revokeObjectURL(currentBlobUrl.current)
-        currentBlobUrl.current = localUrl
-        setVideoBlobUrl(localUrl)
-        setVideoMode('raw')
-        setVideoError(he.review.originalVideoFallback)
+        replaceBlobUrl(rawBlob, 'raw', he.review.originalVideoFallback)
       } catch {
         if (!cancelled) setVideoError(he.review.videoError)
       }
@@ -136,8 +148,30 @@ export default function TicketReview() {
     return () => {
       cancelled = true
       if (localUrl) URL.revokeObjectURL(localUrl)
+      setVideoBlobUrl(null)
     }
   }, [id, ticket?.video_id, ticket?.video_path, videoRetryKey])
+
+  useEffect(() => {
+    if (!id) return
+    ticketsApi
+      .listScreenshots(id)
+      .then(({ data }) => {
+        if (!Array.isArray(data)) return
+        setShots(
+          data.map((item: any) => ({
+            id: item.id,
+            url: item.image_url,
+            takenAtIso: item.captured_at || item.taken_at_iso || new Date().toISOString(),
+            currentVideoTimeSec: Number(item.frame_time_sec || 0),
+            persisted: true,
+          }))
+        )
+      })
+      .catch(() => {
+        // no-op; strip will stay empty
+      })
+  }, [id])
 
   const metadataStartAt = useMemo(() => pickMetadataStartAt(ticket), [ticket])
 
@@ -181,24 +215,40 @@ export default function TicketReview() {
     setShots((prev) => [localShot, ...prev])
 
     try {
-      await ticketsApi.saveScreenshot(id, {
+      const { data } = await ticketsApi.saveScreenshot(id, {
         image_base64: capture.imageBase64,
         frame_time_sec: capture.currentVideoTimeSec,
         captured_at: capture.atIso,
       })
-      setShots((prev) => prev.map((item) => item.id === localShot.id ? { ...item, persisted: true } : item))
+      setShots((prev) =>
+        prev.map((item) =>
+          item.id === localShot.id
+            ? {
+                ...item,
+                id: data.id ?? item.id,
+                url: data.image_url || item.url,
+                persisted: true,
+              }
+            : item
+        )
+      )
     } catch {
-      // keep local-only if endpoint does not exist yet
+      // keep local-only preview; persistence failed
     }
   }
 
-  if (loading) {
-    return <div className="review-page">{he.app.loading}</div>
+  const requestReprocess = async () => {
+    if (!id) return
+    try {
+      await ticketsApi.reprocessVideo(id)
+      setVideoRetryKey((v) => v + 1)
+    } catch {
+      // no-op; retry button still available
+    }
   }
 
-  if (!ticket) {
-    return <div className="review-page">{he.review.notFound}</div>
-  }
+  if (loading) return <div className="review-page">{he.app.loading}</div>
+  if (!ticket) return <div className="review-page">{he.review.notFound}</div>
 
   return (
     <div className="review-page">
@@ -225,6 +275,7 @@ export default function TicketReview() {
           status={ticket.status}
           metadataStartAt={metadataStartAt}
           onRetry={() => setVideoRetryKey((v) => v + 1)}
+          onReprocess={requestReprocess}
           onCapture={handleCapture}
         />
 
@@ -242,7 +293,7 @@ export default function TicketReview() {
       <div className="strip-card">
         <div className="strip-card-header">
           <div>
-            <h2 style={{ margin: 0 }}>{he.review.screenshots}</h2>
+            <h2 className="card-title">{he.review.screenshots}</h2>
             <div className="video-note">
               {he.review.metadataTimestamp}: {metadataStartAt ? new Date(metadataStartAt).toLocaleString('he-IL') : '—'}
             </div>
