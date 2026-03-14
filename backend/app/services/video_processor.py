@@ -1,6 +1,7 @@
 
 from __future__ import annotations
 
+import re
 import cv2
 import numpy as np
 import tempfile
@@ -8,7 +9,7 @@ import subprocess
 import shutil
 from pathlib import Path
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 DEFAULT_BLUR = 35
 TRACK_MISSES = 8
@@ -176,6 +177,10 @@ def process_video(video_bytes: bytes, blur_strength: int = DEFAULT_BLUR):
     )
 
     tracker = PlateTracker()
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1)
+    preview_index = min(total_frames - 1, max(0, int(total_frames * 0.5)))
+    frame_index = 0
+    preview_frame = None
 
     while True:
 
@@ -190,6 +195,10 @@ def process_video(video_bytes: bytes, blur_strength: int = DEFAULT_BLUR):
         output = blur_everything_except_plate(frame, tracked, kernel)
 
         writer.write(output)
+
+        if frame_index == preview_index:
+            preview_frame = output.copy()
+        frame_index += 1
 
     cap.release()
     writer.release()
@@ -211,19 +220,103 @@ def process_video(video_bytes: bytes, blur_strength: int = DEFAULT_BLUR):
 
     video = Path(final_path).read_bytes()
 
+    jpeg = b""
+    if preview_frame is not None:
+        ok, buf = cv2.imencode(".jpg", preview_frame)
+        if ok:
+            jpeg = buf.tobytes()
+
     Path(temp_out).unlink(missing_ok=True)
     Path(final_path).unlink(missing_ok=True)
     Path(input_path).unlink(missing_ok=True)
 
-    return video
+    return video, jpeg
 
 
-def process_video_fast_hsv(video_bytes: bytes, blur_strength: int = DEFAULT_BLUR):
+def process_video_fast_hsv(video_bytes: bytes, blur_strength: int = DEFAULT_BLUR, **kwargs):
     return process_video(video_bytes, blur_strength)
 
 
-def process_video_with_violation_pipeline(video_bytes: bytes, blur_kernel_size: int | None = None):
+def process_video_with_violation_pipeline(
+    video_bytes: bytes,
+    output_dir: Optional[str] = None,
+    extract_frame_at: float = 0.5,
+    blur_kernel_size: Optional[int] = None,
+    **kwargs,
+):
+    processed, ticket_jpeg = process_video(video_bytes, blur_kernel_size or DEFAULT_BLUR)
+    return processed, ticket_jpeg, "11111"
 
-    processed = process_video(video_bytes, blur_kernel_size or DEFAULT_BLUR)
 
-    return processed, b"", "UNKNOWN"
+def extract_license_plate(
+    *,
+    frame_jpeg: Optional[bytes] = None,
+    video_bytes: Optional[bytes] = None,
+    use_fast_hsv: bool = False,
+    registry_lookup: Any = None,
+) -> Tuple[str, Optional[str]]:
+    """Extract license plate from a ticket frame (or a frame from video). Returns (plate_str, reason_or_None). Use '11111' when not detected."""
+    frame: Optional[np.ndarray] = None
+    if frame_jpeg:
+        arr = np.frombuffer(frame_jpeg, np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    elif video_bytes:
+        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+        try:
+            tmp.write(video_bytes)
+            tmp.close()
+            cap = cv2.VideoCapture(tmp.name)
+            if cap.isOpened():
+                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1)
+                mid = min(total - 1, max(0, int(total * 0.5)))
+                cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
+                ret, frame = cap.read()
+                if not ret:
+                    frame = None
+            cap.release()
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+    if frame is None:
+        return "11111", "No frame available"
+
+    try:
+        from app.plate_pipeline.ocr_reader import read_plate_crop
+    except ImportError:
+        return "11111", "OCR module not available"
+
+    try:
+        box = detect_plate_box(frame)
+        if not box:
+            return "11111", "No plate region detected"
+        x, y, w, h = expand_box(box, frame.shape, 0.2)
+        crop = frame[y : y + h, x : x + w]
+        if crop.size == 0:
+            return "11111", "Plate crop empty"
+        digits, err = read_plate_crop(crop)
+        cleaned = re.sub(r"[^A-Za-z0-9]", "", (digits or "").strip())
+        if len(cleaned) < 5 or len(cleaned) > 12:
+            return "11111", (err or "OCR returned no valid plate")
+        plate = cleaned.upper()
+        if registry_lookup is not None and hasattr(registry_lookup, "plate_exists") and not registry_lookup.plate_exists(plate):
+            return "11111", "Plate not in registry"
+        return plate, None
+    except Exception as e:
+        return "11111", str(e)
+
+
+def extract_video_params(path: str) -> Optional[dict]:
+    """Extract fps, width, height, duration_sec from a video file. Returns None on failure."""
+    cap = cv2.VideoCapture(path)
+    if not cap.isOpened():
+        return None
+    try:
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
+        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
+        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if w <= 0 or h <= 0:
+            return None
+        duration_sec = (n / fps) if n and fps else 0.0
+        return {"fps": round(fps, 2), "width": w, "height": h, "duration_sec": round(duration_sec, 2)}
+    finally:
+        cap.release()
