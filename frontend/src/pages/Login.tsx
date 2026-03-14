@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { t } from '../i18n'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -19,7 +20,7 @@ export default function Login() {
       navigate('/', { replace: true })
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } } }
-      setError(ax.response?.data?.detail || 'Login failed')
+      setError(ax.response?.data?.detail || t('loginFailed'))
     } finally {
       setLoading(false)
     }
@@ -34,11 +35,11 @@ export default function Login() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>Parking Enforcement</h1>
-      <p style={{ color: '#666', marginBottom: '1.5rem' }}>Sign in to upload violation videos</p>
+      <h1 style={styles.title}>{t('signInTitle')}</h1>
+      <p style={{ color: '#666', marginBottom: '1.5rem' }}>{t('signInSubtitle')}</p>
 
       <form onSubmit={submit}>
-        <label style={{ display: 'block', fontWeight: 600 }}>Username</label>
+        <label style={{ display: 'block', fontWeight: 600 }}>{t('username')}</label>
         <input
           type="text"
           value={username}
@@ -47,7 +48,7 @@ export default function Login() {
           autoComplete="username"
           style={styles.input}
         />
-        <label style={{ display: 'block', fontWeight: 600, marginTop: '1rem' }}>Password</label>
+        <label style={{ display: 'block', fontWeight: 600, marginTop: '1rem' }}>{t('password')}</label>
         <input
           type="password"
           value={password}
@@ -58,7 +59,7 @@ export default function Login() {
         />
         {error && <p style={{ color: 'red', marginTop: 8 }}>{error}</p>}
         <button type="submit" style={styles.btn} disabled={loading}>
-          {loading ? 'Signing in...' : 'Sign in'}
+          {loading ? t('signInProgress') : t('signIn')}
         </button>
       </form>
     </div>

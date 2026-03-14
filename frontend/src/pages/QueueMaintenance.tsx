@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../api'
 import { uploadApi, settingsApi } from '../api'
+import { t } from '../i18n'
 
 interface UploadJob {
   job_id: number
@@ -30,11 +31,8 @@ export default function QueueMaintenance() {
   const [loading, setLoading] = useState(true)
   const [rerunning, setRerunning] = useState<number | null>(null)
   const [resettingStuck, setResettingStuck] = useState(false)
-  const [uploadFile, setUploadFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
-  const [uploadLat, setUploadLat] = useState('0')
-  const [uploadLng, setUploadLng] = useState('0')
-  const [uploadPlate, setUploadPlate] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchJobs = async () => {
     try {
@@ -97,35 +95,26 @@ export default function QueueMaintenance() {
     }
   }
 
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!uploadFile) {
-      alert('Select a video')
-      return
-    }
-    const lat = parseFloat(uploadLat)
-    const lng = parseFloat(uploadLng)
-    if (Number.isNaN(lat) || Number.isNaN(lng)) {
-      alert('Enter valid latitude and longitude')
-      return
-    }
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
     setUploading(true)
     try {
       const fd = new FormData()
-      fd.append('video', uploadFile)
-      fd.append('latitude', String(lat))
-      fd.append('longitude', String(lng))
+      fd.append('video', file)
+      fd.append('latitude', '0')
+      fd.append('longitude', '0')
       fd.append('captured_at', new Date().toISOString())
-      fd.append('license_plate', uploadPlate.trim() || '11111')
+      fd.append('license_plate', '11111')
       fd.append('violation_zone', 'red_white')
       await api.post('/upload/violation', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
-      setUploadFile(null)
       await fetchJobs()
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
       alert(ax.response?.data?.detail || ax.message)
     } finally {
       setUploading(false)
+      e.target.value = ''
     }
   }
 
@@ -143,67 +132,41 @@ export default function QueueMaintenance() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>Queue Maintenance</h1>
+      <h1 style={styles.title}>{t('queueMaintenance')}</h1>
       <p style={styles.subtitle}>
-        View source/target paths, blur ratio, and rerun jobs.
-        <Link to="/settings" style={{ ...styles.link, marginLeft: '0.5rem' }}>Edit blur settings</Link>
+        {t('queueSubtitle')}
+        <Link to="/settings" style={{ ...styles.link, marginLeft: '0.5rem' }}>{t('editBlurSettings')}</Link>
       </p>
 
-      <form onSubmit={handleUpload} style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8fafc', borderRadius: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: '1rem' }}>
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>Video</label>
-          <input
-            type="file"
-            accept="video/*"
-            onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-            style={{ padding: '0.35rem' }}
-          />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>Latitude</label>
-          <input
-            type="text"
-            value={uploadLat}
-            onChange={(e) => setUploadLat(e.target.value)}
-            placeholder="0"
-            style={{ padding: '0.35rem 0.5rem', width: 100 }}
-          />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>Longitude</label>
-          <input
-            type="text"
-            value={uploadLng}
-            onChange={(e) => setUploadLng(e.target.value)}
-            placeholder="0"
-            style={{ padding: '0.35rem 0.5rem', width: 100 }}
-          />
-        </div>
-        <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 4 }}>License plate (optional)</label>
-          <input
-            type="text"
-            value={uploadPlate}
-            onChange={(e) => setUploadPlate(e.target.value)}
-            placeholder="Leave blank to auto-detect"
-            style={{ padding: '0.35rem 0.5rem', width: 140 }}
-          />
-        </div>
-        <button type="submit" style={styles.btn} disabled={uploading}>
-          {uploading ? 'Uploading...' : 'Add to queue'}
+      <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8fafc', borderRadius: 8 }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="video/*"
+          onChange={handleFileChange}
+          disabled={uploading}
+          style={{ display: 'none' }}
+        />
+        <button
+          type="button"
+          style={styles.btn}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? t('uploading') : t('uploadVideo')}
         </button>
-      </form>
+      </div>
 
       {loading ? (
-        <p>Loading...</p>
+        <p>{t('loading')}</p>
       ) : (
         <>
           {settings && (
             <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: 8, display: 'inline-block' }}>
-              <strong>Blur kernel size:</strong>{' '}
+              <strong>{t('blurKernelSize')}:</strong>{' '}
               <span style={styles.blurBadge}>{settings.blur_kernel_size}</span>
               <span style={{ color: '#64748b', marginLeft: 8, fontSize: '0.9rem' }}>
-                (0=off, 3=light, 5–51=strong)
+                {t('blurKernelHint')}
               </span>
             </div>
           )}
@@ -212,21 +175,21 @@ export default function QueueMaintenance() {
             <table style={styles.table}>
               <thead>
                 <tr>
-                  <th style={styles.th}>Job #</th>
-                  <th style={styles.th}>Source</th>
-                  <th style={styles.th}>Target</th>
-                  <th style={styles.th}>Status</th>
-                  <th style={styles.th}>Plate</th>
-                  <th style={styles.th}>Failing reason</th>
-                  <th style={styles.th}>Blur ratio</th>
-                  <th style={styles.th}>Rerun</th>
+                  <th style={styles.th}>{t('jobNum')}</th>
+                  <th style={styles.th}>{t('source')}</th>
+                  <th style={styles.th}>{t('target')}</th>
+                  <th style={styles.th}>{t('status')}</th>
+                  <th style={styles.th}>{t('plate')}</th>
+                  <th style={styles.th}>{t('failingReason')}</th>
+                  <th style={styles.th}>{t('blurRatio')}</th>
+                  <th style={styles.th}>{t('rerun')}</th>
                 </tr>
               </thead>
               <tbody>
                 {jobs.length === 0 ? (
                   <tr>
                     <td colSpan={8} style={{ ...styles.td, textAlign: 'center', color: '#64748b' }}>
-                      No jobs yet.
+                      {t('noJobsYet')}
                     </td>
                   </tr>
                 ) : (
@@ -241,7 +204,7 @@ export default function QueueMaintenance() {
                       </td>
                       <td style={styles.td}>
                         <span style={{ color: statusColors[j.status] || '#374151', fontWeight: 500 }}>
-                          {j.status}
+                          {j.status === 'queued' ? t('statusQueued') : j.status === 'processing' ? t('statusProcessing') : j.status === 'completed' ? t('statusCompleted') : j.status === 'failed' ? t('statusFailed') : j.status}
                         </span>
                       </td>
                       <td style={styles.td}>
@@ -266,7 +229,7 @@ export default function QueueMaintenance() {
                           onClick={() => handleRerun(j.job_id)}
                           disabled={rerunning === j.job_id}
                         >
-                          {rerunning === j.job_id ? 'Rerunning...' : 'Rerun'}
+                          {rerunning === j.job_id ? t('rerunning') : t('rerun')}
                         </button>
                       </td>
                     </tr>

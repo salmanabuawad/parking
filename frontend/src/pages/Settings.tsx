@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { settingsApi } from '../api'
+import { t } from '../i18n'
 
 export default function Settings() {
   const [settings, setSettings] = useState<{ blur_kernel_size: number; use_violation_pipeline: boolean } | null>(null)
@@ -21,7 +22,7 @@ export default function Settings() {
       const { data } = await settingsApi.update({ blur_kernel_size: blurSize, use_violation_pipeline: usePipeline })
       setSettings(data)
     } catch (err) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || 'Failed to save')
+      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('failedToSave'))
     } finally {
       setSaving(false)
     }
@@ -29,14 +30,14 @@ export default function Settings() {
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: 500, fontFamily: 'system-ui' }}>
-      <h1>Settings</h1>
+      <h1>{t('settings')}</h1>
       <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-        Configure blur strength and violation pipeline.
+        {t('settingsIntro')}
       </p>
       {settings && (
         <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: 8 }}>
           <label style={{ display: 'block', fontWeight: 600, marginBottom: 8 }}>
-            Blur kernel size (0=off, 3=light, 5–51=strong)
+            {t('blurKernelLabel')}
           </label>
           <input
             type="number"
@@ -53,7 +54,7 @@ export default function Settings() {
               checked={usePipeline}
               onChange={(e) => setUsePipeline(e.target.checked)}
             />
-            Use violation pipeline (YOLO + selective blur)
+            {t('useViolationPipeline')}
           </label>
           <button
             type="button"
@@ -61,7 +62,7 @@ export default function Settings() {
             disabled={saving}
             style={{ padding: '0.5rem 1rem', background: '#1a1a2e', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
           >
-            {saving ? 'Saving...' : 'Save'}
+            {saving ? t('saving') : t('save')}
           </button>
         </div>
       )}
