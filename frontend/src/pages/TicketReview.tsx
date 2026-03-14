@@ -17,7 +17,6 @@ export default function TicketReview() {
   const [ticket, setTicket] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [reprocessing, setReprocessing] = useState(false)
   const [videoError, setVideoError] = useState<string | null>(null)
   const [videoRetryKey, setVideoRetryKey] = useState(0)
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
@@ -131,20 +130,6 @@ export default function TicketReview() {
     }
   }
 
-  const reprocessVideo = async () => {
-    if (!id) return
-    setReprocessing(true)
-    try {
-      await ticketsApi.reprocessVideo(id)
-      setVideoRetryKey(k => k + 1)
-    } catch (e) {
-      const axErr = e as { response?: { data?: { detail?: string } } }
-      alert(axErr?.response?.data?.detail || 'Reprocess failed')
-    } finally {
-      setReprocessing(false)
-    }
-  }
-
   const reject = async () => {
     if (!id) return
     setSaving(true)
@@ -203,29 +188,16 @@ export default function TicketReview() {
             <h3 style={{ marginBottom: 8 }}>Video</h3>
             <div style={styles.video}>
               {videoBlobUrl ? (
-                <div style={{ position: 'relative' }}>
-                  <video
-                    ref={videoRef}
-                    controls
-                    playsInline
-                    width="100%"
-                    src={videoBlobUrl}
-                    key={videoBlobUrl}
-                    preload="auto"
-                    onError={() => setVideoError('Video could not be played (format may not be supported)')}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => { videoRef.current?.play().catch(() => setVideoError('Video could not be played')) }}
-                    style={{
-                      position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
-                      padding: '16px 32px', fontSize: '1.1rem', background: 'rgba(0,0,0,0.85)', color: 'white',
-                      border: 'none', borderRadius: 8, cursor: 'pointer', zIndex: 10,
-                    }}
-                  >
-                    ▶ Play
-                  </button>
-                </div>
+                <video
+                  ref={videoRef}
+                  controls
+                  playsInline
+                  width="100%"
+                  src={videoBlobUrl}
+                  key={videoBlobUrl}
+                  preload="auto"
+                  onError={() => setVideoError('Video could not be played (format may not be supported)')}
+                />
               ) : videoError ? (
                 <p style={{ color: '#e11', padding: '2rem' }}>
                   {videoError}
@@ -241,17 +213,6 @@ export default function TicketReview() {
                 <p style={{ color: '#888', padding: '2rem' }}>Loading video...</p>
               )}
             </div>
-            <button
-              type="button"
-              onClick={reprocessVideo}
-              disabled={reprocessing}
-              style={{
-                marginTop: 8, padding: '8px 16px', cursor: reprocessing ? 'wait' : 'pointer',
-                background: '#f59e0b', color: 'white', border: 'none', borderRadius: 6, fontWeight: 600,
-              }}
-            >
-              {reprocessing ? 'Reprocessing…' : 'Reprocess video (apply blur)'}
-            </button>
           </div>
         )}
         <div>
@@ -306,6 +267,20 @@ export default function TicketReview() {
             placeholder="e.g. 5000"
             style={styles.input}
           />
+
+          {(ticket?.video_params && Object.keys(ticket.video_params as object).length > 0) && (
+            <>
+              <h3 style={{ marginTop: '1.5rem', marginBottom: 8 }}>Video params</h3>
+              <div style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: 8, fontSize: '0.9rem', fontFamily: 'monospace' }}>
+                {Object.entries(ticket.video_params as Record<string, unknown>).map(([key, val]) => (
+                  <div key={key} style={{ marginBottom: 4 }}>
+                    <strong>{key}:</strong>{' '}
+                    {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val)}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <div style={styles.row}>
             <button style={{ ...styles.btn, ...styles.btnSave }} onClick={save} disabled={saving}>

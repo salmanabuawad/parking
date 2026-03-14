@@ -100,6 +100,7 @@ class Ticket(Base):
     latitude = Column(Float, nullable=True)  # GPS from mobile upload
     longitude = Column(Float, nullable=True)
     captured_at = Column(DateTime(timezone=True), nullable=True)  # time when video was captured on device
+    video_params = Column(JSON, nullable=True)  # extracted from video: GPS, duration, resolution, codec, etc.
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)

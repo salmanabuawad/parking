@@ -1,3 +1,4 @@
+import { Component, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Cameras from './pages/Cameras'
@@ -8,6 +9,24 @@ import Tickets from './pages/Tickets'
 import TicketReview from './pages/TicketReview'
 import QueueMaintenance from './pages/QueueMaintenance'
 import Login from './pages/Login'
+
+export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
+  state = { hasError: false as boolean, error: undefined as Error | undefined }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error }
+  }
+  render() {
+    if (this.state.hasError)
+      return (
+        <div style={{ padding: '2rem', fontFamily: 'system-ui', maxWidth: 600 }}>
+          <h2 style={{ color: '#b91c1c' }}>Something went wrong</h2>
+          <p>Check the browser console (F12) for details. Ensure the backend is running at <code>http://localhost:8000</code>.</p>
+          <pre style={{ background: '#f3f4f6', padding: 12, overflow: 'auto' }}>{this.state.error?.message}</pre>
+        </div>
+      )
+    return this.props.children
+  }
+}
 
 function App() {
   const { isLoggedIn, loading, logout, user } = useAuth()

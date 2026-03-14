@@ -1,4 +1,5 @@
 """Video processing: blur whole video for privacy. Uses ref algorithm (HSV + contours)."""
+import json
 import logging
 import re
 import shutil
@@ -6,7 +7,7 @@ import subprocess
 from collections import Counter
 import tempfile
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Any
 
 import cv2
 
@@ -34,7 +35,7 @@ HSV_UPPER_LIGHT = (40, 255, 255)
 PLATE_MIN_RATIO = 1.5
 PLATE_MAX_RATIO = 7.0
 MIN_PLATE_AREA = 200              # Allow smaller/distant plates
-BLUR_KERNEL = 51                  # Strong blur for privacy; odd number required
+BLUR_KERNEL = 15                  # Lighter blur; odd number required (3=very light, 15=moderate, 51=strong)
 MAX_PLATE_AREA_RATIO = 0.12       # Plate region must be ≤12% of frame; larger = false positive, blur all
 # Ref plate tracking (ALGORITHMS §2)
 MAX_TRACK_MISSES = 8              # Reuse last box for up to N frames when detection misses
@@ -97,6 +98,125 @@ def _get_ffmpeg() -> str:
         raise RuntimeError(
             "No ffmpeg found. Install imageio-ffmpeg (pip install imageio-ffmpeg) or add ffmpeg to PATH."
         )
+
+
+def _get_ffprobe() -> Optional[str]:
+    """Return path to ffprobe, or None if not found (same dir as ffmpeg or in PATH)."""
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        return ffprobe
+    try:
+        ffmpeg = _get_ffmpeg()
+        # ffprobe often ships next to ffmpeg
+        base = Path(ffmpeg).parent
+        for name in ("ffprobe", "ffprobe.exe"):
+            p = base / name
+            if p.exists():
+                return str(p)
+    except RuntimeError:
+        pass
+    return None
+
+
+def _parse_iso6709_location(s: str) -> Optional[dict]:
+    """Parse ISO6709 location string (e.g. +32.0853+34.7818/) to {latitude, longitude}."""
+    if not s or not isinstance(s, str):
+        return None
+    s = s.strip().rstrip("/")
+    # Pattern: +lat+lon or -lat-lon or +lat-lon etc.
+    m = re.match(r"([+-]?\d+(?:\.\d+)?)([+-]?\d+(?:\.\d+)?)$", s)
+    if m:
+        try:
+            lat = float(m.group(1))
+            lon = float(m.group(2))
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                return {"latitude": lat, "longitude": lon}
+        except ValueError:
+            pass
+    return None
+
+
+def extract_video_params(input_path: str) -> dict:
+    """
+    Extract metadata from video file (duration, resolution, codec, GPS if present).
+    Returns a JSON-serializable dict for Ticket.video_params.
+    """
+    out: dict[str, Any] = {}
+    ffprobe = _get_ffprobe()
+    if not ffprobe:
+        return out
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "quiet", "-show_format", "-show_streams", "-print_format", "json", input_path],
+            capture_output=True,
+            timeout=15,
+            text=True,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return out
+        data = json.loads(result.stdout)
+    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logger.debug("extract_video_params failed: %s", e)
+        return out
+
+    # Format: duration, size, bit_rate, tags (may contain location)
+    fmt = data.get("format") or {}
+    if fmt.get("duration"):
+        try:
+            out["duration_sec"] = round(float(fmt["duration"]), 2)
+        except (TypeError, ValueError):
+            pass
+    if fmt.get("size"):
+        try:
+            out["size_bytes"] = int(fmt["size"])
+        except (TypeError, ValueError):
+            pass
+    if fmt.get("bit_rate") and fmt["bit_rate"] != "N/A":
+        try:
+            out["bit_rate"] = int(fmt["bit_rate"])
+        except (TypeError, ValueError):
+            pass
+    tags = fmt.get("tags") or {}
+    for key in ("location", "location-eng", "com.apple.quicktime.location.ISO6709"):
+        val = tags.get(key)
+        if val and isinstance(val, str):
+            parsed = _parse_iso6709_location(val)
+            if parsed:
+                out["gps_from_video"] = parsed
+                break
+    # Also check keys that contain 'location'
+    if "gps_from_video" not in out:
+        for k, val in tags.items():
+            if "location" in k.lower() and val and isinstance(val, str):
+                parsed = _parse_iso6709_location(val)
+                if parsed:
+                    out["gps_from_video"] = parsed
+                    break
+
+    # First video stream: width, height, codec, fps
+    for stream in data.get("streams") or []:
+        if stream.get("codec_type") == "video":
+            if stream.get("width") is not None:
+                try:
+                    out["width"] = int(stream["width"])
+                except (TypeError, ValueError):
+                    pass
+            if stream.get("height") is not None:
+                try:
+                    out["height"] = int(stream["height"])
+                except (TypeError, ValueError):
+                    pass
+            if stream.get("codec_name"):
+                out["codec"] = str(stream["codec_name"])
+            if stream.get("r_frame_rate"):
+                out["r_frame_rate"] = str(stream["r_frame_rate"])
+            if stream.get("nb_frames"):
+                try:
+                    out["nb_frames"] = int(stream["nb_frames"])
+                except (TypeError, ValueError):
+                    pass
+            break
+    return out
 
 
 def _process_ffmpeg_only(input_path: str, blur: int = 0) -> bytes:
