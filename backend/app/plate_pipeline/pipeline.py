@@ -20,6 +20,7 @@ from .plate_detector import PlateDetector
 from .plate_format import classify_plate_format
 from .registry_lookup import RegistryLookup
 from .result_writer import write_result_json, write_video
+from .temporal_blur import TemporalBlurTracker
 from .tracker import PlateTracker
 from .vehicle_detector import VehicleDetector
 from .video_io import get_video_info, read_frames
@@ -30,6 +31,10 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     vehicle_det = VehicleDetector(model_path=cfg.vehicle_model_path, imgsz=cfg.vehicle_imgsz)
     plate_det = PlateDetector(backend=cfg.detector_backend, yolo_path=cfg.plate_yolo_model_path)
     tracker = PlateTracker(max_misses=cfg.track_max_misses, alpha=cfg.track_smoothing_alpha)
+    blur_tracker = TemporalBlurTracker(
+        max_misses=cfg.temporal_blur_max_misses,
+        expand_ratio=cfg.blur_expand_ratio,
+    )
     curb_det = CurbDetector()
     ocr_vote = OCRVote()
 
@@ -40,6 +45,7 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     plate_format_info: Optional[dict] = None
     detector_used = cfg.detector_backend
     debug_dir: Optional[Path] = None
+
     if cfg.debug:
         debug_dir = cfg.output_path.parent / (cfg.output_path.stem + "_debug")
         debug_dir.mkdir(parents=True, exist_ok=True)
@@ -51,6 +57,7 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     for frame_idx, frame in read_frames(cfg.input_path, cfg.max_frames):
         vehicles = vehicle_det.detect_and_track(frame)
         vehicles = [v for v in vehicles if v.confidence >= VEHICLE_MIN_CONFIDENCE]
+
         primary_vehicle = max(
             vehicles,
             key=lambda v: (v.bbox[2] - v.bbox[0]) * (v.bbox[3] - v.bbox[1]),
@@ -67,18 +74,28 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         if not plate_detections and primary_vehicle is None:
             plate_detections = plate_det.detect(frame, vehicle_roi=None)
 
-        plate_box: Optional[tuple[int, int, int, int]] = None
+        detected_box: Optional[tuple[int, int, int, int]] = None
+        tracked_plate_box: Optional[tuple[int, int, int, int]] = None
+        blur_box: Optional[tuple[int, int, int, int]] = None
+        crop = None
+
         if plate_detections:
             best = max(plate_detections, key=lambda p: p.confidence)
-            plate_box = tracker.update(best.bbox)
+            detected_box = best.bbox
+            tracked_plate_box = tracker.update(best.bbox)
             detector_used = best.backend
         else:
-            plate_box = tracker.update(None)
+            tracked_plate_box = tracker.update(None)
 
-        if plate_box is not None:
-            crop = crop_plate(frame, plate_box, cfg.plate_crop_margin_px)
+        if cfg.temporal_blur_enabled:
+            blur_box = blur_tracker.update(detected_box)
+        else:
+            blur_box = tracked_plate_box
+
+        if tracked_plate_box is not None:
+            crop = crop_plate(frame, tracked_plate_box, cfg.plate_crop_margin_px)
             if crop is not None:
-                x, y, w, h = plate_box
+                x, y, w, h = tracked_plate_box
                 plate_format_info = classify_plate_format(w, h)
                 should_run_ocr = (
                     not cfg.disable_ocr
@@ -103,11 +120,8 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
                     digits, _ = read_plate_crop(preprocessed)
                     if digits:
                         ocr_vote.add(digits)
-                plate_boxes_per_frame.append(plate_box)
-            else:
-                plate_boxes_per_frame.append(None)
-        else:
-            plate_boxes_per_frame.append(None)
+
+        plate_boxes_per_frame.append(blur_box)
 
         out_frame = blur_except_plate(frame, None, cfg.blur_kernel_size)
 
@@ -119,12 +133,13 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
                 for c in curb_candidates[:2]:
                     x, y, w, hh = c.bbox
                     cv2.rectangle(curb_overlay, (x, y), (x + w, y + hh), (0, 0, 255), 2)
-            overlay = draw_plate_box(frame, plate_box, (0, 255, 0)) if plate_box else frame
+
+            overlay = draw_plate_box(frame, tracked_plate_box, (0, 255, 0)) if tracked_plate_box else frame
             save_debug_frame(
                 debug_dir,
                 frame_idx,
-                plate_crop=crop if plate_box is not None else None,
-                preprocessed_crop=preprocess_for_ocr(crop, resize_factor=2) if plate_box is not None and crop is not None else None,
+                plate_crop=crop if tracked_plate_box is not None else None,
+                preprocessed_crop=preprocess_for_ocr(crop, resize_factor=2) if tracked_plate_box is not None and crop is not None else None,
                 overlay=overlay,
                 curb_overlay=curb_overlay,
             )
@@ -143,8 +158,10 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             frames_out.append(blur_except_plate(frame, plate_box, cfg.blur_kernel_size))
 
     write_video(frames_out, cfg.output_path, fps=fps)
+
     ocr_candidates = ocr_vote.all_candidates()
     registry_match = registry.get(validated_plate) if validated_plate else None
+
     if cfg.output_json:
         json_path = cfg.output_path.with_suffix(".json")
         write_result_json(
@@ -156,8 +173,13 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             plate_format=plate_format_info,
             frames_processed=frames_processed,
             detector_backend=detector_used,
+            temporal_blur_enabled=cfg.temporal_blur_enabled,
+            temporal_blur_max_misses=cfg.temporal_blur_max_misses,
+            blur_expand_ratio=cfg.blur_expand_ratio,
+            blur_kernel_size=cfg.blur_kernel_size,
             debug_path=str(debug_dir) if debug_dir else None,
         )
+
     return {
         "validated_plate": validated_plate,
         "registry_match": registry_match,
@@ -166,4 +188,8 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         "plate_format": plate_format_info,
         "frames_processed": frames_processed,
         "detector_backend": detector_used,
+        "temporal_blur_enabled": cfg.temporal_blur_enabled,
+        "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
+        "blur_expand_ratio": cfg.blur_expand_ratio,
+        "blur_kernel_size": cfg.blur_kernel_size,
     }

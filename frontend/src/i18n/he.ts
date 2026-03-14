@@ -1,4 +1,3 @@
-
 export const he = {
   app: {
     title: 'מערכת אכיפת חניה',
@@ -11,6 +10,7 @@ export const he = {
     logout: 'התנתקות',
     loading: 'טוען...',
     unknownError: 'אירעה שגיאה בלתי צפויה',
+    back: 'חזרה',
   },
   review: {
     back: 'חזרה לדוחות',
@@ -25,7 +25,7 @@ export const he = {
     reject: 'דחייה',
     saving: 'שומר...',
     screenshots: 'צילומי מסך',
-    captureScreenshot: 'שמירת צילום מסך',
+    captureScreenshot: 'שמור צילום מסך',
     noScreenshots: 'עדיין לא נשמרו צילומי מסך',
     details: 'פרטי הדוח',
     plate: 'מספר רכב',
@@ -52,6 +52,28 @@ export const he = {
     pendingReview: 'ממתין לבדיקה',
     approved: 'אושר',
     rejected: 'נדחה',
+    processedPreferred: 'המערכת תציג קודם את הווידאו המעובד עם הטשטוש.',
+    saveServer: 'נשמר בשרת',
+    localOnly: 'מקומי בלבד',
+    saveToTicket: 'הצילום יישמר בתיק הדוח',
+    reprocess: 'עבד מחדש וידאו',
+    processingRequested: 'נשלחה בקשת עיבוד מחדש',
+    captureHelp: 'הצילום נשמר מתוך הווידאו שמוצג למעלה, יחד עם חותמת הזמן.',
+  },
+  home: {
+    title: 'בית',
+    subtitle: 'תור העלאות וידאו',
+    queueTitle: 'תור העלאות',
+    refresh: 'רענן',
+    refreshing: 'מרענן...',
+    loading: 'טוען...',
+    empty: 'אין העלאות בתור',
+    job: 'משימה',
+    status: 'סטטוס',
+    plate: 'מספר רכב',
+    created: 'נוצר',
+    error: 'שגיאה',
+    openTicket: 'פתח דוח',
   },
   tickets: {
     title: 'דוחות',
@@ -71,21 +93,4 @@ export const he = {
     loadError: 'טעינת הדוחות נכשלה',
     loginRequired: 'יש להתחבר כדי לצפות בדוחות',
   },
-  home: {
-    title: 'בית',
-    subtitle: 'העלה עבירה או צפה בסטטוס התור העדכני.',
-    queueTitle: 'סטטוס תור',
-    refresh: 'רענון',
-    refreshing: 'מרענן...',
-    loading: 'טוען...',
-    empty: 'עדיין אין משימות העלאה',
-    openTicket: 'פתח דוח',
-    job: 'משימה',
-    status: 'סטטוס',
-    plate: 'מספר רכב',
-    created: 'נוצר',
-    error: 'שגיאה',
-  }
 } as const
-
-export type HebrewDictionary = typeof he

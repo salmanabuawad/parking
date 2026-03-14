@@ -1,6 +1,7 @@
-
 import { Component, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
+
+const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
 import { useAuth } from './context/AuthContext'
 import Cameras from './pages/Cameras'
 import Settings from './pages/Settings'
@@ -22,9 +23,9 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   render() {
     if (this.state.hasError) {
       return (
-        <div style={{ padding: 24, fontFamily: 'system-ui' }}>
-          <h2>אירעה שגיאה</h2>
-          <p>בדוק את הקונסול בדפדפן וודא שהשרת פועל ב־http://localhost:8000.</p>
+        <div style={{ padding: 24 }} dir="rtl">
+          <h2>{he.app.unknownError}</h2>
+          <p>בדקו את קונסולת הדפדפן (F12) וודאו שהשרת פעיל.</p>
           <pre>{this.state.error?.message}</pre>
         </div>
       )
@@ -33,35 +34,25 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   }
 }
 
-function Shell() {
+function AppShell() {
   const { isLoggedIn, loading, logout, user } = useAuth()
 
-  if (loading) return <div style={{ padding: 24 }}>{he.app.loading}</div>
+  if (loading) return <div dir="rtl" style={{ padding: 24 }}>{he.app.loading}</div>
 
   if (!isLoggedIn) {
     return (
       <Routes>
-        <Route path="*" element={<Login />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     )
   }
 
   return (
     <div dir="rtl">
-      <header
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          gap: 12,
-          flexWrap: 'wrap',
-          padding: '16px 24px',
-          borderBottom: '1px solid #e5e7eb',
-          background: '#fff',
-        }}
-      >
-        <div style={{ fontWeight: 800 }}>{he.app.title}</div>
-        <nav style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
+        <nav style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+          <strong>{he.app.title}</strong>
           <Link to="/">{he.app.home}</Link>
           <Link to="/upload">{he.app.upload}</Link>
           <Link to="/tickets">{he.app.tickets}</Link>
@@ -69,7 +60,7 @@ function Shell() {
           <Link to="/queue">{he.app.queue}</Link>
           <Link to="/settings">{he.app.settings}</Link>
         </nav>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
           <span>{user?.username}</span>
           <button onClick={logout}>{he.app.logout}</button>
         </div>
@@ -91,8 +82,10 @@ function Shell() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Shell />
+    <BrowserRouter future={routerFutureFlags}>
+      <AppErrorBoundary>
+        <AppShell />
+      </AppErrorBoundary>
     </BrowserRouter>
   )
 }

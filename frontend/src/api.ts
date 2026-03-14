@@ -1,4 +1,3 @@
-
 import axios, { AxiosInstance } from 'axios'
 
 const api: AxiosInstance = axios.create({
@@ -20,20 +19,19 @@ export const ticketsApi = {
     const base = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
     const path = useProcessed ? `tickets/${id}/processed-video` : `tickets/${id}/video`
     const params = new URLSearchParams({ token: token || '' })
-    if (!useProcessed) params.set('refresh', '1')
     if (cacheBust) params.set('t', String(cacheBust))
     return `${base}/${path}?${params}`
   },
   imageUrl: (id: string) => '/api/tickets/' + id + '/image',
-  getVideo: (id: string, cacheBust?: number) =>
-    api.get(`tickets/${id}/video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}), refresh: '1' } }),
+  getVideo: (id: string, cacheBust?: number) => api.get(`tickets/${id}/video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}) } }),
+  getProcessedVideo: (id: string, cacheBust?: number) => api.get(`tickets/${id}/processed-video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}) } }),
+  getRawVideo: (id: string, cacheBust?: number) => api.get(`tickets/${id}/raw-video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}) } }),
   reprocessVideo: (id: string) => api.post(`tickets/${id}/reprocess-video`),
-  getProcessedVideo: (id: string) => api.get(`tickets/${id}/processed-video`, { responseType: 'blob' }),
   getImage: (id: string) => api.get(`tickets/${id}/image`, { responseType: 'blob' }),
-  saveScreenshot: (
-    id: string,
-    data: { image_base64: string; frame_time_sec: number; captured_at: string }
-  ) => api.post(`tickets/${id}/screenshots`, data),
+  saveScreenshot: (id: string, data: { image_base64: string; frame_time_sec: number; captured_at: string }) =>
+    api.post(`tickets/${id}/screenshots`, data),
+  listScreenshots: (id: string) => api.get(`tickets/${id}/screenshots`),
+  deleteScreenshot: (ticketId: string, screenshotId: string | number) => api.delete(`tickets/${ticketId}/screenshots/${screenshotId}`),
 }
 
 export const uploadApi = {

@@ -1,20 +1,18 @@
-
 import { useEffect } from 'react'
 
-export function useRtl(pageTitle?: string) {
+export function useRtl(title?: string) {
   useEffect(() => {
-    const prevDir = document.documentElement.dir
-    const prevLang = document.documentElement.lang
+    const html = document.documentElement
+    const prevDir = html.dir
+    const prevLang = html.lang
     const prevTitle = document.title
-
-    document.documentElement.dir = 'rtl'
-    document.documentElement.lang = 'he'
-    if (pageTitle) document.title = pageTitle
-
+    html.dir = 'rtl'
+    html.lang = 'he'
+    if (title) document.title = title
     return () => {
-      document.documentElement.dir = prevDir || 'ltr'
-      document.documentElement.lang = prevLang || 'en'
+      html.dir = prevDir || 'ltr'
+      html.lang = prevLang || 'en'
       document.title = prevTitle
     }
-  }, [pageTitle])
+  }, [title])
 }

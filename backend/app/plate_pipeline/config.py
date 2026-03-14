@@ -39,7 +39,10 @@ TRACK_IOU_MIN = 0.10
 TRACK_STABLE_AFTER = 2
 
 # --- Blur ---
-BLUR_KERNEL_SIZE = 51
+BLUR_KERNEL_SIZE = 15
+BLUR_EXPAND_RATIO = 0.18
+TEMPORAL_BLUR_ENABLED = True
+TEMPORAL_BLUR_MAX_MISSES = 6
 
 # --- Israeli plate formats ---
 PLATE_FORMAT_PRESETS = [
@@ -94,3 +97,6 @@ class PipelineConfig:
     track_max_misses: int = TRACK_MAX_MISSES
     track_smoothing_alpha: float = TRACK_SMOOTHING_ALPHA
     blur_kernel_size: int = BLUR_KERNEL_SIZE
+    blur_expand_ratio: float = BLUR_EXPAND_RATIO
+    temporal_blur_enabled: bool = TEMPORAL_BLUR_ENABLED
+    temporal_blur_max_misses: int = TEMPORAL_BLUR_MAX_MISSES
