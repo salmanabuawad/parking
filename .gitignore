@@ -18,3 +18,4 @@ node_modules/
 # Backend video/image storage
 backend/videos/
 videos/
+sample_video/
