@@ -1,11 +1,15 @@
-Replace:
+ALL NEEDED FIXES
+
+Included files:
 - backend/app/services/video_processor.py
+- backend/app/routers/tickets.py
+- frontend/src/pages/TicketReview.tsx
+- frontend/src/api.ts
 
-What this version does:
-- detects the plate before blur
-- keeps the plate sharp
-- blurs everything else
-- uses temporal tracking so the plate stays visible through short misses
-- keeps the existing public function names/signatures used by the repo
-
-This is the safest direct replacement because it avoids changing routers or frontend code.
+What this package fixes:
+1. Review video blurs everything except the detected/tracked plate.
+2. Blur happens only after plate detection.
+3. If there is no plate detection, frame stays unchanged instead of blurring the plate by mistake.
+4. Blur strength comes from AppConfig.blur_kernel_size via tickets router.
+5. Review screen no longer falls back automatically to raw video.
+6. Tickets router no longer silently returns raw/file bytes when processed build fails.
