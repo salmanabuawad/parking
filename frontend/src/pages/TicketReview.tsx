@@ -161,7 +161,7 @@ export default function TicketReview() {
         setShots(
           data.map((item: any) => ({
             id: item.id,
-            url: item.image_url,
+            url: `tickets/${id}/screenshots/${item.id}/image`,
             takenAtIso: item.captured_at || item.taken_at_iso || new Date().toISOString(),
             currentVideoTimeSec: Number(item.frame_time_sec || 0),
             persisted: true,
@@ -220,13 +220,14 @@ export default function TicketReview() {
         frame_time_sec: capture.currentVideoTimeSec,
         captured_at: capture.atIso,
       })
+      const savedId = data.id ?? localShot.id
       setShots((prev) =>
         prev.map((item) =>
           item.id === localShot.id
             ? {
                 ...item,
-                id: data.id ?? item.id,
-                url: data.image_url || item.url,
+                id: savedId,
+                url: typeof savedId !== 'undefined' ? `tickets/${id}/screenshots/${savedId}/image` : item.url,
                 persisted: true,
               }
             : item

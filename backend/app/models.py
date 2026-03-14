@@ -108,17 +108,29 @@ class Ticket(Base):
 
 
 class TicketScreenshot(Base):
-    """Screenshot attached to a ticket (blurred evidence)."""
+    """Screenshot attached to a ticket (blurred evidence). Supports both Alembic and simple schema."""
 
     __tablename__ = "ticket_screenshots"
 
     id = Column(Integer, primary_key=True, index=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
-    storage_path = Column(String(500), nullable=False)
+    # Alembic schema
+    image_path = Column(String(500), nullable=True)
+    thumbnail_path = Column(String(500), nullable=True)
+    frame_timestamp_ms = Column(Integer, nullable=True)
+    video_timestamp_text = Column(String(64), nullable=True)
+    source_video_hash = Column(String(128), nullable=True)
+    captured_by = Column(String(100), nullable=True)
+    capture_note = Column(Text, nullable=True)
+    frame_width = Column(Integer, nullable=True)
+    frame_height = Column(Integer, nullable=True)
+    is_blurred_source = Column(Boolean, nullable=True, default=True)
+    # Simple schema (migrate_ticket_screenshots / init_db)
+    storage_path = Column(String(500), nullable=True)
     frame_time_sec = Column(Float, nullable=True)
     captured_at = Column(DateTime(timezone=True), nullable=True)
     created_by = Column(String(50), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=True)
 
 
 class AppConfig(Base):
