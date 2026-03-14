@@ -67,6 +67,7 @@ def save_ticket_screenshot(
     db: Session = Depends(get_db),
     admin: Admin = Depends(get_current_user),
 ):
+    """Save screenshot to backend storage under videos_dir/screenshots/ticket_{id}/."""
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")

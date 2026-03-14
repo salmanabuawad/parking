@@ -248,18 +248,21 @@ def reprocess_ticket_video(
         raise HTTPException(status_code=404, detail="No video attached to ticket")
 
     videos_dir = Path(settings.videos_dir)
+    video_bytes: bytes | None = None
     job = upload_job_repo.get_by_ticket_id(ticket_id)
     if job and job.raw_video_path:
         raw_path = (videos_dir / job.raw_video_path.strip().replace("\\", "/")).resolve()
-        if not raw_path.exists():
-            raise HTTPException(status_code=404, detail="Raw video file not found")
-        video_bytes = raw_path.read_bytes()
-    elif t.video_id:
+        if raw_path.exists():
+            video_bytes = raw_path.read_bytes()
+    if video_bytes is None and t.video_id:
         raw_vid = video_repo.get(t.video_id)
-        if not raw_vid or not raw_vid.data:
-            raise HTTPException(status_code=404, detail="Video not found in database")
-        video_bytes = bytes(raw_vid.data)
-    else:
+        if raw_vid and raw_vid.data:
+            video_bytes = bytes(raw_vid.data)
+    if video_bytes is None and t.video_path:
+        proc_path = (videos_dir / t.video_path.replace("\\", "/")).resolve()
+        if proc_path.exists():
+            video_bytes = proc_path.read_bytes()
+    if video_bytes is None:
         raise HTTPException(status_code=404, detail="No source video for reprocessing")
 
     blur = _get_blur_kernel_size(db)

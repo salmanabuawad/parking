@@ -48,4 +48,5 @@ settings.videos_dir.mkdir(parents=True, exist_ok=True)
 (settings.videos_dir / "raw").mkdir(parents=True, exist_ok=True)
 (settings.videos_dir / "processed").mkdir(parents=True, exist_ok=True)
 (settings.videos_dir / "frames").mkdir(parents=True, exist_ok=True)
+(settings.videos_dir / "screenshots").mkdir(parents=True, exist_ok=True)
 
