@@ -1,3 +1,4 @@
+
 import axios, { AxiosInstance } from 'axios'
 
 const api: AxiosInstance = axios.create({
@@ -5,7 +6,6 @@ const api: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Add Bearer token for authenticated requests
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('parking_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
@@ -13,8 +13,7 @@ api.interceptors.request.use((config) => {
 })
 
 export const ticketsApi = {
-  list: (statusFilter?: string) =>
-    api.get('tickets', { params: statusFilter ? { status_filter: statusFilter } : {} }),
+  list: (statusFilter?: string) => api.get('tickets', { params: statusFilter ? { status_filter: statusFilter } : {} }),
   get: (id: string) => api.get(`tickets/${id}`),
   update: (id: string, data: Record<string, unknown>) => api.patch(`tickets/${id}`, data),
   ticketVideoUrl: (id: string, token: string | null, useProcessed?: boolean, cacheBust?: number) => {
@@ -31,6 +30,10 @@ export const ticketsApi = {
   reprocessVideo: (id: string) => api.post(`tickets/${id}/reprocess-video`),
   getProcessedVideo: (id: string) => api.get(`tickets/${id}/processed-video`, { responseType: 'blob' }),
   getImage: (id: string) => api.get(`tickets/${id}/image`, { responseType: 'blob' }),
+  saveScreenshot: (
+    id: string,
+    data: { image_base64: string; frame_time_sec: number; captured_at: string }
+  ) => api.post(`tickets/${id}/screenshots`, data),
 }
 
 export const uploadApi = {
@@ -46,8 +49,7 @@ export const settingsApi = {
 }
 
 export const camerasApi = {
-  list: (activeOnly = false) =>
-    api.get('cameras', { params: activeOnly ? { active_only: true } : {} }),
+  list: (activeOnly = false) => api.get('cameras', { params: activeOnly ? { active_only: true } : {} }),
   get: (id: number) => api.get(`cameras/${id}`),
   create: (data: Record<string, unknown>) => api.post('cameras', data),
   update: (id: number, data: Record<string, unknown>) => api.patch(`cameras/${id}`, data),

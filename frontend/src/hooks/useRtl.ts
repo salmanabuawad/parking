@@ -1,13 +1,20 @@
-import { useEffect } from 'react';
 
-export function useRtl(language: 'he' | 'en' = 'he') {
+import { useEffect } from 'react'
+
+export function useRtl(pageTitle?: string) {
   useEffect(() => {
-    const isRtl = language === 'he';
-    document.documentElement.dir = isRtl ? 'rtl' : 'ltr';
-    document.documentElement.lang = language;
-    document.body.classList.toggle('rtl-app', isRtl);
+    const prevDir = document.documentElement.dir
+    const prevLang = document.documentElement.lang
+    const prevTitle = document.title
+
+    document.documentElement.dir = 'rtl'
+    document.documentElement.lang = 'he'
+    if (pageTitle) document.title = pageTitle
+
     return () => {
-      document.body.classList.remove('rtl-app');
-    };
-  }, [language]);
+      document.documentElement.dir = prevDir || 'ltr'
+      document.documentElement.lang = prevLang || 'en'
+      document.title = prevTitle
+    }
+  }, [pageTitle])
 }

@@ -1,0 +1,254 @@
+
+:root {
+  --bg: #f4f7fb;
+  --panel: #ffffff;
+  --line: #d7dfeb;
+  --text: #142033;
+  --muted: #66758a;
+  --primary: #1646a0;
+  --primary-soft: #e9f0ff;
+  --success: #0f8b4c;
+  --success-soft: #daf5e6;
+  --danger: #c83737;
+  --danger-soft: #fde8e8;
+  --warning: #a16b00;
+  --warning-soft: #fff2d1;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+}
+
+.review-page {
+  padding: 18px;
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.review-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.review-back {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.review-title {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.review-subtitle {
+  color: var(--muted);
+  margin-top: 6px;
+  font-size: 0.95rem;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.video-card,
+.sidebar-card,
+.strip-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(20, 32, 51, 0.06);
+}
+
+.video-card {
+  padding: 14px;
+}
+
+.video-card-header,
+.sidebar-card-header,
+.strip-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.video-stage {
+  background: #101727;
+  border-radius: 14px;
+  padding: 10px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.video-element {
+  width: 100%;
+  max-height: 430px;
+  display: block;
+  background: black;
+  border-radius: 12px;
+}
+
+.video-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.mode-pill,
+.status-pill {
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.mode-pill {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.status-pill.pending { background: var(--warning-soft); color: var(--warning); }
+.status-pill.approved { background: var(--success-soft); color: var(--success); }
+.status-pill.rejected { background: var(--danger-soft); color: var(--danger); }
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.btn {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn.secondary { background: #eef2f7; color: #243247; }
+.btn.primary { background: var(--primary); color: white; }
+.btn.success { background: var(--success); color: white; }
+.btn.danger { background: var(--danger); color: white; }
+
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.sidebar-card {
+  padding: 14px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.field label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 700;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font: inherit;
+  background: white;
+  color: inherit;
+  box-sizing: border-box;
+}
+
+.field textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.callout {
+  background: #fff7db;
+  border: 1px solid #f5da8a;
+  color: #7d5a00;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.meta-box {
+  background: #f7f9fc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+
+.meta-line {
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+
+.strip-card {
+  margin-top: 16px;
+  padding: 14px;
+}
+
+.shot-strip {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.shot-item {
+  min-width: 220px;
+  max-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: white;
+}
+
+.shot-item img {
+  width: 100%;
+  height: 132px;
+  object-fit: cover;
+  display: block;
+  background: #d9dfe9;
+}
+
+.shot-caption {
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  color: var(--muted);
+}
+
+.empty-note,
+.video-note {
+  color: var(--muted);
+  font-size: 0.94rem;
+}
+
+@media (max-width: 1100px) {
+  .review-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .video-stage {
+    max-width: 100%;
+  }
+}
