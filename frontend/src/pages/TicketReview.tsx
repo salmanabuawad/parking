@@ -260,7 +260,7 @@ export default function TicketReview() {
             ← {he.review.back}
           </Link>
           <h1 className="review-title">
-            {he.review.ticket} #{ticket.id} — {form.license_plate || '—'}
+            {he.review.ticket} #{ticket.id} — {form.license_plate && form.license_plate !== '11111' ? form.license_plate : he.review.plateNotIdentified}
           </h1>
           <div className="review-subtitle">
             {he.review.createdAt}: {ticket.created_at ? new Date(ticket.created_at).toLocaleString('he-IL') : '—'}

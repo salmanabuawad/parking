@@ -641,7 +641,8 @@ def _ocr_plate_from_frame(frame: np.ndarray, debug_prefix: str = "") -> Tuple[Op
     if _is_valid_israeli_plate(digits):
         return (digits, None)
     if digits:
-        return (None, f"OCR read '{digits}' but need 7-8 digits for Israeli plate.")
+        n = len(digits)
+        return (None, f"OCR read only '{digits}' ({n} digit(s)); Israeli plates have 7 or 8 digits.")
     return (None, "OCR returned no digits.")
 
 
@@ -677,7 +678,8 @@ def _ocr_plate_from_frame_fast_hsv(frame: np.ndarray, debug_prefix: str = "") ->
         if _is_valid_israeli_plate(digits):
             return (digits, None)
         if digits:
-            last_reason = f"OCR read '{digits}' but need 7-8 digits for Israeli plate."
+            n = len(digits)
+            last_reason = f"OCR read only '{digits}' ({n} digit(s)); Israeli plates have 7 or 8 digits."
             continue
         last_reason = "OCR returned no digits."
     return (None, last_reason or "No valid plate from any candidate.")

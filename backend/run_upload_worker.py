@@ -112,9 +112,13 @@ def process_one_job() -> bool:
         cfg = db.query(AppConfig).first()
         use_violation = cfg.use_violation_pipeline if cfg is not None else getattr(settings, 'use_violation_pipeline', True)
         use_fast = getattr(settings, 'use_fast_hsv_pipeline', True)
-        blur_kw = {}
+        # Always apply blur for privacy (default 15 when settings have 0 or None)
+        blur_size = 15
         if cfg and getattr(cfg, 'blur_kernel_size', None) is not None and cfg.blur_kernel_size > 0:
-            blur_kw['blur_strength'] = cfg.blur_kernel_size
+            blur_size = max(3, cfg.blur_kernel_size)
+        if blur_size % 2 == 0:
+            blur_size += 1
+        blur_kw = {'blur_strength': blur_size}
         plate_reason = None
         if use_fast:
             # Fast path: HSV yellow plates only, no YOLO. Black-on-yellow OCR.
@@ -187,6 +191,9 @@ def process_one_job() -> bool:
                 plate_reason = "Plate not found in Ministry of Transport registry (data.gov.il)"
                 license_plate = "11111"
 
+        # Store "" for "not identified" in DB (UI shows Hebrew "לא זוהה")
+        display_plate = "" if (not license_plate or license_plate == "11111") else license_plate
+
         # Save to filesystem: videos/processed/job_{id}.mp4, videos/frames/job_{id}.jpg
         proc_path = videos_dir / "processed" / f"job_{job.id}.mp4"
         frame_path = videos_dir / "frames" / f"job_{job.id}.jpg"
@@ -200,7 +207,7 @@ def process_one_job() -> bool:
 
         location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
         ticket_kw = dict(
-            license_plate=license_plate,
+            license_plate=display_plate,
             camera_id="mobile",
             location=location_str,
             violation_zone=job.violation_zone or "red_white",
@@ -237,6 +244,7 @@ def process_one_job() -> bool:
             job.id,
             status="completed",
             ticket_id=ticket.id,
+            license_plate=display_plate,
             completed_at=datetime.now(timezone.utc),
             error_message=None,
         )

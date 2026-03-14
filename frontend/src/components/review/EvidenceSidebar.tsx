@@ -5,8 +5,12 @@ import type { TicketReviewRecord } from './types'
 /** Map backend plate_detection_reason (English) to Hebrew for display. */
 function plateReasonHebrew(reason: string | null | undefined): string {
   if (!reason) return he.review.plateReasonNoDetail
-  const m = reason.match(/^OCR read '([^']*)' but need 7-8 digits for Israeli plate\.$/)
-  if (m) return he.review.plateReasonOcrFewDigits.replace('{digits}', m[1])
+  // New format: "OCR read only 'X' (N digit(s)); Israeli plates have 7 or 8 digits."
+  let m = reason.match(/^OCR read only '([^']*)' \((\d+) digit\(s\)\); Israeli plates have 7 or 8 digits\.$/)
+  if (m) return he.review.plateReasonOcrFewDigits.replace('{digits}', m[1]).replace('{n}', m[2])
+  // Old format: "OCR read 'X' but need 7-8 digits for Israeli plate."
+  m = reason.match(/^OCR read '([^']*)' but need 7-8 digits for Israeli plate\.$/)
+  if (m) return he.review.plateReasonOcrFewDigits.replace('{digits}', m[1]).replace('{n}', String(m[1].length))
   if (reason === 'OCR returned no digits.') return he.review.plateReasonOcrNoDigits
   if (reason === 'No yellow plate region detected (HSV).') return he.review.plateReasonNoYellowPlate
   if (reason === 'Plate crop too small for OCR.') return he.review.plateReasonCropTooSmall
@@ -47,7 +51,7 @@ export function EvidenceSidebar({ ticket, form, onFormChange, onSave, onApprove,
         <input value={form.license_plate} onChange={(e) => onFormChange('license_plate', e.target.value)} placeholder="12345678" />
       </div>
 
-      {(form.license_plate === '11111' || !form.license_plate) && (
+      {(!form.license_plate || form.license_plate === '11111') && (
         <div className="warning-box">
           <strong>{he.review.plateReason}: </strong>
           {plateReasonHebrew(ticket.plate_detection_reason)}

@@ -76,7 +76,7 @@ export default function Home() {
                   <div>
                     <div><strong>{he.home.job}:</strong> {job.job_id}</div>
                     <div><strong>{he.home.status}:</strong> <span style={{ color: statusColors[job.status] || '#142033' }}>{job.status}</span></div>
-                    <div><strong>{he.home.plate}:</strong> {job.license_plate || '—'}</div>
+                    <div><strong>{he.home.plate}:</strong> {job.license_plate && job.license_plate !== '11111' ? job.license_plate : he.home.plateNotIdentified}</div>
                     <div><strong>{he.home.created}:</strong> {job.created_at ? new Date(job.created_at).toLocaleString('he-IL') : '—'}</div>
                     {job.error_message ? <div><strong>{he.home.error}:</strong> {job.error_message}</div> : null}
                   </div>

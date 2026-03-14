@@ -29,7 +29,7 @@ async def upload_violation(
     latitude: Optional[float] = Form(None),
     longitude: Optional[float] = Form(None),
     captured_at: str = Form(...),
-    license_plate: str = Form("11111"),
+    license_plate: str = Form(""),
     violation_zone: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     submitted_by: Optional[str] = Form(None),
@@ -62,13 +62,14 @@ async def upload_violation(
 
     lat = latitude if latitude is not None else 0.0
     lng = longitude if longitude is not None else 0.0
+    plate_value = (license_plate or "").strip()
     job = job_repo.create(
         raw_video_path=rel_path,
         status="queued",
         latitude=lat,
         longitude=lng,
         captured_at=captured_dt,
-        license_plate=license_plate,
+        license_plate=plate_value,
         violation_zone=violation_zone or "red_white",
         description=description or f"Mobile upload at {lat:.6f}, {lng:.6f}",
         submitted_by=submitted_by,

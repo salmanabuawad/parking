@@ -106,7 +106,10 @@ def _is_processed_path(video_path: Optional[str]) -> bool:
 
 
 def _normalize_blur_kernel_size(value: Optional[int]) -> int:
-    k = 15 if value is None else max(3, int(value))
+    """Return blur kernel size (odd, >= 3). Use 15 when None/0 so video is always blurred for privacy."""
+    if value is None or value <= 0:
+        return 15
+    k = max(3, int(value))
     if k % 2 == 0:
         k += 1
     return k
@@ -116,20 +119,42 @@ def _build_processed_video_bytes(
     ticket: Ticket,
     video_repo: CameraVideoRepository,
     blur_strength: Optional[int] = None,
+    upload_job_repo: Optional[UploadJobRepository] = None,
 ) -> bytes:
+    from app.services.video_processor import process_video
+
+    k = _normalize_blur_kernel_size(blur_strength)
+
     # 1. Prefer explicit processed video stored in DB.
     if ticket.processed_video_id:
         vid = video_repo.get(ticket.processed_video_id)
         if vid and vid.data:
             return bytes(vid.data)
 
-    # 2. Trust filesystem path only when it is clearly a processed output path.
+    # 2. For tickets from upload worker: prefer raw file + current blur so UI always gets blurred video.
+    if upload_job_repo and ticket.id:
+        job = upload_job_repo.get_by_ticket_id(ticket.id)
+        if job and job.raw_video_path:
+            raw_path = (Path(settings.videos_dir) / job.raw_video_path.strip().replace("\\", "/")).resolve()
+            if raw_path.exists():
+                raw_bytes = raw_path.read_bytes()
+                if raw_bytes and k > 0:
+                    processed_bytes, _ = process_video(raw_bytes, blur_strength=k)
+                    return processed_bytes
+                if raw_bytes:
+                    return raw_bytes
+
+    # 3. Trust filesystem processed path: read file and apply blur if needed (worker may have saved with blur=0).
     if _is_processed_path(ticket.video_path):
         fp = Path(settings.videos_dir) / str(ticket.video_path)
         if fp.exists():
-            return fp.read_bytes()
+            file_bytes = fp.read_bytes()
+            if k > 0:
+                processed_bytes, _ = process_video(file_bytes, blur_strength=k)
+                return processed_bytes
+            return file_bytes
 
-    # 3. Otherwise build a fresh processed video from the raw DB video.
+    # 4. Otherwise build from raw DB video.
     raw_vid_id = ticket.video_id
     if not raw_vid_id:
         raise HTTPException(status_code=404, detail="No video attached to ticket")
@@ -137,9 +162,6 @@ def _build_processed_video_bytes(
     if not raw_vid or not raw_vid.data:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    from app.services.video_processor import process_video
-
-    k = _normalize_blur_kernel_size(blur_strength)
     processed_bytes, _ = process_video(bytes(raw_vid.data), blur_strength=k)
     return processed_bytes
 
@@ -156,6 +178,7 @@ def get_ticket_video(
     db: Session = Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    upload_job_repo: UploadJobRepository = Depends(get_upload_job_repo),
     admin: Admin = Depends(get_current_user_for_media),
 ):
     t = ticket_repo.get(ticket_id)
@@ -169,7 +192,9 @@ def get_ticket_video(
     if ticket_id not in _ticket_video_cache:
         try:
             blur = _get_blur_kernel_size(db)
-            _ticket_video_cache[ticket_id] = _build_processed_video_bytes(t, video_repo, blur_strength=blur)
+            _ticket_video_cache[ticket_id] = _build_processed_video_bytes(
+                t, video_repo, blur_strength=blur, upload_job_repo=upload_job_repo
+            )
         except Exception as exc:
             logging.exception("Video processing failed")
             raise HTTPException(status_code=500, detail=f"Video processing failed: {str(exc)}")
@@ -199,6 +224,7 @@ def get_ticket_processed_video(
     db: Session = Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    upload_job_repo: UploadJobRepository = Depends(get_upload_job_repo),
     admin: Admin = Depends(get_current_user_for_media),
 ):
     t = ticket_repo.get(ticket_id)
@@ -206,7 +232,12 @@ def get_ticket_processed_video(
         raise HTTPException(status_code=404, detail="Ticket not found")
     try:
         blur = _get_blur_kernel_size(db)
-        return Response(content=_build_processed_video_bytes(t, video_repo, blur_strength=blur), media_type="video/mp4")
+        return Response(
+            content=_build_processed_video_bytes(
+                t, video_repo, blur_strength=blur, upload_job_repo=upload_job_repo
+            ),
+            media_type="video/mp4",
+        )
     except HTTPException:
         raise
     except Exception as exc:

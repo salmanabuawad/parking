@@ -5,7 +5,7 @@ import { t } from '../i18n'
 
 export default function Upload() {
   const [capturedAt, setCapturedAt] = useState(new Date().toISOString())
-  const [licensePlate, setLicensePlate] = useState('11111')
+  const [licensePlate, setLicensePlate] = useState('')
   const [zone, setZone] = useState('red_white')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ message?: string } | null>(null)
@@ -24,7 +24,7 @@ export default function Upload() {
       const fd = new FormData()
       fd.append('video', file)
       fd.append('captured_at', capturedAt)
-      fd.append('license_plate', licensePlate || '11111')
+      fd.append('license_plate', licensePlate.trim())
       fd.append('violation_zone', zone)
       const { data } = await api.post('/upload/violation', fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
@@ -75,7 +75,7 @@ export default function Upload() {
         type="text"
         value={licensePlate}
         onChange={e => setLicensePlate(e.target.value)}
-        placeholder="11111"
+        placeholder=""
         style={styles.input}
       />
 
