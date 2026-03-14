@@ -5,7 +5,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Tuple
@@ -19,23 +18,15 @@ except Exception:
     pytesseract = None
 
 
-# ------------------------------------------------------------------
-# Configuration defaults
-# ------------------------------------------------------------------
-
 BLUR_KERNEL = 35
-TRACK_MISSES = 8
-SMOOTH_ALPHA = 0.65
+TRACK_MISSES = 10
+SMOOTH_ALPHA = 0.70
 
 HSV_LOWER_YELLOW = (10, 40, 40)
 HSV_UPPER_YELLOW = (50, 255, 255)
 
 BBox = Tuple[int, int, int, int]
 
-
-# ------------------------------------------------------------------
-# Tracker
-# ------------------------------------------------------------------
 
 @dataclass
 class PlateTracker:
@@ -53,10 +44,11 @@ class PlateTracker:
                 self.last_box = box
                 return box
 
-            x = int(self.alpha * box[0] + (1 - self.alpha) * self.last_box[0])
-            y = int(self.alpha * box[1] + (1 - self.alpha) * self.last_box[1])
-            w = int(self.alpha * box[2] + (1 - self.alpha) * self.last_box[2])
-            h = int(self.alpha * box[3] + (1 - self.alpha) * self.last_box[3])
+            lx, ly, lw, lh = self.last_box
+            x = int(self.alpha * box[0] + (1 - self.alpha) * lx)
+            y = int(self.alpha * box[1] + (1 - self.alpha) * ly)
+            w = int(self.alpha * box[2] + (1 - self.alpha) * lw)
+            h = int(self.alpha * box[3] + (1 - self.alpha) * lh)
 
             self.last_box = (x, y, w, h)
             return self.last_box
@@ -65,20 +57,24 @@ class PlateTracker:
         if self.miss_count > self.max_misses:
             self.last_box = None
             return None
-
         return self.last_box
 
 
-# ------------------------------------------------------------------
-# Utilities
-# ------------------------------------------------------------------
-
-def normalize_kernel(k: int) -> int:
+def _normalize_kernel(k: int) -> int:
     if k < 3:
         k = BLUR_KERNEL
     if k % 2 == 0:
         k += 1
     return k
+
+
+def _safe_denoise_and_sharpen(img: np.ndarray) -> np.ndarray:
+    try:
+        denoised = cv2.fastNlMeansDenoisingColored(img, None, 6, 6, 7, 21)
+    except Exception:
+        denoised = img
+    kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], dtype=np.float32)
+    return cv2.filter2D(denoised, -1, kernel)
 
 
 def get_ffmpeg() -> str:
@@ -122,7 +118,6 @@ def extract_video_params(input_path: str) -> dict:
         )
         if result.returncode != 0 or not result.stdout:
             return {}
-
         data = json.loads(result.stdout)
         out: dict[str, Any] = {}
         fmt = data.get("format") or {}
@@ -136,6 +131,12 @@ def extract_video_params(input_path: str) -> dict:
         if fmt.get("size"):
             try:
                 out["size_bytes"] = int(fmt["size"])
+            except Exception:
+                pass
+
+        if fmt.get("bit_rate") and fmt["bit_rate"] != "N/A":
+            try:
+                out["bit_rate"] = int(fmt["bit_rate"])
             except Exception:
                 pass
 
@@ -155,13 +156,14 @@ def extract_video_params(input_path: str) -> dict:
         return {}
 
 
-# ------------------------------------------------------------------
-# Plate detection / OCR compatibility
-# ------------------------------------------------------------------
-
 def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    """Simple but safe yellow-plate detector for review rendering.
 
+    This keeps compatibility with the current repo and avoids introducing model-file
+    dependencies. It should be replaced later by the violation-car/plate detector if
+    available, but it is safe for current processing.
+    """
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(
         hsv,
         np.array(HSV_LOWER_YELLOW, dtype=np.uint8),
@@ -176,7 +178,8 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     best: Optional[BBox] = None
-    best_area = 0
+    best_score = 0.0
+    h_frame = frame.shape[0]
 
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
@@ -189,20 +192,46 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
             continue
 
         area = w * h
-        if area > best_area:
-            best_area = area
+        lower_half_bonus = 1.0 + (y / max(1, h_frame))
+        score = area * lower_half_bonus
+
+        if score > best_score:
+            best_score = score
             best = (x, y, w, h)
 
     return best
 
 
-def _safe_denoise_and_sharpen(img: np.ndarray) -> np.ndarray:
-    try:
-        denoised = cv2.fastNlMeansDenoisingColored(img, None, 6, 6, 7, 21)
-    except Exception:
-        denoised = img
-    kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]], dtype=np.float32)
-    return cv2.filter2D(denoised, -1, kernel)
+def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.75) -> BBox:
+    x, y, w, h = box
+    dw = int(w * ratio)
+    dh = int(h * ratio)
+
+    x1 = max(0, x - dw)
+    y1 = max(0, y - dh)
+    x2 = min(frame_shape[1], x + w + dw)
+    y2 = min(frame_shape[0], y + h + dh)
+
+    return x1, y1, x2 - x1, y2 - y1
+
+
+def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
+    """Inverse blur.
+
+    Keep the plate sharp and blur everything else.
+    If there is no plate box, keep the frame unchanged rather than risking a bad blur.
+    """
+    if plate_box is None:
+        return frame.copy()
+
+    blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
+    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.75)
+
+    if w <= 0 or h <= 0:
+        return frame.copy()
+
+    blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
+    return blurred
 
 
 def extract_license_plate(
@@ -211,6 +240,7 @@ def extract_license_plate(
     use_fast_hsv: bool = False,
     registry_lookup=None,
 ) -> Tuple[str, Optional[str]]:
+    """Compatibility OCR helper for existing worker imports."""
     if pytesseract is None:
         return ("11111", "Tesseract is not installed")
 
@@ -240,15 +270,8 @@ def extract_license_plate(
     if plate_box is None:
         return ("11111", "Plate not detected")
 
-    x, y, w, h = plate_box
-    pad_w = int(w * 0.2)
-    pad_h = int(h * 0.2)
-    x1 = max(0, x - pad_w)
-    y1 = max(0, y - pad_h)
-    x2 = min(frame.shape[1], x + w + pad_w)
-    y2 = min(frame.shape[0], y + h + pad_h)
-
-    crop = frame[y1:y2, x1:x2]
+    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.2)
+    crop = frame[y:y + h, x:x + w]
     if crop.size == 0:
         return ("11111", "Empty plate crop")
 
@@ -267,63 +290,21 @@ def extract_license_plate(
     return ("11111", "OCR could not read valid 7-8 digit plate")
 
 
-# ------------------------------------------------------------------
-# Inverse blur logic
-# ------------------------------------------------------------------
-
-def expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.75) -> BBox:
-    x, y, w, h = box
-    dw = int(w * ratio)
-    dh = int(h * ratio)
-
-    x1 = max(0, x - dw)
-    y1 = max(0, y - dh)
-    x2 = min(frame_shape[1], x + w + dw)
-    y2 = min(frame_shape[0], y + h + dh)
-
-    return x1, y1, x2 - x1, y2 - y1
-
-
-def blur_everything_except_plate(
-    frame: np.ndarray,
-    plate_box: Optional[BBox],
-    kernel: int,
-) -> np.ndarray:
-    """
-    Blur all of the frame except the detected/tracked plate.
-    If no plate exists, keep the frame unchanged so we never blur the plate by mistake.
-    """
-    if plate_box is None:
-        return frame.copy()
-
-    blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
-    x, y, w, h = expand_box(plate_box, frame.shape, ratio=0.75)
-
-    if w <= 0 or h <= 0:
-        return frame.copy()
-
-    roi = frame[y:y + h, x:x + w].copy()
-    blurred[y:y + h, x:x + w] = roi
-    return blurred
-
-
-# ------------------------------------------------------------------
-# Main processor
-# ------------------------------------------------------------------
-
 def process_video(
     video_bytes: bytes,
     blur_strength: int = 0,
     extract_frame_at: float = 0.5,
 ) -> Tuple[bytes, bytes]:
-    """
-    Review-video processor:
+    """Build processed review video.
+
+    Safe behavior:
     - detect plate
-    - track plate across short misses
+    - track plate for short misses
     - blur everything except the plate
-    - blur strength comes from caller config
+    - if no plate is known, leave frame unchanged
+    - never use unsafe full-frame blur fallback
     """
-    kernel = normalize_kernel(blur_strength or BLUR_KERNEL)
+    kernel = _normalize_kernel(blur_strength or BLUR_KERNEL)
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         f.write(video_bytes)
@@ -344,16 +325,15 @@ def process_video(
         Path(input_path).unlink(missing_ok=True)
         raise RuntimeError("Could not read video dimensions")
 
-    raw_out_path = tempfile.mktemp(suffix=".mp4")
+    temp_out = tempfile.mktemp(suffix=".mp4")
     writer = cv2.VideoWriter(
-        raw_out_path,
+        temp_out,
         cv2.VideoWriter_fourcc(*"mp4v"),
         fps,
         (width, height),
     )
 
     tracker = PlateTracker()
-
     frame_index = 0
     preview_frame = None
     preview_index = int(total_frames * extract_frame_at)
@@ -363,10 +343,10 @@ def process_video(
         if not ret:
             break
 
-        current_plate = detect_plate_box(frame)
-        tracked_plate = tracker.update(current_plate)
+        plate = detect_plate_box(frame)
+        tracked_plate = tracker.update(plate)
 
-        output = blur_everything_except_plate(frame, tracked_plate, kernel)
+        output = _blur_everything_except_plate(frame, tracked_plate, kernel)
         writer.write(output)
 
         if frame_index == preview_index:
@@ -378,12 +358,12 @@ def process_video(
     writer.release()
 
     if frame_index == 0:
-        Path(raw_out_path).unlink(missing_ok=True)
+        Path(temp_out).unlink(missing_ok=True)
         Path(input_path).unlink(missing_ok=True)
         raise RuntimeError("No frames decoded; refusing unsafe fallback")
 
     ffmpeg = get_ffmpeg()
-    final_out_path = tempfile.mktemp(suffix=".mp4")
+    final_out = tempfile.mktemp(suffix=".mp4")
 
     try:
         subprocess.run(
@@ -391,7 +371,7 @@ def process_video(
                 ffmpeg,
                 "-y",
                 "-i",
-                raw_out_path,
+                temp_out,
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
@@ -399,24 +379,24 @@ def process_video(
                 "-movflags",
                 "+faststart",
                 "-an",
-                final_out_path,
+                final_out,
             ],
             check=True,
             capture_output=True,
         )
-        video_data = Path(final_out_path).read_bytes()
+        processed_video = Path(final_out).read_bytes()
     finally:
-        Path(raw_out_path).unlink(missing_ok=True)
-        Path(final_out_path).unlink(missing_ok=True)
+        Path(temp_out).unlink(missing_ok=True)
+        Path(final_out).unlink(missing_ok=True)
         Path(input_path).unlink(missing_ok=True)
 
-    jpeg = b""
+    preview_jpeg = b""
     if preview_frame is not None:
         ok, buf = cv2.imencode(".jpg", preview_frame)
         if ok:
-            jpeg = buf.tobytes()
+            preview_jpeg = buf.tobytes()
 
-    return video_data, jpeg
+    return processed_video, preview_jpeg
 
 
 def process_video_fast_hsv(

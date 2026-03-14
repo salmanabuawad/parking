@@ -35,7 +35,6 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
 }
 
 export const ticketsApi = {
-  // Processed review endpoint.
   getVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/video`);
   },

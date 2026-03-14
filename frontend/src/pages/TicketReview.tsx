@@ -25,7 +25,6 @@ export default function TicketReview() {
 
       const attempts: Array<{ fn: () => Promise<Blob>; mode: VideoMode }> = [
         { fn: () => ticketsApi.getProcessedVideo(ticketId), mode: "processed" },
-        // IMPORTANT: backend /tickets/:id/video must return processed review video, not raw video.
         { fn: () => ticketsApi.getVideo(ticketId), mode: "review" },
       ];
 
