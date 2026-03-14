@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { camerasApi } from '../api'
+import { camerasApi, getApiBase } from '../api'
 import { t } from '../i18n'
 
 const CONNECTION_TYPES = ['ip', 'bluetooth', 'wifi', 'rtsp', 'usb', 'other'] as const
@@ -165,7 +165,8 @@ export default function Cameras() {
             const hasVideoDb = (c.connection_config as Record<string, unknown>)?.video_id
             const hasVideoFile = (c.connection_config as Record<string, unknown>)?.sample_video
             const hasSample = c.name === 'Sample Camera' || hasVideoDb || hasVideoFile
-            const videoUrl = hasVideoDb ? `/api/cameras/${c.id}/video` : `/api/sample/video?t=${Date.now()}`
+            const base = getApiBase().replace(/\/$/, '')
+            const videoUrl = hasVideoDb ? `${base}/cameras/${c.id}/video` : `${base}/sample/video?t=${Date.now()}`
             return (
               <li key={c.id} style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: '1rem', marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>

@@ -1,5 +1,6 @@
 import React from 'react';
 import { CaseReviewLayout } from '../components/review/CaseReviewLayout';
+import { getApiBase } from '../api';
 import { useRtl } from '../hooks/useRtl';
 import type { ScreenshotItem, TicketReviewData } from '../types/ticket-review';
 
@@ -24,7 +25,8 @@ const mockTicket: TicketReviewData = {
 };
 
 async function saveScreenshot(formData: FormData): Promise<ScreenshotItem> {
-  const res = await fetch('/api/tickets/screenshots', {
+  const base = getApiBase().replace(/\/$/, '');
+  const res = await fetch(`${base}/tickets/screenshots`, {
     method: 'POST',
     body: formData,
   });
