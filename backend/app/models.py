@@ -165,7 +165,7 @@ class UploadJob(Base):
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
     captured_at = Column(DateTime(timezone=True), nullable=True)
-    license_plate = Column(String(20), default="11111")
+    license_plate = Column(String(20), default="")
     violation_zone = Column(String(20), default="red_white")
     description = Column(Text, nullable=True)
     submitted_by = Column(String(50), nullable=True)

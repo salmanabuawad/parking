@@ -105,7 +105,7 @@ export default function QueueMaintenance() {
       fd.append('latitude', '0')
       fd.append('longitude', '0')
       fd.append('captured_at', new Date().toISOString())
-      fd.append('license_plate', '11111')
+      fd.append('license_plate', '')
       fd.append('violation_zone', 'red_white')
       await api.post('/upload/violation', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
       await fetchJobs()
@@ -208,7 +208,7 @@ export default function QueueMaintenance() {
                         </span>
                       </td>
                       <td style={styles.td}>
-                        <span style={{ fontWeight: 500 }}>{j.license_plate || '—'}</span>
+                        <span style={{ fontWeight: 500 }}>{j.license_plate && j.license_plate !== '11111' ? j.license_plate : t('plateNotIdentified')}</span>
                       </td>
                       <td style={styles.td}>
                         {j.error_message ? (

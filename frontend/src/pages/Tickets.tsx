@@ -87,7 +87,7 @@ export default function Tickets() {
               {tickets.map((ticket) => (
                 <tr key={ticket.id}>
                   <td style={{ padding: '0.85rem', borderBottom: '1px solid #f1f4f8' }}>{ticket.id}</td>
-                  <td style={{ padding: '0.85rem', borderBottom: '1px solid #f1f4f8' }}>{ticket.license_plate || '—'}</td>
+                  <td style={{ padding: '0.85rem', borderBottom: '1px solid #f1f4f8' }}>{ticket.license_plate && ticket.license_plate !== '11111' ? ticket.license_plate : he.tickets.plateNotIdentified}</td>
                   <td style={{ padding: '0.85rem', borderBottom: '1px solid #f1f4f8' }}>{ticket.location || '—'}</td>
                   <td style={{ padding: '0.85rem', borderBottom: '1px solid #f1f4f8' }}>
                     <span style={{ ...badgeStyle(ticket.status), padding: '4px 10px', borderRadius: 999 }}>

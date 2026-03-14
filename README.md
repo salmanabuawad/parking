@@ -33,11 +33,17 @@ Use **local Postgres**, **local backend/frontend**, and **nginx** as reverse pro
    ```
    Or copy `nginx/nginx.conf` into your nginx `conf.d` and ensure the path to it is correct (paths like `/var/log/nginx` are Linux; on Windows use a valid path or adjust the config).
 
-5. **Optional – upload worker** (same process as backend, different entrypoint):
+5. **Upload worker** (processes the queue; run in a separate terminal or use the script below):
    ```bash
    cd backend
    python run_upload_worker.py
    ```
+
+**Start backend + frontend + worker in one go (Windows):**
+   ```powershell
+   .\start-all.ps1
+   ```
+   This opens three PowerShell windows for backend, frontend, and worker.
 
 Open **http://localhost** (or the port nginx listens on). The frontend uses relative `/api`, so no `VITE_API_URL` is needed when using nginx.
 
