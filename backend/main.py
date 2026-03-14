@@ -2,21 +2,30 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
-from app.routers import auth, cameras, sample, settings as settings_router, tickets, upload
+from app.routers import auth, cameras, sample, settings as settings_router, ticket_screenshots, tickets, upload
 
 app = FastAPI(title="Parking Enforcement API")
 app.include_router(auth.router, prefix="/api")
 app.include_router(sample.router, prefix="/api")
 app.include_router(cameras.router, prefix="/api")
 app.include_router(tickets.router, prefix="/api")
+app.include_router(ticket_screenshots.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5180", "http://127.0.0.1:5180", "http://localhost:5182", "http://127.0.0.1:5182"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5180",
+        "http://127.0.0.1:5180",
+        "http://localhost:5182",
+        "http://127.0.0.1:5182",
+    ],
     allow_origin_regex=r"http://127\.0\.0\.1:\d+|http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
@@ -32,5 +41,3 @@ def root():
 @app.get("/health")
 def health():
     return {"status": "healthy"}
-
-
