@@ -1,7 +1,15 @@
 import axios, { AxiosInstance } from 'axios'
 
+// Backend at http://localhost:8000; all routes under /api.
+export function getApiBase(): string {
+  const env = import.meta.env.VITE_API_URL
+  const origin = env || 'http://localhost:8000'
+  const base = origin.replace(/\/$/, '')
+  return base.endsWith('/api') ? base : `${base}/api`
+}
+
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: getApiBase(),
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -16,13 +24,13 @@ export const ticketsApi = {
   get: (id: string) => api.get(`tickets/${id}`),
   update: (id: string, data: Record<string, unknown>) => api.patch(`tickets/${id}`, data),
   ticketVideoUrl: (id: string, token: string | null, useProcessed?: boolean, cacheBust?: number) => {
-    const base = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')
+    const base = getApiBase().replace(/\/$/, '')
     const path = useProcessed ? `tickets/${id}/processed-video` : `tickets/${id}/video`
     const params = new URLSearchParams({ token: token || '' })
     if (cacheBust) params.set('t', String(cacheBust))
     return `${base}/${path}?${params}`
   },
-  imageUrl: (id: string) => '/api/tickets/' + id + '/image',
+  imageUrl: (id: string) => `${getApiBase().replace(/\/$/, '')}/tickets/${id}/image`,
   getVideo: (id: string, cacheBust?: number) => api.get(`tickets/${id}/video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}) } }),
   getProcessedVideo: (id: string, cacheBust?: number) => api.get(`tickets/${id}/processed-video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}) } }),
   getRawVideo: (id: string, cacheBust?: number) => api.get(`tickets/${id}/raw-video`, { responseType: 'blob', params: { ...(cacheBust ? { t: cacheBust } : {}) } }),
