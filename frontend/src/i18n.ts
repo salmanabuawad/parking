@@ -153,9 +153,9 @@ const translations: Record<Locale, Record<string, string>> = {
     blurKernelHint: '(0=כבוי, 3=קל, 5–51=חזק)',
     signInProgress: 'מתחבר...',
     screenshotEvidence: 'ראיית צילום מסך',
-    statusQueued: 'בתור',
+    statusQueued: 'ממתין לעיבוד',
     statusProcessing: 'מעבד',
-    statusCompleted: 'הושלם',
+    statusCompleted: 'הושלם בהצלחה',
     statusFailed: 'נכשל',
   },
   en: {
