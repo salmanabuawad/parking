@@ -269,9 +269,16 @@ def main():
     poll_interval = 2.0
     videos_path = Path(settings.videos_dir).resolve()
     print(f"Upload worker started. Videos dir: {videos_path} Polling every {poll_interval}s.", flush=True)
-    # Check Tesseract (plate OCR) at startup
+    # Check Tesseract (plate OCR) at startup; set path on Windows if not in PATH
     try:
         import pytesseract
+        for _p in [
+            Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+            Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
+        ]:
+            if _p.exists():
+                pytesseract.pytesseract.tesseract_cmd = str(_p)
+                break
         pytesseract.get_tesseract_version()
         print("Tesseract OCR: OK", flush=True)
     except Exception as e:
