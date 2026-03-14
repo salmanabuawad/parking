@@ -139,19 +139,38 @@ def _build_processed_video_bytes(
             if raw_path.exists():
                 raw_bytes = raw_path.read_bytes()
                 if raw_bytes and k > 0:
-                    processed_bytes, _ = process_video(raw_bytes, blur_strength=k)
-                    return processed_bytes
+                    try:
+                        processed_bytes, _ = process_video(raw_bytes, blur_strength=k)
+                        return processed_bytes
+                    except Exception:
+                        pass  # fall through to step 3 (serve processed file from disk if present)
                 if raw_bytes:
                     return raw_bytes
 
     # 3. Trust filesystem processed path: read file and apply blur if needed (worker may have saved with blur=0).
     if _is_processed_path(ticket.video_path):
-        fp = Path(settings.videos_dir) / str(ticket.video_path)
+        fp = (Path(settings.videos_dir) / str(ticket.video_path).replace("\\", "/")).resolve()
         if fp.exists():
             file_bytes = fp.read_bytes()
             if k > 0:
-                processed_bytes, _ = process_video(file_bytes, blur_strength=k)
-                return processed_bytes
+                try:
+                    processed_bytes, _ = process_video(file_bytes, blur_strength=k)
+                    return processed_bytes
+                except Exception:
+                    return file_bytes
+            return file_bytes
+
+    # 3b. Fallback: any ticket.video_path on disk (e.g. path format changed).
+    if ticket.video_path:
+        fp = (Path(settings.videos_dir) / str(ticket.video_path).replace("\\", "/")).resolve()
+        if fp.exists():
+            file_bytes = fp.read_bytes()
+            if k > 0:
+                try:
+                    processed_bytes, _ = process_video(file_bytes, blur_strength=k)
+                    return processed_bytes
+                except Exception:
+                    return file_bytes
             return file_bytes
 
     # 4. Otherwise build from raw DB video.
@@ -250,10 +269,20 @@ def get_ticket_raw_video(
     ticket_id: int,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    upload_job_repo: UploadJobRepository = Depends(get_upload_job_repo),
     admin: Admin = Depends(get_current_user_for_media),
 ):
     t = ticket_repo.get(ticket_id)
-    if not t or not t.video_id:
+    if not t:
+        raise HTTPException(status_code=404, detail="Raw video not found")
+    # Prefer raw file from upload job (worker-created tickets).
+    if upload_job_repo and t.id:
+        job = upload_job_repo.get_by_ticket_id(t.id)
+        if job and job.raw_video_path:
+            raw_path = (Path(settings.videos_dir) / job.raw_video_path.strip().replace("\\", "/")).resolve()
+            if raw_path.exists():
+                return Response(content=raw_path.read_bytes(), media_type="video/mp4")
+    if not t.video_id:
         raise HTTPException(status_code=404, detail="Raw video not found")
     vid = video_repo.get(t.video_id)
     if not vid or not vid.data:

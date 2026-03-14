@@ -17,6 +17,7 @@ interface Props {
   onRetry: () => void
   onReprocess?: () => void
   onCapture: (result: CaptureResult) => void
+  onVideoLoadError?: () => void
   metadataStartAt?: string | null
 }
 
@@ -29,6 +30,7 @@ export function VideoPlayerPanel({
   onRetry,
   onReprocess,
   onCapture,
+  onVideoLoadError,
   metadataStartAt,
 }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -102,6 +104,7 @@ export function VideoPlayerPanel({
             playsInline
             preload="metadata"
             src={videoUrl}
+            onError={onVideoLoadError}
           />
         ) : (
           <div className="video-placeholder">{loading ? he.review.videoLoading : error || he.review.videoError}</div>
