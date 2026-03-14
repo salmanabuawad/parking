@@ -7,30 +7,21 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app.database import get_db
+from app.dependencies import get_camera_video_repo, get_ticket_repo, get_upload_job_repo
 from app.models import AppConfig
 from app.services.video_processor import process_video
 
-# Keep these aligned to the repo's repository layer
-from app.repositories.camera_videos import CameraVideoRepository
-from app.repositories.tickets import TicketRepository
-try:
-    from app.repositories.upload_jobs import UploadJobRepository
-except Exception:
-    UploadJobRepository = None
+from app.repositories import CameraVideoRepository, TicketRepository, UploadJobRepository
 
 try:
-    from app.core.config import settings
+    from app.config import settings
 except Exception:
     class _FallbackSettings:
-        videos_dir = "videos"
+        videos_dir = Path("videos")
     settings = _FallbackSettings()
 
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
-
-ticket_repo = TicketRepository()
-video_repo = CameraVideoRepository()
-upload_job_repo = UploadJobRepository() if UploadJobRepository else None
 
 
 def _is_processed_path(video_path: Optional[str]) -> bool:
@@ -56,7 +47,7 @@ def _get_blur_kernel_size(db) -> int:
     return _normalize_blur_kernel_size(getattr(cfg, "blur_kernel_size", 15))
 
 
-def _read_upload_job_raw_video_bytes(ticket) -> Optional[bytes]:
+def _read_upload_job_raw_video_bytes(ticket, upload_job_repo: Optional[UploadJobRepository]) -> Optional[bytes]:
     if not upload_job_repo:
         return None
 
@@ -72,18 +63,23 @@ def _read_upload_job_raw_video_bytes(ticket) -> Optional[bytes]:
     if not job:
         return None
 
-    raw_path = getattr(job, "video_path", None) or getattr(job, "file_path", None)
+    raw_path = getattr(job, "raw_video_path", None) or getattr(job, "video_path", None) or getattr(job, "file_path", None)
     if not raw_path:
         return None
 
-    fp = Path(settings.videos_dir) / raw_path
+    fp = Path(settings.videos_dir) / str(raw_path).replace("\\", "/")
     if fp.exists():
         return fp.read_bytes()
 
     return None
 
 
-def _build_processed_video_bytes(ticket, blur_strength: int) -> bytes:
+def _build_processed_video_bytes(
+    ticket,
+    blur_strength: int,
+    video_repo: CameraVideoRepository,
+    upload_job_repo: Optional[UploadJobRepository],
+) -> bytes:
     # 1) explicit processed blob
     processed_video_id = getattr(ticket, "processed_video_id", None)
     if processed_video_id:
@@ -92,7 +88,7 @@ def _build_processed_video_bytes(ticket, blur_strength: int) -> bytes:
             return bytes(vid.data)
 
     # 2) upload job raw file -> process now
-    upload_job_bytes = _read_upload_job_raw_video_bytes(ticket)
+    upload_job_bytes = _read_upload_job_raw_video_bytes(ticket, upload_job_repo)
     if upload_job_bytes:
         processed_bytes, _ = process_video(upload_job_bytes, blur_strength=blur_strength)
         return processed_bytes
@@ -116,7 +112,13 @@ def _build_processed_video_bytes(ticket, blur_strength: int) -> bytes:
 
 
 @router.get("/{ticket_id}/video")
-def get_ticket_video(ticket_id: int, db=Depends(get_db)):
+def get_ticket_video(
+    ticket_id: int,
+    db=Depends(get_db),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    upload_job_repo: Optional[UploadJobRepository] = Depends(get_upload_job_repo),
+):
     """Review endpoint: returns processed/blurred video only."""
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -124,7 +126,7 @@ def get_ticket_video(ticket_id: int, db=Depends(get_db)):
 
     blur = _get_blur_kernel_size(db)
     try:
-        data = _build_processed_video_bytes(ticket, blur_strength=blur)
+        data = _build_processed_video_bytes(ticket, blur_strength=blur, video_repo=video_repo, upload_job_repo=upload_job_repo)
     except HTTPException:
         raise
     except Exception as exc:
@@ -139,12 +141,22 @@ def get_ticket_video(ticket_id: int, db=Depends(get_db)):
 
 
 @router.get("/{ticket_id}/processed-video")
-def get_ticket_processed_video(ticket_id: int, db=Depends(get_db)):
-    return get_ticket_video(ticket_id=ticket_id, db=db)
+def get_ticket_processed_video(
+    ticket_id: int,
+    db=Depends(get_db),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    upload_job_repo: Optional[UploadJobRepository] = Depends(get_upload_job_repo),
+):
+    return get_ticket_video(ticket_id=ticket_id, db=db, ticket_repo=ticket_repo, video_repo=video_repo, upload_job_repo=upload_job_repo)
 
 
 @router.get("/{ticket_id}/raw-video")
-def get_ticket_raw_video(ticket_id: int):
+def get_ticket_raw_video(
+    ticket_id: int,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
@@ -161,7 +173,12 @@ def get_ticket_raw_video(ticket_id: int):
 
 
 @router.post("/{ticket_id}/reprocess-video")
-def reprocess_ticket_video(ticket_id: int, db=Depends(get_db)):
+def reprocess_ticket_video(
+    ticket_id: int,
+    db=Depends(get_db),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
