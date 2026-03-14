@@ -22,7 +22,12 @@ class ParkingViolationPipeline:
     """Process video frames: detect vehicles, measure curb distance, selectively blur.
     Uses 10s-interval parked zones: cars at same location in samples 10s apart = parked."""
 
-    def __init__(self, output_dir: str | Path | None = None, parked_zones: list[tuple[float, float, float]] | None = None):
+    def __init__(
+        self,
+        output_dir: str | Path | None = None,
+        parked_zones: list[tuple[float, float, float]] | None = None,
+        blur_kernel_size: int | None = None,
+    ):
         self.detector = VehicleDetector(getattr(settings, 'yolo_model_path', 'yolov8n.pt'))
         self.ocr = PlateOCRService()
         self.registry = VehicleRegistryService()
@@ -30,7 +35,10 @@ class ParkingViolationPipeline:
         self.tyre_scale = TyreScaleEstimator()
         self.curb_detector = CurbDetector()
         self.distance = DistanceEstimator()
-        self.blur = BlurService()
+        k = blur_kernel_size if blur_kernel_size and blur_kernel_size > 0 else 15
+        if k % 2 == 0:
+            k += 1
+        self.blur = BlurService(blur_kernel_size=k)
         self.stationary_frames: dict[int, int] = defaultdict(int)
         self.last_boxes: dict[int, tuple[int, int, int, int]] = {}
         self.evidence = EvidenceService(output_dir, getattr(settings, 'save_evidence_frames', True)) if output_dir else None

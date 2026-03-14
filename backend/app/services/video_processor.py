@@ -36,7 +36,8 @@ PLATE_MIN_RATIO = 1.5
 PLATE_MAX_RATIO = 7.0
 MIN_PLATE_AREA = 200              # Allow smaller/distant plates
 BLUR_KERNEL = 15                  # Lighter blur; odd number required (3=very light, 15=moderate, 51=strong)
-MAX_PLATE_AREA_RATIO = 0.12       # Plate region must be ≤12% of frame; larger = false positive, blur all
+MIN_BLUR_KERNEL = 15              # Minimum kernel so output is always visibly blurred (odd)
+MAX_PLATE_AREA_RATIO = 0.08       # Unblur at most 8% of frame (plate only); larger = false positive, keep blurred
 # Ref plate tracking (ALGORITHMS §2)
 MAX_TRACK_MISSES = 8              # Reuse last box for up to N frames when detection misses
 SMOOTHING_ALPHA = 0.65            # new_box = alpha*current + (1-alpha)*prev
@@ -731,7 +732,7 @@ def process_video(
     plate_bbox: Optional[Tuple[int, int, int, int]] = None,
 ) -> Tuple[bytes, bytes]:
     """
-    Process video per ref: HSV plate detection per frame, blur all except plate.
+    Process video: HSV plate detection per frame, blur only the plate ROI (privacy).
     plate_bbox: ignored (ref detects per-frame). Kept for API compatibility.
     """
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
@@ -761,6 +762,10 @@ def process_video(
         k = BLUR_KERNEL if BLUR_KERNEL % 2 == 1 else BLUR_KERNEL + 1
         if blur_strength > 0:
             k = blur_strength if blur_strength % 2 == 1 else blur_strength + 1
+        k = max(k, MIN_BLUR_KERNEL)
+        if k % 2 == 0:
+            k += 1
+        k = max(3, k)  # OpenCV needs odd kernel >= 3 for GaussianBlur
 
         tracker = PlateTracker()
         while True:
@@ -768,23 +773,35 @@ def process_video(
             if not ret:
                 break
 
+            output = frame.copy()
             plate_box = tracker.update(_get_plate_box(frame))
-            blurred = cv2.GaussianBlur(frame, (k, k), 0)
-
             if plate_box:
                 x, y, w, h = plate_box
-                frame_area = frame.shape[0] * frame.shape[1]
-                plate_area = w * h
-                if plate_area <= frame_area * MAX_PLATE_AREA_RATIO:
-                    blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w]
+                h_f, w_f = frame.shape[0], frame.shape[1]
+                x = max(0, x)
+                y = max(0, y)
+                w = max(0, min(w, w_f - x))
+                h = max(0, min(h, h_f - y))
+                if w > 0 and h > 0:
+                    roi = output[y : y + h, x : x + w]
+                    roi_blurred = cv2.GaussianBlur(roi, (k, k), 0)
+                    output[y : y + h, x : x + w] = roi_blurred
 
-            out.write(blurred)
+            out.write(output)
             if frame_idx == frame_idx_for_ticket:
-                ticket_frame = blurred.copy()
+                ticket_frame = output.copy()
             frame_idx += 1
 
         cap.release()
         out.release()
+
+        # If OpenCV read no frames (e.g. codec not supported), fall back to full-frame ffmpeg blur
+        if frame_idx == 0:
+            Path(raw_path).unlink(missing_ok=True)
+            processed_bytes = _process_ffmpeg_only(input_path, blur=15)
+            ticket_jpeg = _extract_frame_ffmpeg(input_path, 0.5)
+            Path(input_path).unlink(missing_ok=True)
+            return processed_bytes, ticket_jpeg
 
         out_path = tempfile.mktemp(suffix="_h264.mp4")
         try:
@@ -824,7 +841,7 @@ def process_video_fast_hsv(
     extract_frame_at: float = 0.5,
 ) -> Tuple[bytes, bytes]:
     """
-    Fast HSV pipeline: no YOLO. Detect yellow plates via HSV only, blur all except plate.
+    Fast HSV pipeline: no YOLO. Detect yellow plates via HSV only, blur only the plate ROI.
     Uses black-on-yellow OCR preprocessing. Faster than process_video (skips vehicle detection).
     """
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
@@ -854,6 +871,10 @@ def process_video_fast_hsv(
         k = BLUR_KERNEL if BLUR_KERNEL % 2 == 1 else BLUR_KERNEL + 1
         if blur_strength > 0:
             k = blur_strength if blur_strength % 2 == 1 else blur_strength + 1
+        k = max(k, MIN_BLUR_KERNEL)
+        if k % 2 == 0:
+            k += 1
+        k = max(3, k)  # OpenCV needs odd kernel >= 3 for GaussianBlur
 
         tracker = PlateTracker()
         while True:
@@ -861,24 +882,35 @@ def process_video_fast_hsv(
             if not ret:
                 break
 
-            # HSV yellow plate only - no YOLO; ref: plate tracking for temporal smoothing
+            output = frame.copy()
             plate_box = tracker.update(detect_plate_box(frame))
-            blurred = cv2.GaussianBlur(frame, (k, k), 0)
-
             if plate_box:
                 x, y, w, h = plate_box
-                frame_area = frame.shape[0] * frame.shape[1]
-                plate_area = w * h
-                if plate_area <= frame_area * MAX_PLATE_AREA_RATIO:
-                    blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w]
+                h_f, w_f = frame.shape[0], frame.shape[1]
+                x = max(0, x)
+                y = max(0, y)
+                w = max(0, min(w, w_f - x))
+                h = max(0, min(h, h_f - y))
+                if w > 0 and h > 0:
+                    roi = output[y : y + h, x : x + w]
+                    roi_blurred = cv2.GaussianBlur(roi, (k, k), 0)
+                    output[y : y + h, x : x + w] = roi_blurred
 
-            out.write(blurred)
+            out.write(output)
             if frame_idx == frame_idx_for_ticket:
-                ticket_frame = blurred.copy()
+                ticket_frame = output.copy()
             frame_idx += 1
 
         cap.release()
         out.release()
+
+        # If OpenCV read no frames (e.g. codec not supported), fall back to full-frame ffmpeg blur
+        if frame_idx == 0:
+            Path(raw_path).unlink(missing_ok=True)
+            processed_bytes = _process_ffmpeg_only(input_path, blur=15)
+            ticket_jpeg = _extract_frame_ffmpeg(input_path, 0.5)
+            Path(input_path).unlink(missing_ok=True)
+            return processed_bytes, ticket_jpeg
 
         out_path = tempfile.mktemp(suffix="_h264.mp4")
         try:
@@ -978,6 +1010,7 @@ def process_video_with_violation_pipeline(
     video_bytes: bytes,
     output_dir: str | Path | None = None,
     extract_frame_at: float = 0.5,
+    blur_kernel_size: int | None = None,
 ) -> Tuple[bytes, bytes, str]:
     """
     Process video through full violation pipeline: YOLO detection, curb distance, selective blur.
@@ -1005,7 +1038,9 @@ def process_video_with_violation_pipeline(
         detector = VehicleDetector(getattr(settings, 'yolo_model_path', 'yolov8n.pt'))
         interval_sec = getattr(settings, 'parking_check_interval_sec', 10.0)
         parked_zones = _find_parked_zones(input_path, detector, interval_sec=interval_sec)
-        pipeline = ParkingViolationPipeline(output_dir=out_dir, parked_zones=parked_zones)
+        pipeline = ParkingViolationPipeline(
+            output_dir=out_dir, parked_zones=parked_zones, blur_kernel_size=blur_kernel_size
+        )
 
         raw_path = tempfile.mktemp(suffix=".mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
