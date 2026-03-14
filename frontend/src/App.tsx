@@ -1,3 +1,4 @@
+
 import { Component, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
@@ -9,94 +10,71 @@ import Tickets from './pages/Tickets'
 import TicketReview from './pages/TicketReview'
 import QueueMaintenance from './pages/QueueMaintenance'
 import Login from './pages/Login'
+import { he } from './i18n/he'
 
 export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
   state = { hasError: false as boolean, error: undefined as Error | undefined }
+
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error }
   }
+
   render() {
-    if (this.state.hasError)
+    if (this.state.hasError) {
       return (
-        <div style={{ padding: '2rem', fontFamily: 'system-ui', maxWidth: 600 }}>
-          <h2 style={{ color: '#b91c1c' }}>Something went wrong</h2>
-          <p>Check the browser console (F12) for details. Ensure the backend is running at <code>http://localhost:8000</code>.</p>
-          <pre style={{ background: '#f3f4f6', padding: 12, overflow: 'auto' }}>{this.state.error?.message}</pre>
+        <div style={{ padding: 24, fontFamily: 'system-ui' }}>
+          <h2>אירעה שגיאה</h2>
+          <p>בדוק את הקונסול בדפדפן וודא שהשרת פועל ב־http://localhost:8000.</p>
+          <pre>{this.state.error?.message}</pre>
         </div>
       )
+    }
     return this.props.children
   }
 }
 
-function App() {
+function Shell() {
   const { isLoggedIn, loading, logout, user } = useAuth()
 
-  if (loading)
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'system-ui' }}>
-        Loading...
-      </div>
-    )
+  if (loading) return <div style={{ padding: 24 }}>{he.app.loading}</div>
 
   if (!isLoggedIn) {
     return (
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes>
-          <Route path="/" element={<Login />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <Routes>
+        <Route path="*" element={<Login />} />
+      </Routes>
     )
   }
 
   return (
-    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <nav
+    <div dir="rtl">
+      <header
         style={{
-          padding: '0.75rem 2rem',
-          background: '#1a1a2e',
-          color: 'white',
-          fontFamily: 'system-ui',
           display: 'flex',
+          justifyContent: 'space-between',
           alignItems: 'center',
+          gap: 12,
           flexWrap: 'wrap',
-          gap: 8,
+          padding: '16px 24px',
+          borderBottom: '1px solid #e5e7eb',
+          background: '#fff',
         }}
       >
-        <span style={{ fontWeight: 'bold', color: '#4ade80', marginRight: '1rem' }}>PARKING</span>
-        <Link to="/" style={{ color: 'white' }}>
-          Home
-        </Link>
-        <Link to="/upload" style={{ color: 'white' }}>
-          Upload
-        </Link>
-        <Link to="/tickets" style={{ color: 'white' }}>
-          Tickets
-        </Link>
-        <Link to="/cameras" style={{ color: 'white' }}>
-          Cameras
-        </Link>
-        <Link to="/queue" style={{ color: 'white' }}>
-          Queue
-        </Link>
-        <Link to="/settings" style={{ color: 'white' }}>
-          Settings
-        </Link>
-        <span style={{ marginLeft: 'auto', fontSize: '0.9rem' }}>{user?.username}</span>
-        <button
-          onClick={logout}
-          style={{
-            background: 'transparent',
-            color: '#aaa',
-            border: '1px solid #555',
-            padding: '0.25rem 0.5rem',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          Logout
-        </button>
-      </nav>
+        <div style={{ fontWeight: 800 }}>{he.app.title}</div>
+        <nav style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <Link to="/">{he.app.home}</Link>
+          <Link to="/upload">{he.app.upload}</Link>
+          <Link to="/tickets">{he.app.tickets}</Link>
+          <Link to="/cameras">{he.app.cameras}</Link>
+          <Link to="/queue">{he.app.queue}</Link>
+          <Link to="/settings">{he.app.settings}</Link>
+        </nav>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span>{user?.username}</span>
+          <button onClick={logout}>{he.app.logout}</button>
+        </div>
+      </header>
+
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/upload" element={<Upload />} />
@@ -105,9 +83,16 @@ function App() {
         <Route path="/cameras" element={<Cameras />} />
         <Route path="/queue" element={<QueueMaintenance />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </BrowserRouter>
+    </div>
   )
 }
 
-export default App
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Shell />
+    </BrowserRouter>
+  )
+}

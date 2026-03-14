@@ -1,6 +1,14 @@
-import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ticketsApi } from '../api'
+import { he } from '../i18n/he'
+import { useRtl } from '../hooks/useRtl'
+import '../styles/review.css'
+import type { TicketReviewRecord } from '../components/review/types'
+import { EvidenceSidebar } from '../components/review/EvidenceSidebar'
+import { ScreenshotStrip, type SavedScreenshot } from '../components/review/ScreenshotStrip'
+import { VideoPlayerPanel, type CaptureResult } from '../components/review/VideoPlayerPanel'
 
 interface TicketForm {
   license_plate: string
@@ -11,16 +19,39 @@ interface TicketForm {
   fine_amount: string
 }
 
+function pickMetadataStartAt(ticket: TicketReviewRecord | null): string | null {
+  const params = ticket?.video_params || {}
+  const candidates = [
+    params['capture_time'],
+    params['creation_time'],
+    params['video_start_time'],
+    params['recorded_at'],
+    (params['metadata'] as Record<string, unknown> | undefined)?.['creation_time'],
+    ticket?.created_at,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate
+  }
+  return null
+}
+
 export default function TicketReview() {
+  useRtl(`${he.review.ticket} | ${he.app.title}`)
+
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const [ticket, setTicket] = useState<Record<string, unknown> | null>(null)
+
+  const [ticket, setTicket] = useState<TicketReviewRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+
   const [videoError, setVideoError] = useState<string | null>(null)
-  const [videoRetryKey, setVideoRetryKey] = useState(0)
   const [videoBlobUrl, setVideoBlobUrl] = useState<string | null>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const [videoMode, setVideoMode] = useState<'processed' | 'raw'>('processed')
+  const [videoRetryKey, setVideoRetryKey] = useState(0)
+
+  const [shots, setShots] = useState<SavedScreenshot[]>([])
+
   const [form, setForm] = useState<TicketForm>({
     license_plate: '',
     location: '',
@@ -30,9 +61,14 @@ export default function TicketReview() {
     fine_amount: '',
   })
 
+  const currentBlobUrl = useRef<string | null>(null)
+
   useEffect(() => {
     if (!id) return
-    ticketsApi.get(id)
+
+    setLoading(true)
+    ticketsApi
+      .get(id)
       .then(({ data }) => {
         setTicket(data)
         setForm({
@@ -48,58 +84,83 @@ export default function TicketReview() {
       .finally(() => setLoading(false))
   }, [id])
 
-  const videoBlobUrlRef = useRef<string | null>(null)
-
   useEffect(() => {
-    if ((!ticket?.video_id && !ticket?.video_path) || !id) return
-    setVideoError(null)
-    let blobUrl: string | null = null
+    if (!id || (!ticket?.video_id && !ticket?.video_path)) {
+      setVideoBlobUrl(null)
+      setVideoError(null)
+      return
+    }
+
     let cancelled = false
+    let localUrl: string | null = null
+
     const load = async () => {
+      setVideoError(null)
       try {
-        const res = await ticketsApi.getVideo(id, videoRetryKey || Date.now())
+        const processed = await ticketsApi.getProcessedVideo(id)
         if (cancelled) return
-        if (res.status < 200 || res.status >= 300) {
-          setVideoError('Server error')
+        const processedBlob = processed.data instanceof Blob ? processed.data : new Blob([processed.data], { type: 'video/mp4' })
+        if (processedBlob.size > 100) {
+          localUrl = URL.createObjectURL(processedBlob)
+          if (currentBlobUrl.current) URL.revokeObjectURL(currentBlobUrl.current)
+          currentBlobUrl.current = localUrl
+          setVideoBlobUrl(localUrl)
+          setVideoMode('processed')
           return
         }
-        const data = res.data
-        if (!(data instanceof Blob) || data.size < 100) {
-          setVideoError('Invalid video response')
+      } catch {
+        // continue to raw fallback
+      }
+
+      try {
+        const raw = await ticketsApi.getVideo(id, videoRetryKey || Date.now())
+        if (cancelled) return
+        const rawBlob = raw.data instanceof Blob ? raw.data : new Blob([raw.data], { type: 'video/mp4' })
+        if (rawBlob.size <= 100) {
+          setVideoError(he.review.videoError)
           return
         }
-        const blob = data instanceof Blob ? data : new Blob([data], { type: 'video/mp4' })
-        blobUrl = URL.createObjectURL(blob)
-        if (videoBlobUrlRef.current) URL.revokeObjectURL(videoBlobUrlRef.current)
-        videoBlobUrlRef.current = blobUrl
-        setVideoBlobUrl(blobUrl)
-      } catch (err) {
-        const axErr = err as { response?: { status?: number } }
-        if (!cancelled) setVideoError(axErr?.response?.status === 404 ? 'Video not ready' : 'Could not load video')
+        localUrl = URL.createObjectURL(rawBlob)
+        if (currentBlobUrl.current) URL.revokeObjectURL(currentBlobUrl.current)
+        currentBlobUrl.current = localUrl
+        setVideoBlobUrl(localUrl)
+        setVideoMode('raw')
+        setVideoError(he.review.originalVideoFallback)
+      } catch {
+        if (!cancelled) setVideoError(he.review.videoError)
       }
     }
+
     load()
+
     return () => {
       cancelled = true
-      if (blobUrl) URL.revokeObjectURL(blobUrl)
-      videoBlobUrlRef.current = null
-      setVideoBlobUrl(null)
+      if (localUrl) URL.revokeObjectURL(localUrl)
     }
-  }, [ticket?.video_id, ticket?.video_path, id, videoRetryKey])
+  }, [id, ticket?.video_id, ticket?.video_path, videoRetryKey])
 
-  const save = async () => {
+  const metadataStartAt = useMemo(() => pickMetadataStartAt(ticket), [ticket])
+
+  const onFormChange = (name: string, value: string) => {
+    setForm((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const save = async (status?: 'approved' | 'rejected') => {
     if (!id) return
     setSaving(true)
     try {
-      const { data } = await ticketsApi.update(id, {
+      const payload = {
         license_plate: form.license_plate,
         location: form.location || null,
         violation_zone: form.violation_zone,
         description: form.description || null,
         admin_notes: form.admin_notes || null,
         fine_amount: form.fine_amount ? parseInt(form.fine_amount, 10) : null,
-      })
+        ...(status ? { status } : {}),
+      }
+      const { data } = await ticketsApi.update(id, payload)
       setTicket(data)
+      if (status) navigate('/tickets')
     } catch (e) {
       const axErr = e as { response?: { data?: { detail?: string } } }
       alert(axErr?.response?.data?.detail || 'Update failed')
@@ -108,196 +169,86 @@ export default function TicketReview() {
     }
   }
 
-  const approve = async () => {
+  const handleCapture = async (capture: CaptureResult) => {
     if (!id) return
-    setSaving(true)
+    const localShot: SavedScreenshot = {
+      id: crypto.randomUUID(),
+      url: capture.imageBase64,
+      takenAtIso: capture.atIso,
+      currentVideoTimeSec: capture.currentVideoTimeSec,
+      persisted: false,
+    }
+    setShots((prev) => [localShot, ...prev])
+
     try {
-      await ticketsApi.update(id, {
-        license_plate: form.license_plate,
-        location: form.location || null,
-        violation_zone: form.violation_zone,
-        description: form.description || null,
-        admin_notes: form.admin_notes || null,
-        fine_amount: form.fine_amount ? parseInt(form.fine_amount, 10) : null,
-        status: 'approved',
+      await ticketsApi.saveScreenshot(id, {
+        image_base64: capture.imageBase64,
+        frame_time_sec: capture.currentVideoTimeSec,
+        captured_at: capture.atIso,
       })
-      navigate('/tickets')
-    } catch (e) {
-      const axErr = e as { response?: { data?: { detail?: string } } }
-      alert(axErr?.response?.data?.detail || 'Approve failed')
-    } finally {
-      setSaving(false)
+      setShots((prev) => prev.map((item) => item.id === localShot.id ? { ...item, persisted: true } : item))
+    } catch {
+      // keep local-only if endpoint does not exist yet
     }
   }
 
-  const reject = async () => {
-    if (!id) return
-    setSaving(true)
-    try {
-      await ticketsApi.update(id, {
-        license_plate: form.license_plate,
-        location: form.location || null,
-        violation_zone: form.violation_zone,
-        description: form.description || null,
-        admin_notes: form.admin_notes || null,
-        fine_amount: form.fine_amount ? parseInt(form.fine_amount, 10) : null,
-        status: 'rejected',
-      })
-      navigate('/tickets')
-    } catch (e) {
-      const axErr = e as { response?: { data?: { detail?: string } } }
-      alert(axErr?.response?.data?.detail || 'Reject failed')
-    } finally {
-      setSaving(false)
-    }
+  if (loading) {
+    return <div className="review-page">{he.app.loading}</div>
   }
 
-  const styles: Record<string, React.CSSProperties> = {
-    page: { padding: '1.5rem', maxWidth: 900, margin: '0 auto', fontFamily: 'system-ui' },
-    title: { fontSize: '1.5rem', marginBottom: '1rem' },
-    back: { color: '#2563eb', cursor: 'pointer', marginBottom: '1rem' },
-    grid: { display: 'grid', gap: '1.5rem' },
-    video: { background: '#111', borderRadius: 8, overflow: 'hidden', maxWidth: 640 },
-    label: { display: 'block', marginBottom: 4, fontWeight: 600 },
-    input: { width: '100%', padding: '0.5rem', marginBottom: '1rem' },
-    select: { width: '100%', padding: '0.5rem', marginBottom: '1rem' },
-    textarea: { width: '100%', padding: '0.5rem', minHeight: 80, marginBottom: '1rem' },
-    row: { display: 'flex', gap: 12, marginTop: '1rem' },
-    btn: { padding: '0.75rem 1.5rem', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600 },
-    btnSave: { background: '#e5e7eb', color: '#111' },
-    btnApprove: { background: '#22c55e', color: 'white' },
-    btnReject: { background: '#ef4444', color: 'white' },
+  if (!ticket) {
+    return <div className="review-page">{he.review.notFound}</div>
   }
-
-  if (loading) return <div style={styles.page}><p>Loading...</p></div>
-  if (!ticket) return <div style={styles.page}><p>Ticket not found.</p></div>
 
   return (
-    <div style={styles.page}>
-      <div style={styles.back} onClick={() => navigate('/tickets')}>← Back to tickets</div>
-      <h1 style={styles.title}>
-        Ticket #{String(ticket.id)}
-        <span style={{ fontWeight: 600, color: form.license_plate && form.license_plate !== '11111' ? '#1a1a2e' : '#64748b', marginLeft: 12 }}>
-          — Plate: {form.license_plate || '11111'}
-        </span>
-      </h1>
-
-      <div style={styles.grid}>
-        {(ticket.video_id || ticket.video_path) && (
-          <div>
-            <h3 style={{ marginBottom: 8 }}>Video</h3>
-            <div style={styles.video}>
-              {videoBlobUrl ? (
-                <video
-                  ref={videoRef}
-                  controls
-                  playsInline
-                  width="100%"
-                  src={videoBlobUrl}
-                  key={videoBlobUrl}
-                  preload="auto"
-                  onError={() => setVideoError('Video could not be played (format may not be supported)')}
-                />
-              ) : videoError ? (
-                <p style={{ color: '#e11', padding: '2rem' }}>
-                  {videoError}
-                  <button
-                    type="button"
-                    onClick={() => { setVideoError(null); setVideoRetryKey(k => k + 1); }}
-                    style={{ marginLeft: 8, padding: '4px 12px', cursor: 'pointer' }}
-                  >
-                    Retry
-                  </button>
-                </p>
-              ) : (
-                <p style={{ color: '#888', padding: '2rem' }}>Loading video...</p>
-              )}
-            </div>
-          </div>
-        )}
+    <div className="review-page">
+      <div className="review-topbar">
         <div>
-          <h3 style={{ marginBottom: 12 }}>Details</h3>
-          <label style={styles.label}>License plate</label>
-          <input
-            type="text"
-            value={form.license_plate}
-            onChange={e => setForm(f => ({ ...f, license_plate: e.target.value }))}
-            placeholder={form.license_plate === '11111' ? 'Not detected — enter manually' : ''}
-            style={styles.input}
-          />
-          {form.license_plate === '11111' && (
-            <div style={{ fontSize: '0.85rem', color: '#b91c1c', marginTop: -8, marginBottom: '1rem', padding: '0.5rem 0.75rem', background: '#fef2f2', borderRadius: 6, borderLeft: '3px solid #dc2626' }}>
-              <strong>Plate not retrieved:</strong>{' '}
-              {(ticket?.plate_detection_reason as string) || 'No specific reason recorded.'} Enter the plate above if visible.
-            </div>
-          )}
-          <label style={styles.label}>Location</label>
-          <input
-            type="text"
-            value={form.location}
-            onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
-            style={styles.input}
-          />
-          <label style={styles.label}>Violation zone</label>
-          <select
-            value={form.violation_zone}
-            onChange={e => setForm(f => ({ ...f, violation_zone: e.target.value }))}
-            style={styles.select}
-          >
-            <option value="red_white">Red/White</option>
-            <option value="blue_white">Blue/White</option>
-          </select>
-          <label style={styles.label}>Description</label>
-          <textarea
-            value={form.description}
-            onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-            style={styles.textarea}
-          />
-          <label style={styles.label}>Admin notes</label>
-          <textarea
-            value={form.admin_notes}
-            onChange={e => setForm(f => ({ ...f, admin_notes: e.target.value }))}
-            style={styles.textarea}
-          />
-          <label style={styles.label}>Fine amount (cents)</label>
-          <input
-            type="number"
-            value={form.fine_amount}
-            onChange={e => setForm(f => ({ ...f, fine_amount: e.target.value }))}
-            placeholder="e.g. 5000"
-            style={styles.input}
-          />
-
-          {(ticket?.video_params && Object.keys(ticket.video_params as object).length > 0) && (
-            <>
-              <h3 style={{ marginTop: '1.5rem', marginBottom: 8 }}>Video params</h3>
-              <div style={{ padding: '0.75rem 1rem', background: '#f8fafc', borderRadius: 8, fontSize: '0.9rem', fontFamily: 'monospace' }}>
-                {Object.entries(ticket.video_params as Record<string, unknown>).map(([key, val]) => (
-                  <div key={key} style={{ marginBottom: 4 }}>
-                    <strong>{key}:</strong>{' '}
-                    {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val)}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div style={styles.row}>
-            <button style={{ ...styles.btn, ...styles.btnSave }} onClick={save} disabled={saving}>
-              {saving ? 'Saving...' : 'Save'}
-            </button>
-            {ticket.status === 'pending_review' && (
-              <>
-                <button style={{ ...styles.btn, ...styles.btnApprove }} onClick={approve} disabled={saving}>
-                  Approve
-                </button>
-                <button style={{ ...styles.btn, ...styles.btnReject }} onClick={reject} disabled={saving}>
-                  Reject
-                </button>
-              </>
-            )}
+          <Link className="review-back" to="/tickets">
+            ← {he.review.back}
+          </Link>
+          <h1 className="review-title">
+            {he.review.ticket} #{ticket.id} — {form.license_plate || '—'}
+          </h1>
+          <div className="review-subtitle">
+            {he.review.createdAt}: {ticket.created_at ? new Date(ticket.created_at).toLocaleString('he-IL') : '—'}
           </div>
         </div>
+      </div>
+
+      <div className="review-layout">
+        <VideoPlayerPanel
+          videoUrl={videoBlobUrl}
+          videoMode={videoMode}
+          loading={false}
+          error={videoError}
+          status={ticket.status}
+          metadataStartAt={metadataStartAt}
+          onRetry={() => setVideoRetryKey((v) => v + 1)}
+          onCapture={handleCapture}
+        />
+
+        <EvidenceSidebar
+          ticket={ticket}
+          form={form}
+          onFormChange={onFormChange}
+          onSave={() => save()}
+          onApprove={() => save('approved')}
+          onReject={() => save('rejected')}
+          saving={saving}
+        />
+      </div>
+
+      <div className="strip-card">
+        <div className="strip-card-header">
+          <div>
+            <h2 style={{ margin: 0 }}>{he.review.screenshots}</h2>
+            <div className="video-note">
+              {he.review.metadataTimestamp}: {metadataStartAt ? new Date(metadataStartAt).toLocaleString('he-IL') : '—'}
+            </div>
+          </div>
+        </div>
+        <ScreenshotStrip items={shots} emptyLabel={he.review.noScreenshots} />
       </div>
     </div>
   )
