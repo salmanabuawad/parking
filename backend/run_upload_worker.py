@@ -108,10 +108,14 @@ def process_one_job() -> bool:
                     print(f"[Job {job.id}] Plate not extracted: {plate_reason or 'Unknown'}", flush=True)
         elif use_violation:
             try:
+                blur_size = (cfg.blur_kernel_size if cfg and getattr(cfg, "blur_kernel_size", None) is not None else None) or 15
+                if blur_size <= 0:
+                    blur_size = 15
                 blurred_bytes, ticket_jpeg, license_plate = process_video_with_violation_pipeline(
                     video_bytes,
                     output_dir=str(videos_dir / "evidence"),
                     extract_frame_at=0.5,
+                    blur_kernel_size=blur_size,
                 )
                 if license_plate and license_plate != "11111":
                     print(f"[Job {job.id}] Violation pipeline detected plate: {license_plate}", flush=True)

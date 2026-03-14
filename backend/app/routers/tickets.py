@@ -11,9 +11,11 @@ from pydantic import BaseModel
 
 from app.auth import get_current_user, get_current_user_for_media
 from app.config import settings
+from app.database import get_db
 from app.dependencies import get_ticket_repo, get_camera_video_repo, get_upload_job_repo
-from app.models import Admin, Ticket
+from app.models import Admin, AppConfig, Ticket
 from app.repositories import TicketRepository, CameraVideoRepository, UploadJobRepository
+from sqlalchemy.orm import Session
 
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
@@ -96,11 +98,18 @@ def update_ticket(
 _ticket_video_cache: dict[int, bytes] = {}
 
 
-def _build_processed_video_bytes(ticket: Ticket, video_repo: CameraVideoRepository) -> bytes:
+def _build_processed_video_bytes(
+    ticket: Ticket,
+    video_repo: CameraVideoRepository,
+    blur_strength: Optional[int] = None,
+) -> bytes:
+    # Prefer processed file only when path is under processed/ (our blurred output)
     if ticket.video_path:
-      fp = Path(settings.videos_dir) / ticket.video_path
-      if fp.exists():
-          return fp.read_bytes()
+        path_normalized = ticket.video_path.replace("\\", "/")
+        if path_normalized.startswith("processed/"):
+            fp = Path(settings.videos_dir) / ticket.video_path
+            if fp.exists():
+                return fp.read_bytes()
 
     if ticket.processed_video_id:
         vid = video_repo.get(ticket.processed_video_id)
@@ -115,14 +124,23 @@ def _build_processed_video_bytes(ticket: Ticket, video_repo: CameraVideoReposito
         raise HTTPException(status_code=404, detail="Video not found")
 
     from app.services.video_processor import process_video
-    processed_bytes, _ = process_video(bytes(raw_vid.data))
+    k = 15 if blur_strength is None else max(3, blur_strength)
+    if k % 2 == 0:
+        k += 1
+    processed_bytes, _ = process_video(bytes(raw_vid.data), blur_strength=k)
     return processed_bytes
+
+
+def _get_blur_kernel_size(db: Session) -> Optional[int]:
+    cfg = db.query(AppConfig).first()
+    return getattr(cfg, "blur_kernel_size", None) if cfg else None
 
 
 @router.get("/{ticket_id}/video")
 def get_ticket_video(
     ticket_id: int,
     request: Request,
+    db: Session = Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
     admin: Admin = Depends(get_current_user_for_media),
@@ -137,7 +155,8 @@ def get_ticket_video(
 
     if ticket_id not in _ticket_video_cache:
         try:
-            _ticket_video_cache[ticket_id] = _build_processed_video_bytes(t, video_repo)
+            blur = _get_blur_kernel_size(db)
+            _ticket_video_cache[ticket_id] = _build_processed_video_bytes(t, video_repo, blur_strength=blur)
         except Exception as exc:
             logging.exception("Video processing failed")
             raise HTTPException(status_code=500, detail=f"Video processing failed: {str(exc)}")
@@ -164,6 +183,7 @@ def get_ticket_video(
 @router.get("/{ticket_id}/processed-video")
 def get_ticket_processed_video(
     ticket_id: int,
+    db: Session = Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
     admin: Admin = Depends(get_current_user_for_media),
@@ -172,7 +192,8 @@ def get_ticket_processed_video(
     if not t:
         raise HTTPException(status_code=404, detail="Ticket not found")
     try:
-        return Response(content=_build_processed_video_bytes(t, video_repo), media_type="video/mp4")
+        blur = _get_blur_kernel_size(db)
+        return Response(content=_build_processed_video_bytes(t, video_repo, blur_strength=blur), media_type="video/mp4")
     except HTTPException:
         raise
     except Exception as exc:
