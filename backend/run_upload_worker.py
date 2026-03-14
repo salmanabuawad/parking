@@ -30,6 +30,7 @@ from app.services.video_processor import (
     process_video_fast_hsv,
     process_video_with_violation_pipeline,
     extract_license_plate,
+    extract_video_params,
 )
 
 # Use same videos_dir as API (from config) so uploads from UI resolve correctly
@@ -89,10 +90,13 @@ def process_one_job() -> bool:
         cfg = db.query(AppConfig).first()
         use_violation = cfg.use_violation_pipeline if cfg is not None else getattr(settings, 'use_violation_pipeline', True)
         use_fast = getattr(settings, 'use_fast_hsv_pipeline', True)
+        blur_kw = {}
+        if cfg and getattr(cfg, 'blur_kernel_size', None) is not None and cfg.blur_kernel_size > 0:
+            blur_kw['blur_strength'] = cfg.blur_kernel_size
         plate_reason = None
         if use_fast:
             # Fast path: HSV yellow plates only, no YOLO. Black-on-yellow OCR.
-            blurred_bytes, ticket_jpeg = process_video_fast_hsv(video_bytes)
+            blurred_bytes, ticket_jpeg = process_video_fast_hsv(video_bytes, **blur_kw)
             license_plate = job.license_plate or "11111"
             if license_plate == "11111":
                 license_plate, plate_reason = extract_license_plate(
@@ -121,7 +125,7 @@ def process_one_job() -> bool:
                         print(f"[Job {job.id}] Plate not extracted: {plate_reason}", flush=True)
             except Exception as e:
                 print(f"[Job {job.id}] Violation pipeline failed, falling back: {e}", flush=True)
-                blurred_bytes, ticket_jpeg = process_video(video_bytes)
+                blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
                 license_plate = job.license_plate or "11111"
                 plate_reason = None
                 if license_plate == "11111":
@@ -137,7 +141,7 @@ def process_one_job() -> bool:
                         print(f"[Job {job.id}] Plate not extracted: {plate_reason or 'Unknown'}", flush=True)
         else:
             # Ref algorithm: HSV plate detection + blur pipeline. OCR plate from processed frame.
-            blurred_bytes, ticket_jpeg = process_video(video_bytes)
+            blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
             license_plate = job.license_plate or "11111"
             plate_reason = None
             if license_plate == "11111":
@@ -166,6 +170,8 @@ def process_one_job() -> bool:
         rel_video = f"processed/job_{job.id}.mp4"
         rel_frame = f"frames/job_{job.id}.jpg"
 
+        video_params = extract_video_params(str(raw_path))
+
         location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
         ticket_kw = dict(
             license_plate=license_plate,
@@ -179,6 +185,7 @@ def process_one_job() -> bool:
             latitude=job.latitude,
             longitude=job.longitude,
             captured_at=job.captured_at,
+            video_params=video_params if video_params else None,
         )
         if plate_reason:
             ticket_kw["plate_detection_reason"] = plate_reason

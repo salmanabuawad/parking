@@ -1,7 +1,7 @@
 """Tickets: list, get, approve, reject, update (admin only)."""
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
@@ -34,6 +34,7 @@ class TicketResponse(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     captured_at: Optional[datetime] = None
+    video_params: Optional[dict[str, Any]] = None  # from video file: GPS, duration, resolution, codec, etc.
     created_at: Optional[datetime] = None
     reviewed_at: Optional[datetime] = None
 

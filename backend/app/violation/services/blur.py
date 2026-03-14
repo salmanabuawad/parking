@@ -5,8 +5,8 @@ from app.violation.utils.image import gaussian_blur, paste_bbox
 
 
 class BlurService:
-    def __init__(self, blur_kernel_size: int = 51):
-        """blur_kernel_size: 3=barely visible, 51=strong privacy blur. Must be odd."""
+    def __init__(self, blur_kernel_size: int = 15):
+        """blur_kernel_size: 3=barely visible, 15=moderate, 51=strong privacy blur. Must be odd."""
         self.blur_kernel_size = blur_kernel_size if blur_kernel_size % 2 == 1 else blur_kernel_size + 1
 
     def selectively_unblur(self, frame, keep_bboxes: list[tuple[int, int, int, int]]):

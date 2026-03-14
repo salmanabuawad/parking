@@ -1,12 +1,10 @@
-"""
-Tight plate crop extraction.
-Never run OCR on whole frame; only on tight plate crops with small configurable margin.
-Clips safely to frame boundaries.
-"""
+"""Tight plate crop extraction and crop quality checks."""
+
 from __future__ import annotations
 
 from typing import Tuple
 
+import cv2
 import numpy as np
 
 
@@ -15,12 +13,7 @@ def crop_plate(
     bbox: Tuple[int, int, int, int],
     margin_px: int = 4,
 ) -> np.ndarray | None:
-    """
-    Extract a tight crop of the plate region from the frame.
-    bbox: (x, y, w, h) in frame coordinates.
-    margin_px: small margin around the plate (configurable).
-    Returns crop clipped to frame bounds, or None if invalid.
-    """
+    """Extract a tight crop of the plate region from the frame."""
     x, y, w, h = bbox
     h_frame, w_frame = frame.shape[:2]
     pad = max(0, margin_px)
@@ -44,6 +37,35 @@ def crop_plate_xyxy(
     y2: int,
     margin_px: int = 4,
 ) -> np.ndarray | None:
-    """Extract plate crop from (x1,y1,x2,y2) bbox. Clips to frame."""
+    """Extract plate crop from (x1,y1,x2,y2) bbox."""
     w, h = x2 - x1, y2 - y1
     return crop_plate(frame, (x1, y1, w, h), margin_px)
+
+
+def estimate_crop_quality(crop: np.ndarray) -> dict[str, float]:
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    brightness = float(gray.mean())
+    return {
+        "width": float(gray.shape[1]),
+        "height": float(gray.shape[0]),
+        "sharpness": sharpness,
+        "brightness": brightness,
+    }
+
+
+def is_crop_ocr_ready(
+    crop: np.ndarray,
+    min_width: int,
+    min_height: int,
+    min_sharpness: float,
+    min_brightness: float,
+    max_brightness: float,
+) -> bool:
+    q = estimate_crop_quality(crop)
+    return (
+        q["width"] >= min_width
+        and q["height"] >= min_height
+        and q["sharpness"] >= min_sharpness
+        and min_brightness <= q["brightness"] <= max_brightness
+    )
