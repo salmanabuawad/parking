@@ -27,10 +27,30 @@ ssh root@185.229.226.37 "sudo bash /tmp/create-parking-user.sh 'YOUR_PASSWORD'"
 # Then log in as parking: ssh parking@185.229.226.37
 ```
 
-## 2. Run the setup script
+## 2. Run the setup script (or full redeploy with DB init)
 
 From your **local machine** (with the repo), copy the deploy files to the server and run setup:
 
+**Full redeploy and init DB (recreate DB from scratch):**
+```powershell
+.\deploy\deploy-to-remote.ps1 -RecreateDb
+```
+
+**Normal deploy (keeps existing DB, create only if missing):**
+```powershell
+.\deploy\deploy-to-remote.ps1
+```
+
+**On the server only – init or recreate DB (no app copy):**
+```bash
+# Init: create DB if missing, run migrations
+sudo DEPLOY_ROOT=/opt/parking bash /opt/parking/deploy/init-db.sh
+
+# Recreate: drop DB, create, run migrations
+sudo RECREATE_DB=1 DEPLOY_ROOT=/opt/parking bash /opt/parking/deploy/init-db.sh
+```
+
+**Manual copy + setup (alternative):**
 ```bash
 # Copy deploy folder and run (replace with your repo path)
 scp -r parking/deploy parking/backend parking/frontend parking/nginx root@185.229.226.37:/tmp/
