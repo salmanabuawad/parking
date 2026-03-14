@@ -98,24 +98,38 @@ def update_ticket(
 _ticket_video_cache: dict[int, bytes] = {}
 
 
+def _is_processed_path(video_path: Optional[str]) -> bool:
+    if not video_path:
+        return False
+    p = video_path.replace("\\", "/").lower()
+    return p.startswith("processed/") or "/processed/" in f"/{p}" or "_processed" in p
+
+
+def _normalize_blur_kernel_size(value: Optional[int]) -> int:
+    k = 15 if value is None else max(3, int(value))
+    if k % 2 == 0:
+        k += 1
+    return k
+
+
 def _build_processed_video_bytes(
     ticket: Ticket,
     video_repo: CameraVideoRepository,
     blur_strength: Optional[int] = None,
 ) -> bytes:
-    # Prefer processed file only when path is under processed/ (our blurred output)
-    if ticket.video_path:
-        path_normalized = ticket.video_path.replace("\\", "/")
-        if path_normalized.startswith("processed/"):
-            fp = Path(settings.videos_dir) / ticket.video_path
-            if fp.exists():
-                return fp.read_bytes()
-
+    # 1. Prefer explicit processed video stored in DB.
     if ticket.processed_video_id:
         vid = video_repo.get(ticket.processed_video_id)
         if vid and vid.data:
             return bytes(vid.data)
 
+    # 2. Trust filesystem path only when it is clearly a processed output path.
+    if _is_processed_path(ticket.video_path):
+        fp = Path(settings.videos_dir) / str(ticket.video_path)
+        if fp.exists():
+            return fp.read_bytes()
+
+    # 3. Otherwise build a fresh processed video from the raw DB video.
     raw_vid_id = ticket.video_id
     if not raw_vid_id:
         raise HTTPException(status_code=404, detail="No video attached to ticket")
@@ -124,16 +138,15 @@ def _build_processed_video_bytes(
         raise HTTPException(status_code=404, detail="Video not found")
 
     from app.services.video_processor import process_video
-    k = 15 if blur_strength is None else max(3, blur_strength)
-    if k % 2 == 0:
-        k += 1
+
+    k = _normalize_blur_kernel_size(blur_strength)
     processed_bytes, _ = process_video(bytes(raw_vid.data), blur_strength=k)
     return processed_bytes
 
 
-def _get_blur_kernel_size(db: Session) -> Optional[int]:
+def _get_blur_kernel_size(db: Session) -> int:
     cfg = db.query(AppConfig).first()
-    return getattr(cfg, "blur_kernel_size", None) if cfg else None
+    return _normalize_blur_kernel_size(getattr(cfg, "blur_kernel_size", None) if cfg else None)
 
 
 @router.get("/{ticket_id}/video")
@@ -220,6 +233,7 @@ def get_ticket_raw_video(
 @router.post("/{ticket_id}/reprocess-video")
 def reprocess_ticket_video(
     ticket_id: int,
+    db: Session = Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     upload_job_repo: UploadJobRepository = Depends(get_upload_job_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
@@ -248,8 +262,9 @@ def reprocess_ticket_video(
     else:
         raise HTTPException(status_code=404, detail="No source video for reprocessing")
 
-    processed_bytes, ticket_jpeg = process_video(video_bytes)
-    video_path = t.video_path or f"processed/ticket_{ticket_id}.mp4"
+    blur = _get_blur_kernel_size(db)
+    processed_bytes, ticket_jpeg = process_video(video_bytes, blur_strength=blur)
+    video_path = f"processed/ticket_{ticket_id}.mp4"
     ticket_image_path = t.ticket_image_path or f"frames/ticket_{ticket_id}.jpg"
     proc_path = videos_dir / video_path
     proc_path.parent.mkdir(parents=True, exist_ok=True)
@@ -257,8 +272,7 @@ def reprocess_ticket_video(
     frame_path = videos_dir / ticket_image_path
     frame_path.parent.mkdir(parents=True, exist_ok=True)
     frame_path.write_bytes(ticket_jpeg)
-    if not t.video_path or not t.ticket_image_path:
-        ticket_repo.update(ticket_id, video_path=video_path, ticket_image_path=ticket_image_path)
+    ticket_repo.update(ticket_id, video_path=video_path, ticket_image_path=ticket_image_path)
     _ticket_video_cache.pop(ticket_id, None)
     return {"ok": True, "message": "Video reprocessed with blur"}
 

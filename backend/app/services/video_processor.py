@@ -1,4 +1,8 @@
-"""Video processing: blur whole video for privacy. Uses ref algorithm (HSV + contours)."""
+"""Video processing for ticket review and privacy redaction.
+
+This module must produce processed review video with the license plate region blurred.
+It must never restore original plate pixels into the processed output.
+"""
 import json
 import logging
 import re
@@ -37,7 +41,7 @@ PLATE_MAX_RATIO = 7.0
 MIN_PLATE_AREA = 200              # Allow smaller/distant plates
 BLUR_KERNEL = 15                  # Lighter blur; odd number required (3=very light, 15=moderate, 51=strong)
 MIN_BLUR_KERNEL = 15              # Minimum kernel so output is always visibly blurred (odd)
-MAX_PLATE_AREA_RATIO = 0.08       # Unblur at most 8% of frame (plate only); larger = false positive, keep blurred
+MAX_PLATE_AREA_RATIO = 0.08       # Reject implausibly large plate boxes; never restore original pixels
 # Ref plate tracking (ALGORITHMS §2)
 MAX_TRACK_MISSES = 8              # Reuse last box for up to N frames when detection misses
 SMOOTHING_ALPHA = 0.65            # new_box = alpha*current + (1-alpha)*prev
@@ -233,6 +237,45 @@ def _process_ffmpeg_only(input_path: str, blur: int = 0) -> bytes:
     finally:
         Path(out_path).unlink(missing_ok=True)
 
+
+
+
+def _normalize_blur_kernel(blur_strength: int = 0) -> int:
+    """Normalize Gaussian blur kernel for OpenCV and privacy safety."""
+    k = BLUR_KERNEL if BLUR_KERNEL % 2 == 1 else BLUR_KERNEL + 1
+    if blur_strength > 0:
+        k = blur_strength if blur_strength % 2 == 1 else blur_strength + 1
+    k = max(k, MIN_BLUR_KERNEL)
+    if k % 2 == 0:
+        k += 1
+    return max(3, k)
+
+
+def _clamp_box_to_frame(box: Tuple[int, int, int, int], frame: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+    """Clamp a detected box to frame bounds and discard empty boxes."""
+    x, y, w, h = box
+    h_f, w_f = frame.shape[0], frame.shape[1]
+    x = max(0, x)
+    y = max(0, y)
+    w = max(0, min(w, w_f - x))
+    h = max(0, min(h, h_f - y))
+    if w <= 0 or h <= 0:
+        return None
+    return x, y, w, h
+
+
+def _apply_plate_blur(output: np.ndarray, plate_box: Optional[Tuple[int, int, int, int]], kernel: int) -> np.ndarray:
+    """Blur only the plate ROI on the frame copy used for output."""
+    if not plate_box:
+        return output
+    clamped = _clamp_box_to_frame(plate_box, output)
+    if not clamped:
+        return output
+    x, y, w, h = clamped
+    roi = output[y : y + h, x : x + w]
+    roi_blurred = cv2.GaussianBlur(roi, (kernel, kernel), 0)
+    output[y : y + h, x : x + w] = roi_blurred
+    return output
 
 def _extract_frame_ffmpeg(input_path: str, at_sec: float = 0.5) -> bytes:
     """Extract a frame at given time (seconds) as JPEG."""
@@ -742,7 +785,7 @@ def process_video(
     try:
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
-            processed_bytes = _process_ffmpeg_only(input_path, blur=15)
+            processed_bytes = _process_ffmpeg_only(input_path, blur=_normalize_blur_kernel(blur_strength))
             ticket_jpeg = _extract_frame_ffmpeg(input_path, 0.5)
             return processed_bytes, ticket_jpeg
 
@@ -759,13 +802,7 @@ def process_video(
         frame_idx_for_ticket = int(total_frames * extract_frame_at) if total_frames > 0 else 0
         frame_idx = 0
 
-        k = BLUR_KERNEL if BLUR_KERNEL % 2 == 1 else BLUR_KERNEL + 1
-        if blur_strength > 0:
-            k = blur_strength if blur_strength % 2 == 1 else blur_strength + 1
-        k = max(k, MIN_BLUR_KERNEL)
-        if k % 2 == 0:
-            k += 1
-        k = max(3, k)  # OpenCV needs odd kernel >= 3 for GaussianBlur
+        k = _normalize_blur_kernel(blur_strength)
 
         tracker = PlateTracker()
         while True:
@@ -775,17 +812,7 @@ def process_video(
 
             output = frame.copy()
             plate_box = tracker.update(_get_plate_box(frame))
-            if plate_box:
-                x, y, w, h = plate_box
-                h_f, w_f = frame.shape[0], frame.shape[1]
-                x = max(0, x)
-                y = max(0, y)
-                w = max(0, min(w, w_f - x))
-                h = max(0, min(h, h_f - y))
-                if w > 0 and h > 0:
-                    roi = output[y : y + h, x : x + w]
-                    roi_blurred = cv2.GaussianBlur(roi, (k, k), 0)
-                    output[y : y + h, x : x + w] = roi_blurred
+            output = _apply_plate_blur(output, plate_box, k)
 
             out.write(output)
             if frame_idx == frame_idx_for_ticket:
@@ -798,7 +825,7 @@ def process_video(
         # If OpenCV read no frames (e.g. codec not supported), fall back to full-frame ffmpeg blur
         if frame_idx == 0:
             Path(raw_path).unlink(missing_ok=True)
-            processed_bytes = _process_ffmpeg_only(input_path, blur=15)
+            processed_bytes = _process_ffmpeg_only(input_path, blur=_normalize_blur_kernel(blur_strength))
             ticket_jpeg = _extract_frame_ffmpeg(input_path, 0.5)
             Path(input_path).unlink(missing_ok=True)
             return processed_bytes, ticket_jpeg
@@ -851,7 +878,7 @@ def process_video_fast_hsv(
     try:
         cap = cv2.VideoCapture(input_path)
         if not cap.isOpened():
-            processed_bytes = _process_ffmpeg_only(input_path, blur=15)
+            processed_bytes = _process_ffmpeg_only(input_path, blur=_normalize_blur_kernel(blur_strength))
             ticket_jpeg = _extract_frame_ffmpeg(input_path, 0.5)
             return processed_bytes, ticket_jpeg
 
@@ -868,13 +895,7 @@ def process_video_fast_hsv(
         frame_idx_for_ticket = int(total_frames * extract_frame_at) if total_frames > 0 else 0
         frame_idx = 0
 
-        k = BLUR_KERNEL if BLUR_KERNEL % 2 == 1 else BLUR_KERNEL + 1
-        if blur_strength > 0:
-            k = blur_strength if blur_strength % 2 == 1 else blur_strength + 1
-        k = max(k, MIN_BLUR_KERNEL)
-        if k % 2 == 0:
-            k += 1
-        k = max(3, k)  # OpenCV needs odd kernel >= 3 for GaussianBlur
+        k = _normalize_blur_kernel(blur_strength)
 
         tracker = PlateTracker()
         while True:
@@ -884,17 +905,7 @@ def process_video_fast_hsv(
 
             output = frame.copy()
             plate_box = tracker.update(detect_plate_box(frame))
-            if plate_box:
-                x, y, w, h = plate_box
-                h_f, w_f = frame.shape[0], frame.shape[1]
-                x = max(0, x)
-                y = max(0, y)
-                w = max(0, min(w, w_f - x))
-                h = max(0, min(h, h_f - y))
-                if w > 0 and h > 0:
-                    roi = output[y : y + h, x : x + w]
-                    roi_blurred = cv2.GaussianBlur(roi, (k, k), 0)
-                    output[y : y + h, x : x + w] = roi_blurred
+            output = _apply_plate_blur(output, plate_box, k)
 
             out.write(output)
             if frame_idx == frame_idx_for_ticket:
@@ -907,7 +918,7 @@ def process_video_fast_hsv(
         # If OpenCV read no frames (e.g. codec not supported), fall back to full-frame ffmpeg blur
         if frame_idx == 0:
             Path(raw_path).unlink(missing_ok=True)
-            processed_bytes = _process_ffmpeg_only(input_path, blur=15)
+            processed_bytes = _process_ffmpeg_only(input_path, blur=_normalize_blur_kernel(blur_strength))
             ticket_jpeg = _extract_frame_ffmpeg(input_path, 0.5)
             Path(input_path).unlink(missing_ok=True)
             return processed_bytes, ticket_jpeg
