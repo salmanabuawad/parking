@@ -95,6 +95,8 @@ export default function TicketReview() {
     let cancelled = false
     let localUrl: string | null = null
 
+    const isVideoBlob = (b: Blob) => b.size > 100 && b.type !== 'application/json'
+
     const replaceBlobUrl = (blob: Blob, mode: 'processed' | 'raw', error: string | null = null) => {
       localUrl = URL.createObjectURL(blob)
       if (currentBlobUrl.current) URL.revokeObjectURL(currentBlobUrl.current)
@@ -110,7 +112,7 @@ export default function TicketReview() {
         const processed = await ticketsApi.getProcessedVideo(id, videoRetryKey || Date.now())
         if (cancelled) return
         const processedBlob = processed.data instanceof Blob ? processed.data : new Blob([processed.data], { type: 'video/mp4' })
-        if (processedBlob.size > 100) {
+        if (isVideoBlob(processedBlob)) {
           replaceBlobUrl(processedBlob, 'processed')
           return
         }
@@ -122,7 +124,7 @@ export default function TicketReview() {
         const blurred = await ticketsApi.getVideo(id, videoRetryKey || Date.now())
         if (cancelled) return
         const blurredBlob = blurred.data instanceof Blob ? blurred.data : new Blob([blurred.data], { type: 'video/mp4' })
-        if (blurredBlob.size > 100) {
+        if (isVideoBlob(blurredBlob)) {
           replaceBlobUrl(blurredBlob, 'processed')
           return
         }
@@ -134,7 +136,7 @@ export default function TicketReview() {
         const raw = await ticketsApi.getRawVideo(id, videoRetryKey || Date.now())
         if (cancelled) return
         const rawBlob = raw.data instanceof Blob ? raw.data : new Blob([raw.data], { type: 'video/mp4' })
-        if (rawBlob.size <= 100) {
+        if (!isVideoBlob(rawBlob)) {
           setVideoError(he.review.videoError)
           return
         }
@@ -279,6 +281,10 @@ export default function TicketReview() {
           onRetry={() => setVideoRetryKey((v) => v + 1)}
           onReprocess={requestReprocess}
           onCapture={handleCapture}
+          onVideoLoadError={() => {
+            setVideoError(he.review.videoError)
+            setVideoBlobUrl(null)
+          }}
         />
 
         <EvidenceSidebar
