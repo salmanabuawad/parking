@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, LargeBinary, Float
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, LargeBinary, Float, ForeignKey
 from sqlalchemy.sql import func
 
 from .database import Base
@@ -105,6 +105,20 @@ class Ticket(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TicketScreenshot(Base):
+    """Screenshot attached to a ticket (blurred evidence)."""
+
+    __tablename__ = "ticket_screenshots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    storage_path = Column(String(500), nullable=False)
+    frame_time_sec = Column(Float, nullable=True)
+    captured_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class AppConfig(Base):
