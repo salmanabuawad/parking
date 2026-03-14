@@ -1,0 +1,134 @@
+html[dir='rtl'] body,
+body.rtl-app {
+  direction: rtl;
+  text-align: right;
+}
+
+.ticket-review-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 420px);
+  gap: 20px;
+  padding: 20px;
+  background: #f7f8fa;
+  min-height: 100vh;
+}
+
+.video-shell {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+.video-stage {
+  position: relative;
+  width: 100%;
+  max-width: 860px;
+  aspect-ratio: 16 / 9;
+  margin-inline: auto;
+  background: #111;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.video-stage video,
+.video-stage canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.video-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.sidebar-shell {
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+  height: fit-content;
+  position: sticky;
+  top: 16px;
+}
+
+.screenshot-strip {
+  grid-column: 1 / -1;
+  background: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+.screenshot-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.screenshot-card {
+  border: 1px solid #e7e8ea;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.screenshot-card img {
+  width: 100%;
+  display: block;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+}
+
+.info-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.info-block {
+  border: 1px solid #eceef1;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.status-confirmed { background: #e7f7ee; color: #137a42; }
+.status-very_likely { background: #eef5ff; color: #2457c5; }
+.status-possible { background: #fff7e8; color: #a96400; }
+.status-not_100_percent_sure { background: #fff1f2; color: #b42318; }
+.status-rejected { background: #f2f4f7; color: #344054; }
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f1f2;
+}
+
+.meta-row:last-child { border-bottom: none; }
+
+@media (max-width: 1200px) {
+  .ticket-review-page {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar-shell {
+    position: static;
+  }
+
+  .video-stage {
+    max-width: 100%;
+  }
+}
