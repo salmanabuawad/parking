@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { camerasApi } from '../api'
+import { t } from '../i18n'
 
 const CONNECTION_TYPES = ['ip', 'bluetooth', 'wifi', 'rtsp', 'usb', 'other'] as const
 const PARAM_SOURCES = ['manual', 'manufacturer_manual'] as const
@@ -87,7 +88,7 @@ export default function Cameras() {
   }
 
   const remove = async (id: number) => {
-    if (!confirm('Remove this camera?')) return
+    if (!confirm(t('removeCameraConfirm'))) return
     try {
       await camerasApi.delete(id)
       load()
@@ -99,66 +100,66 @@ export default function Cameras() {
 
   return (
     <div style={{ padding: '1.5rem', fontFamily: 'system-ui', maxWidth: 900 }}>
-      <h1>Cameras</h1>
+      <h1>{t('cameras')}</h1>
       <p style={{ color: '#666', marginBottom: '1.5rem' }}>
-        Define cameras manually or from manufacturer specs. Connect via IP, Bluetooth, WiFi, RTSP, USB, or other.
+        {t('camerasIntro')}
       </p>
 
       <form onSubmit={save} style={{ background: '#f5f5f5', padding: '1.25rem', borderRadius: 8, marginBottom: '1.5rem' }}>
-        <h3>{editing ? 'Edit Camera' : 'Add Camera'}</h3>
+        <h3>{editing ? t('editCamera') : t('addCamera')}</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div>
-            <label>Name *</label>
+            <label>{t('nameRequired')}</label>
             <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required style={{ width: '100%', padding: 6 }} />
           </div>
           <div>
-            <label>Location</label>
-            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: '100%', padding: 6 }} placeholder="e.g. Main St & 5th" />
+            <label>{t('location')}</label>
+            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: '100%', padding: 6 }} placeholder={t('locationPlaceholder')} />
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div>
-            <label>Connection type</label>
+            <label>{t('connectionType')}</label>
             <select value={form.connection_type} onChange={e => setForm({ ...form, connection_type: e.target.value })} style={{ width: '100%', padding: 6 }}>
-              {CONNECTION_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              {CONNECTION_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
             </select>
           </div>
           <div>
-            <label>Param source</label>
+            <label>{t('paramSource')}</label>
             <select value={form.param_source} onChange={e => setForm({ ...form, param_source: e.target.value })} style={{ width: '100%', padding: 6 }}>
               {PARAM_SOURCES.map(p => <option key={p} value={p}>{p.replace('_', ' ')}</option>)}
             </select>
           </div>
         </div>
         <div style={{ marginBottom: '0.75rem' }}>
-          <label>Connection config (JSON)</label>
+          <label>{t('connectionConfigJson')}</label>
           <textarea value={typeof form.connection_config === 'string' ? form.connection_config : JSON.stringify(form.connection_config || {}, null, 2)} onChange={e => setForm({ ...form, connection_config: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace' }} placeholder='{"ip":"192.168.1.100","port":554} or {"ssid":"MyWiFi","password":"..."} or {"address":"AA:BB:CC:DD:EE:FF"}' />
         </div>
         <div style={{ marginBottom: '0.75rem' }}>
-          <label>Params (JSON) — e.g. moving, night_light, resolution, fps</label>
+          <label>{t('paramsJson')}</label>
           <textarea value={typeof form.params === 'string' ? form.params : JSON.stringify(form.params || {}, null, 2)} onChange={e => setForm({ ...form, params: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace' }} placeholder='{"moving":true,"night_light":true,"resolution":"1080p","fps":30}' />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div>
-            <label>Manufacturer</label>
+            <label>{t('manufacturer')}</label>
             <input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} style={{ width: '100%', padding: 6 }} />
           </div>
           <div>
-            <label>Model</label>
+            <label>{t('model')}</label>
             <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} style={{ width: '100%', padding: 6 }} />
           </div>
         </div>
         <div style={{ marginBottom: '1rem' }}>
-          <label><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> Active</label>
+          <label><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
         </div>
         <div>
-          <button type="submit" style={{ marginRight: 8 }}>{editing ? 'Update' : 'Add'}</button>
-          {editing && <button type="button" onClick={() => { setEditing(null); setForm({ name: '', location: '', connection_type: 'ip', connection_config: {}, param_source: 'manual', params: {}, manufacturer: '', model: '', is_active: true }) }}>Cancel</button>}
+          <button type="submit" style={{ marginRight: 8 }}>{editing ? t('update') : t('add')}</button>
+          {editing && <button type="button" onClick={() => { setEditing(null); setForm({ name: '', location: '', connection_type: 'ip', connection_config: {}, param_source: 'manual', params: {}, manufacturer: '', model: '', is_active: true }) }}>{t('cancel')}</button>}
         </div>
       </form>
 
-      <h2>Configured cameras</h2>
-      {loading ? <p>Loading...</p> : (
+      <h2>{t('configuredCameras')}</h2>
+      {loading ? <p>{t('loading')}</p> : (
         <ul style={{ listStyle: 'none', padding: 0 }}>
           {cameras.map(c => {
             const hasVideoDb = (c.connection_config as Record<string, unknown>)?.video_id
@@ -174,10 +175,10 @@ export default function Cameras() {
                   </div>
                   <div>
                     {hasSample && (
-                      <a href={videoUrl} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>Watch sample</a>
+                      <a href={videoUrl} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>{t('watchSample')}</a>
                     )}
-                    <button onClick={() => startEdit(c)} style={{ marginRight: 8 }}>Edit</button>
-                    <button onClick={() => remove(c.id)} style={{ background: '#dc3545', color: 'white' }}>Delete</button>
+                    <button onClick={() => startEdit(c)} style={{ marginRight: 8 }}>{t('edit')}</button>
+                    <button onClick={() => remove(c.id)} style={{ background: '#dc3545', color: 'white' }}>{t('delete')}</button>
                   </div>
                 </div>
                 {hasSample && (
@@ -188,7 +189,7 @@ export default function Cameras() {
           })}
         </ul>
       )}
-      {!loading && cameras.length === 0 && <p style={{ color: '#666' }}>No cameras configured. Add one above.</p>}
+      {!loading && cameras.length === 0 && <p style={{ color: '#666' }}>{t('noCameras')}</p>}
     </div>
   )
 }

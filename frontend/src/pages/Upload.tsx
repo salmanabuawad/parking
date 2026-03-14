@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../api'
+import { t } from '../i18n'
 
 export default function Upload() {
   const [capturedAt, setCapturedAt] = useState(new Date().toISOString())
@@ -12,8 +13,8 @@ export default function Upload() {
 
   useEffect(() => {
     setCapturedAt(new Date().toISOString())
-    const t = setInterval(() => setCapturedAt(new Date().toISOString()), 1000)
-    return () => clearInterval(t)
+    const intervalId = setInterval(() => setCapturedAt(new Date().toISOString()), 1000)
+    return () => clearInterval(intervalId)
   }, [])
 
   const uploadFile = async (file: File) => {
@@ -53,10 +54,10 @@ export default function Upload() {
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.title}>Upload Violation</h1>
-      <p style={{ color: '#666' }}>Select a video to upload. The system will analyze and blur the video (license plates only visible) for privacy before admin review.</p>
+      <h1 style={styles.title}>{t('uploadViolation')}</h1>
+      <p style={{ color: '#666' }}>{t('uploadIntro')}</p>
 
-      <label style={styles.label} htmlFor="video-upload">Video — select to upload</label>
+      <label style={styles.label} htmlFor="video-upload">{t('videoSelect')}</label>
       <input
         ref={inputRef}
         type="file"
@@ -67,9 +68,9 @@ export default function Upload() {
         style={{ padding: '0.35rem', cursor: submitting ? 'wait' : 'pointer' }}
         id="video-upload"
       />
-      {submitting && <p style={{ marginTop: 6, fontSize: '0.9rem', color: '#666' }}>Uploading...</p>}
+      {submitting && <p style={{ marginTop: 6, fontSize: '0.9rem', color: '#666' }}>{t('uploading')}</p>}
 
-      <label style={styles.label}>License plate (optional)</label>
+      <label style={styles.label}>{t('licensePlateOptional')}</label>
       <input
         type="text"
         value={licensePlate}
@@ -78,17 +79,17 @@ export default function Upload() {
         style={styles.input}
       />
 
-      <label style={styles.label}>Zone</label>
+      <label style={styles.label}>{t('zone')}</label>
       <select value={zone} onChange={e => setZone(e.target.value)} style={styles.input}>
-        <option value="red_white">Red/White</option>
-        <option value="blue_white">Blue/White</option>
+        <option value="red_white">{t('zoneRedWhite')}</option>
+        <option value="blue_white">{t('zoneBlueWhite')}</option>
       </select>
 
       {result && (
         <div style={styles.success}>
           ✓ {result.message}
           <p style={{ margin: '0.5rem 0 0', fontSize: '0.9rem' }}>
-            View queue status on <Link to="/" style={{ color: '#2563eb', textDecoration: 'underline' }}>Home</Link>.
+            {t('viewQueueOnHome')} <Link to="/" style={{ color: '#2563eb', textDecoration: 'underline' }}>{t('home')}</Link>.
           </p>
         </div>
       )}

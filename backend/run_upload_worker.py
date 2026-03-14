@@ -75,11 +75,33 @@ def process_one_job() -> bool:
         print(f"[{datetime.now().isoformat()}] Job {job.id} picked up | {_fmt_queue(s)}", flush=True)
 
         # Use same videos_dir as API (settings.videos_dir) so paths match
-        videos_dir = Path(settings.videos_dir)
+        videos_dir = Path(settings.videos_dir).resolve()
+        raw_dir = videos_dir / "raw"
         path_str = (job.raw_video_path or "").strip().replace("\\", "/")
         raw_path = (videos_dir / path_str).resolve()
+        # Fallback 1: raw dir + filename only
         if not raw_path.exists():
-            job_repo.update(job.id, status="failed", error_message=f"Raw video not found at {raw_path}")
+            base_name = Path(path_str).name
+            fallback = raw_dir / base_name
+            if fallback.resolve().exists():
+                raw_path = fallback.resolve()
+        # Fallback 2: path may be truncated in DB; find file whose name starts with same prefix
+        if not raw_path.exists() and raw_dir.exists():
+            base_name = Path(path_str).name
+            prefix = base_name.rsplit(".", 1)[0] if "." in base_name else base_name
+            if len(prefix) >= 8:
+                for p in raw_dir.iterdir():
+                    if p.is_file() and p.name.startswith(prefix):
+                        raw_path = p.resolve()
+                        print(f"[Job {job.id}] Resolved raw video by prefix: {p.name}", flush=True)
+                        break
+        if not raw_path.exists():
+            err = (
+                f"Raw video not found at {raw_path}. "
+                f"Videos dir: {videos_dir}. "
+                f"Ensure API and worker use the same VIDEOS_DIR (or run from backend dir)."
+            )
+            job_repo.update(job.id, status="failed", error_message=err)
             return True
 
         video_bytes = raw_path.read_bytes()

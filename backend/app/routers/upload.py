@@ -1,10 +1,13 @@
 """Mobile upload: video + GPS + time. Store in filesystem, return ACK, process in background."""
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form
+
+logger = logging.getLogger(__name__)
 
 from app.config import settings
 from app.dependencies import get_upload_job_repo
@@ -45,11 +48,16 @@ async def upload_violation(
     if not data:
         raise HTTPException(status_code=400, detail="Video file is empty")
 
-    # Save to filesystem: videos/raw/{uuid}.mp4
+    # Save to filesystem: videos/raw/{uuid}.mp4 (use resolved path so worker finds it)
+    raw_dir = (settings.videos_dir / "raw").resolve()
+    raw_dir.mkdir(parents=True, exist_ok=True)
     ext = ".mp4" if "mp4" in (video.content_type or "") else ".video"
     fname = f"{uuid.uuid4().hex}{ext}"
-    raw_path = settings.videos_dir / "raw" / fname
+    raw_path = raw_dir / fname
     raw_path.write_bytes(data)
+    if not raw_path.exists():
+        raise HTTPException(status_code=500, detail="Failed to save video file to disk")
+    logger.info("Upload saved to %s (videos_dir=%s)", raw_path, settings.videos_dir.resolve())
     rel_path = f"raw/{fname}"
 
     lat = latitude if latitude is not None else 0.0

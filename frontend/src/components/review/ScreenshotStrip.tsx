@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../../api'
+import { t } from '../../i18n'
 
 export interface SavedScreenshot {
   id: string | number
@@ -31,7 +32,7 @@ function ScreenshotImage({ url }: { url: string }) {
     }
   }, [url])
   if (!src) return <div className="shot-image shot-image-loading" />
-  return <img src={src} alt="Screenshot evidence" className="shot-image" />
+  return <img src={src} alt={t('screenshotEvidence')} className="shot-image" />
 }
 
 export function ScreenshotStrip({ items, emptyLabel }: { items: SavedScreenshot[]; emptyLabel: string }) {

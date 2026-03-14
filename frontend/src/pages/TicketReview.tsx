@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ticketsApi } from '../api'
 import { he } from '../i18n/he'
+import { t } from '../i18n'
 import { useRtl } from '../hooks/useRtl'
 import '../styles/review.css'
 import type { TicketReviewRecord } from '../components/review/types'
@@ -197,7 +198,7 @@ export default function TicketReview() {
       if (status) navigate('/tickets')
     } catch (e) {
       const axErr = e as { response?: { data?: { detail?: string } } }
-      alert(axErr?.response?.data?.detail || 'Update failed')
+      alert(axErr?.response?.data?.detail || t('updateFailed'))
     } finally {
       setSaving(false)
     }

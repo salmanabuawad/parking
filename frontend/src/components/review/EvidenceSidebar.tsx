@@ -2,6 +2,18 @@ import { he } from '../../i18n/he'
 import { StatusBadge } from './StatusBadge'
 import type { TicketReviewRecord } from './types'
 
+/** Map backend plate_detection_reason (English) to Hebrew for display. */
+function plateReasonHebrew(reason: string | null | undefined): string {
+  if (!reason) return he.review.plateReasonNoDetail
+  const m = reason.match(/^OCR read '([^']*)' but need 7-8 digits for Israeli plate\.$/)
+  if (m) return he.review.plateReasonOcrFewDigits.replace('{digits}', m[1])
+  if (reason === 'OCR returned no digits.') return he.review.plateReasonOcrNoDigits
+  if (reason === 'No yellow plate region detected (HSV).') return he.review.plateReasonNoYellowPlate
+  if (reason === 'Plate crop too small for OCR.') return he.review.plateReasonCropTooSmall
+  if (reason === 'No valid plate from any candidate.') return he.review.plateReasonNoValidPlate
+  return reason
+}
+
 interface Props {
   ticket: TicketReviewRecord
   form: {
@@ -38,7 +50,7 @@ export function EvidenceSidebar({ ticket, form, onFormChange, onSave, onApprove,
       {(form.license_plate === '11111' || !form.license_plate) && (
         <div className="warning-box">
           <strong>{he.review.plateReason}: </strong>
-          {ticket.plate_detection_reason || 'לא תועדה סיבה מפורטת'}
+          {plateReasonHebrew(ticket.plate_detection_reason)}
         </div>
       )}
 
