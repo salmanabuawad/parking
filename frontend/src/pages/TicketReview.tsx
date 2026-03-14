@@ -106,6 +106,12 @@ export default function TicketReview() {
       setVideoError(error)
     }
 
+    const setErrorFromResponse = (err: any) => {
+      const status = err?.response?.status
+      if (status === 401) setVideoError(he.review.videoErrorAuth)
+      else setVideoError(he.review.videoError)
+    }
+
     const load = async () => {
       setVideoError(null)
       try {
@@ -141,8 +147,8 @@ export default function TicketReview() {
           return
         }
         replaceBlobUrl(rawBlob, 'raw', he.review.originalVideoFallback)
-      } catch {
-        if (!cancelled) setVideoError(he.review.videoError)
+      } catch (err: any) {
+        if (!cancelled) setErrorFromResponse(err)
       }
     }
 

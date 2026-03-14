@@ -173,9 +173,39 @@ def _build_processed_video_bytes(
                     return file_bytes
             return file_bytes
 
+    # 3c. Fallback: look for processed file by basename in processed/ (e.g. path stored differently).
+    if ticket.video_path:
+        base = Path(ticket.video_path).name
+        if base:
+            fp = (Path(settings.videos_dir) / "processed" / base).resolve()
+            if fp.exists():
+                file_bytes = fp.read_bytes()
+                if k > 0:
+                    try:
+                        processed_bytes, _ = process_video(file_bytes, blur_strength=k)
+                        return processed_bytes
+                    except Exception:
+                        return file_bytes
+                return file_bytes
+
     # 4. Otherwise build from raw DB video.
     raw_vid_id = ticket.video_id
     if not raw_vid_id:
+        # Log to help debug "video could not be loaded"
+        job = upload_job_repo.get_by_ticket_id(ticket.id) if (upload_job_repo and ticket.id) else None
+        raw_path_str = (job.raw_video_path or "").strip().replace("\\", "/") if job else ""
+        tried_raw = (Path(settings.videos_dir) / raw_path_str).resolve() if raw_path_str else None
+        tried_processed = (Path(settings.videos_dir) / str(ticket.video_path or "").replace("\\", "/")).resolve() if ticket.video_path else None
+        logging.warning(
+            "Video 404 for ticket %s: video_path=%s, video_id=%s, job=%s, raw_exists=%s, processed_exists=%s, videos_dir=%s",
+            ticket.id,
+            ticket.video_path,
+            ticket.video_id,
+            job.id if job else None,
+            tried_raw.exists() if tried_raw else False,
+            tried_processed.exists() if tried_processed else False,
+            settings.videos_dir,
+        )
         raise HTTPException(status_code=404, detail="No video attached to ticket")
     raw_vid = video_repo.get(raw_vid_id)
     if not raw_vid or not raw_vid.data:
