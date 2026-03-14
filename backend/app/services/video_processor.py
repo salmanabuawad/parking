@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -10,6 +11,12 @@ from typing import Any, Optional, Tuple
 
 import cv2
 import numpy as np
+
+try:
+    import pytesseract
+except Exception:
+    pytesseract = None
+
 
 BLUR_KERNEL = 35
 TRACK_MISSES = 8
@@ -62,6 +69,83 @@ def normalize_kernel(k: int) -> int:
     return k
 
 
+def get_ffmpeg() -> str:
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg:
+            return ffmpeg
+        raise RuntimeError("ffmpeg not found")
+
+
+def get_ffprobe() -> Optional[str]:
+    ffprobe = shutil.which("ffprobe")
+    if ffprobe:
+        return ffprobe
+
+    try:
+        ffmpeg = get_ffmpeg()
+        base = Path(ffmpeg).parent
+        for name in ("ffprobe", "ffprobe.exe"):
+            p = base / name
+            if p.exists():
+                return str(p)
+    except Exception:
+        pass
+
+    return None
+
+
+def extract_video_params(input_path: str) -> dict:
+    ffprobe = get_ffprobe()
+    if not ffprobe:
+        return {}
+
+    try:
+        result = subprocess.run(
+            [ffprobe, "-v", "quiet", "-show_format", "-show_streams", "-print_format", "json", input_path],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return {}
+
+        data = json.loads(result.stdout)
+        out: dict[str, Any] = {}
+
+        fmt = data.get("format") or {}
+        if fmt.get("duration"):
+            try:
+                out["duration_sec"] = round(float(fmt["duration"]), 2)
+            except Exception:
+                pass
+
+        if fmt.get("size"):
+            try:
+                out["size_bytes"] = int(fmt["size"])
+            except Exception:
+                pass
+
+        for stream in data.get("streams") or []:
+            if stream.get("codec_type") == "video":
+                try:
+                    out["width"] = int(stream.get("width") or 0)
+                    out["height"] = int(stream.get("height") or 0)
+                except Exception:
+                    pass
+                if stream.get("codec_name"):
+                    out["codec"] = str(stream["codec_name"])
+                break
+
+        return out
+    except Exception:
+        return {}
+
+
 def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     """
     Heuristic yellow-plate detector.
@@ -104,7 +188,7 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     return best
 
 
-def expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.40) -> BBox:
+def expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.55) -> BBox:
     x, y, w, h = box
 
     dw = int(w * ratio)
@@ -125,41 +209,24 @@ def blur_everything_except_plate(
     kernel: int,
 ) -> np.ndarray:
     """
-    Blur the whole frame, then restore only the plate ROI from the original frame.
-    Result: plate stays sharp, everything else is blurred.
+    Blur whole frame and restore only the plate ROI.
+    If no plate is detected, return original frame unchanged.
     """
+    if plate_box is None:
+        return frame.copy()
+
     blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
 
-    if plate_box is None:
-        return blurred
-
-    x, y, w, h = expand_box(plate_box, frame.shape, ratio=0.40)
+    x, y, w, h = expand_box(plate_box, frame.shape, ratio=0.55)
 
     if w <= 0 or h <= 0:
-        return blurred
+        return frame.copy()
 
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w]
     return blurred
 
 
-def get_ffmpeg() -> str:
-    try:
-        import imageio_ffmpeg
-
-        return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        ffmpeg = shutil.which("ffmpeg")
-        if ffmpeg:
-            return ffmpeg
-        raise RuntimeError("ffmpeg not found")
-
-
-def process_ffmpeg(input_path: str, blur: int) -> bytes:
-    """
-    Full-frame fallback blur for cases where OpenCV cannot decode.
-    This fallback does NOT preserve the plate.
-    It is only for codec failure fallback.
-    """
+def transcode_ffmpeg_only(input_path: str) -> bytes:
     ffmpeg = get_ffmpeg()
     out_path = tempfile.mktemp(suffix=".mp4")
 
@@ -170,8 +237,6 @@ def process_ffmpeg(input_path: str, blur: int) -> bytes:
                 "-y",
                 "-i",
                 input_path,
-                "-vf",
-                f"boxblur={blur}",
                 "-c:v",
                 "libx264",
                 "-pix_fmt",
@@ -184,10 +249,68 @@ def process_ffmpeg(input_path: str, blur: int) -> bytes:
             check=True,
             capture_output=True,
         )
-
         return Path(out_path).read_bytes()
     finally:
         Path(out_path).unlink(missing_ok=True)
+
+
+def extract_license_plate(
+    video_bytes: Optional[bytes] = None,
+    frame_jpeg: Optional[bytes] = None,
+    use_fast_hsv: bool = False,
+    registry_lookup=None,
+) -> Tuple[str, Optional[str]]:
+    """
+    Minimal OCR extractor kept for compatibility with worker imports.
+    Returns:
+        (plate_text_or_11111, error_or_none)
+    """
+    if pytesseract is None:
+        return ("11111", "Tesseract is not installed")
+
+    frame: Optional[np.ndarray] = None
+
+    if frame_jpeg:
+        arr = np.frombuffer(frame_jpeg, np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+
+    if frame is None and video_bytes:
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(video_bytes)
+            input_path = f.name
+        try:
+            cap = cv2.VideoCapture(input_path)
+            ok, candidate = cap.read()
+            cap.release()
+            if ok:
+                frame = candidate
+        finally:
+            Path(input_path).unlink(missing_ok=True)
+
+    if frame is None:
+        return ("11111", "No image frame available for OCR")
+
+    plate_box = detect_plate_box(frame)
+    if plate_box is None:
+        return ("11111", "Plate not detected")
+
+    x, y, w, h = expand_box(plate_box, frame.shape, ratio=0.20)
+    crop = frame[y:y + h, x:x + w]
+
+    if crop.size == 0:
+        return ("11111", "Empty plate crop")
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    text = pytesseract.image_to_string(
+        gray,
+        config="--psm 7 -c tessedit_char_whitelist=0123456789",
+    )
+    digits = re.sub(r"[^0-9]", "", text or "")
+
+    if 7 <= len(digits) <= 8:
+        return (digits, None)
+
+    return ("11111", "OCR could not read valid 7-8 digit plate")
 
 
 def process_video(
@@ -198,8 +321,12 @@ def process_video(
     """
     Main processor used by the review pipeline.
 
-    Returns:
-        processed_video_bytes, preview_jpeg_bytes
+    Behavior:
+    - detect plate first
+    - keep plate sharp
+    - blur everything else
+    - if detection misses briefly, tracker keeps last plate ROI
+    - if no plate exists at all, frame stays unchanged
     """
     kernel = normalize_kernel(blur_strength or BLUR_KERNEL)
 
@@ -210,9 +337,8 @@ def process_video(
     cap = cv2.VideoCapture(input_path)
 
     if not cap.isOpened():
-        processed = process_ffmpeg(input_path, kernel)
         Path(input_path).unlink(missing_ok=True)
-        return processed, b""
+        raise RuntimeError("OpenCV could not open video; cannot safely preserve plate ROI")
 
     fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
@@ -222,8 +348,7 @@ def process_video(
     if width <= 0 or height <= 0:
         cap.release()
         Path(input_path).unlink(missing_ok=True)
-        processed = process_ffmpeg(input_path, kernel)
-        return processed, b""
+        raise RuntimeError("Could not read video dimensions")
 
     raw_out_path = tempfile.mktemp(suffix=".mp4")
 
@@ -262,8 +387,7 @@ def process_video(
     if frame_index == 0:
         Path(raw_out_path).unlink(missing_ok=True)
         Path(input_path).unlink(missing_ok=True)
-        processed = process_ffmpeg(input_path, kernel)
-        return processed, b""
+        raise RuntimeError("No video frames decoded; cannot safely build processed review video")
 
     ffmpeg = get_ffmpeg()
     final_out_path = tempfile.mktemp(suffix=".mp4")
@@ -331,85 +455,10 @@ def process_video_with_violation_pipeline(
         extract_frame_at=extract_frame_at,
     )
 
-    # Placeholder plate result to preserve existing return signature.
-    # If your repo expects OCR here, wire your OCR stage separately.
-    best_plate = "1111111"
+    best_plate, _ = extract_license_plate(
+        video_bytes=video_bytes,
+        frame_jpeg=ticket_frame_jpeg,
+        use_fast_hsv=True,
+    )
 
     return processed_video_bytes, ticket_frame_jpeg, best_plate
-
-
-def extract_license_plate(
-    *,
-    frame_jpeg: Optional[bytes] = None,
-    video_bytes: Optional[bytes] = None,
-    use_fast_hsv: bool = False,
-    registry_lookup: Any = None,
-) -> Tuple[str, Optional[str]]:
-    """
-    Extract license plate from a ticket frame (or a frame from video).
-    Returns (plate_str, reason_or_None). Use "11111" when not detected.
-    """
-    frame: Optional[np.ndarray] = None
-    if frame_jpeg:
-        arr = np.frombuffer(frame_jpeg, np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    elif video_bytes:
-        tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
-        try:
-            tmp.write(video_bytes)
-            tmp.close()
-            cap = cv2.VideoCapture(tmp.name)
-            if cap.isOpened():
-                total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 1)
-                mid = min(total - 1, max(0, int(total * 0.5)))
-                cap.set(cv2.CAP_PROP_POS_FRAMES, mid)
-                ret, frame = cap.read()
-                if not ret:
-                    frame = None
-            cap.release()
-        finally:
-            Path(tmp.name).unlink(missing_ok=True)
-    if frame is None:
-        return "11111", "No frame available"
-
-    try:
-        from app.plate_pipeline.ocr_reader import read_plate_crop
-    except ImportError:
-        return "11111", "OCR module not available"
-
-    try:
-        box = detect_plate_box(frame)
-        if not box:
-            return "11111", "No plate region detected"
-        x, y, w, h = expand_box(box, frame.shape, 0.2)
-        crop = frame[y : y + h, x : x + w]
-        if crop.size == 0:
-            return "11111", "Plate crop empty"
-        digits, err = read_plate_crop(crop)
-        cleaned = re.sub(r"[^A-Za-z0-9]", "", (digits or "").strip())
-        if len(cleaned) < 5 or len(cleaned) > 12:
-            return "11111", (err or "OCR returned no valid plate")
-        plate = cleaned.upper()
-        if registry_lookup is not None and hasattr(registry_lookup, "plate_exists") and not registry_lookup.plate_exists(plate):
-            return "11111", "Plate not in registry"
-        return plate, None
-    except Exception as e:
-        return "11111", str(e)
-
-
-def extract_video_params(path: str) -> Optional[dict]:
-    """Extract fps, width, height, duration_sec from a video file. Returns None on failure."""
-    cap = cv2.VideoCapture(path)
-    if not cap.isOpened():
-        return None
-    try:
-        fps = float(cap.get(cv2.CAP_PROP_FPS) or 25.0)
-        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
-        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-        n = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        if w <= 0 or h <= 0:
-            return None
-        duration_sec = (n / fps) if n and fps else 0.0
-        return {"fps": round(fps, 2), "width": w, "height": h, "duration_sec": round(duration_sec, 2)}
-    finally:
-        cap.release()
