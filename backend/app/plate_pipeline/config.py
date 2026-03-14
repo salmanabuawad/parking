@@ -39,7 +39,7 @@ TRACK_IOU_MIN = 0.10
 TRACK_STABLE_AFTER = 2
 
 # --- Blur ---
-BLUR_KERNEL_SIZE = 15
+BLUR_KERNEL_SIZE = 51
 
 # --- Israeli plate formats ---
 PLATE_FORMAT_PRESETS = [
