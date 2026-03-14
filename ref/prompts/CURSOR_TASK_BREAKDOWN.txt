@@ -1,0 +1,23 @@
+1. Implement config.py with all thresholds and file paths.
+2. Implement video_io.py.
+3. Implement HSVPlateDetector in plate_detector.py.
+4. Add optional YOLOPlateDetector without breaking interface.
+5. Implement PlateTracker.
+6. Implement OCRReader with EasyOCR.
+7. Implement OCRVote.
+8. Implement RegistryLookup with pandas.
+9. Implement plate format classifier.
+10. Implement basic curb detector.
+11. Implement distance scaffold.
+12. Implement blur pipeline.
+13. Implement debug writer.
+14. Add unit tests.
+15. Add CLI arguments:
+   - --debug
+   - --max-frames
+   - --registry-csv
+   - --detector-backend
+16. Make sure output is:
+   - processed mp4
+   - result json
+   - debug images if enabled
