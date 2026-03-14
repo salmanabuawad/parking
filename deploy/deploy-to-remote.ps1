@@ -1,6 +1,9 @@
 # Deploy Parking app to remote server 185.229.226.37
 # Run from repo root: .\deploy\deploy-to-remote.ps1
+# Optional: .\deploy\deploy-to-remote.ps1 -RecreateDb   to drop/recreate DB and run migrations
 # You will be prompted for the SSH password (root or parking) unless you use keys.
+
+param([switch]$RecreateDb)
 
 $REMOTE = "root@185.229.226.37"
 $DEPLOY_ROOT = "/opt/parking"
@@ -29,10 +32,10 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Post-deploy: create DB, .env if missing, migrations, start services
-Write-Host "Creating DB, running migrations, starting services..." -ForegroundColor Yellow
-$postCmd = "sudo DEPLOY_ROOT=$DEPLOY_ROOT bash $DEPLOY_ROOT/deploy/post-deploy.sh"
-ssh $REMOTE $postCmd
+# Post-deploy: create/recreate DB, .env if missing, migrations, start services
+if ($RecreateDb) { Write-Host "Init DB (recreate), migrations, starting services..." -ForegroundColor Yellow } else { Write-Host "Creating DB, running migrations, starting services..." -ForegroundColor Yellow }
+$postEnv = if ($RecreateDb) { "sudo RECREATE_DB=1 DEPLOY_ROOT=$DEPLOY_ROOT bash $DEPLOY_ROOT/deploy/post-deploy.sh" } else { "sudo DEPLOY_ROOT=$DEPLOY_ROOT bash $DEPLOY_ROOT/deploy/post-deploy.sh" }
+ssh $REMOTE $postEnv
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Post-deploy failed (check DB, .env, migrations)." -ForegroundColor Red

@@ -18,8 +18,14 @@ if [[ ! -f "$BACKEND_DIR/.env" ]]; then
   echo "Created $BACKEND_DIR/.env from .env.example (using database 'parking'). Edit SECRET_KEY and passwords if needed."
 fi
 
-# Create PostgreSQL database 'parking' if it does not exist
-if sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'parking'" | grep -q 1; then
+# Create or recreate PostgreSQL database 'parking'
+if [[ -n "$RECREATE_DB" ]] && [[ "$RECREATE_DB" != "0" ]]; then
+  echo "Recreating database 'parking'..."
+  sudo -u postgres psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'parking' AND pid <> pg_backend_pid();" 2>/dev/null || true
+  sudo -u postgres psql -c "DROP DATABASE IF EXISTS parking;"
+  sudo -u postgres psql -c "CREATE DATABASE parking OWNER postgres;"
+  echo "Database 'parking' recreated."
+elif sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname = 'parking'" | grep -q 1; then
   echo "Database 'parking' already exists."
 else
   sudo -u postgres psql -c "CREATE DATABASE parking OWNER postgres;"
