@@ -19,6 +19,7 @@ export const he = {
     originalVideoFallback: 'לא נמצא וידאו מעובד. מוצג וידאו מקורי.',
     videoLoading: 'טוען וידאו...',
     videoError: 'לא ניתן לטעון את הווידאו',
+    videoErrorAuth: 'לא ניתן לטעון את הווידאו. ייתכן שתצטרך להתחבר מחדש.',
     retry: 'נסה שוב',
     save: 'שמירה',
     approve: 'אישור',
