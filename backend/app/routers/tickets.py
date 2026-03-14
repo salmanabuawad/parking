@@ -72,6 +72,7 @@ def _read_upload_job_raw_video_bytes(ticket, upload_job_repo: Optional[UploadJob
     fp = Path(settings.videos_dir) / str(raw_path).replace("\\", "/")
     if fp.exists():
         return fp.read_bytes()
+
     return None
 
 
@@ -81,27 +82,23 @@ def _build_processed_video_bytes(
     video_repo: CameraVideoRepository,
     upload_job_repo: Optional[UploadJobRepository],
 ) -> bytes:
-    # 1) explicit processed blob in DB
     processed_video_id = getattr(ticket, "processed_video_id", None)
     if processed_video_id:
         vid = video_repo.get(processed_video_id)
         if vid and getattr(vid, "data", None):
             return bytes(vid.data)
 
-    # 2) upload-job raw file -> process now
     upload_job_bytes = _read_upload_job_raw_video_bytes(ticket, upload_job_repo)
     if upload_job_bytes:
         processed_bytes, _ = process_video(upload_job_bytes, blur_strength=blur_strength)
         return processed_bytes
 
-    # 3) processed filesystem path only if clearly processed
     video_path = getattr(ticket, "video_path", None)
     if _is_processed_path(video_path):
         fp = Path(settings.videos_dir) / str(video_path).replace("\\", "/")
         if fp.exists():
             return fp.read_bytes()
 
-    # 4) raw DB video -> process now
     raw_video_id = getattr(ticket, "video_id", None)
     if raw_video_id:
         raw_vid = video_repo.get(raw_video_id)
@@ -120,12 +117,12 @@ def get_ticket_video(
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
     upload_job_repo: Optional[UploadJobRepository] = Depends(get_upload_job_repo),
 ):
-    """Processed review video only."""
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
     blur = _get_blur_kernel_size(db)
+
     try:
         data = _build_processed_video_bytes(
             ticket,

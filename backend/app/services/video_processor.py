@@ -49,7 +49,6 @@ class PlateTracker:
             y = int(self.alpha * box[1] + (1 - self.alpha) * ly)
             w = int(self.alpha * box[2] + (1 - self.alpha) * lw)
             h = int(self.alpha * box[3] + (1 - self.alpha) * lh)
-
             self.last_box = (x, y, w, h)
             return self.last_box
 
@@ -80,6 +79,7 @@ def _safe_denoise_and_sharpen(img: np.ndarray) -> np.ndarray:
 def get_ffmpeg() -> str:
     try:
         import imageio_ffmpeg
+
         return imageio_ffmpeg.get_ffmpeg_exe()
     except Exception:
         ffmpeg = shutil.which("ffmpeg")
@@ -111,13 +111,23 @@ def extract_video_params(input_path: str) -> dict:
 
     try:
         result = subprocess.run(
-            [ffprobe, "-v", "quiet", "-show_format", "-show_streams", "-print_format", "json", input_path],
+            [
+                ffprobe,
+                "-v",
+                "quiet",
+                "-show_format",
+                "-show_streams",
+                "-print_format",
+                "json",
+                input_path,
+            ],
             capture_output=True,
             text=True,
             timeout=20,
         )
         if result.returncode != 0 or not result.stdout:
             return {}
+
         data = json.loads(result.stdout)
         out: dict[str, Any] = {}
         fmt = data.get("format") or {}
@@ -157,12 +167,7 @@ def extract_video_params(input_path: str) -> dict:
 
 
 def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
-    """Simple but safe yellow-plate detector for review rendering.
-
-    This keeps compatibility with the current repo and avoids introducing model-file
-    dependencies. It should be replaced later by the violation-car/plate detector if
-    available, but it is safe for current processing.
-    """
+    """Safe fallback yellow-plate detector for review rendering."""
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(
         hsv,
@@ -211,16 +216,11 @@ def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.7
     y1 = max(0, y - dh)
     x2 = min(frame_shape[1], x + w + dw)
     y2 = min(frame_shape[0], y + h + dh)
-
     return x1, y1, x2 - x1, y2 - y1
 
 
 def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
-    """Inverse blur.
-
-    Keep the plate sharp and blur everything else.
-    If there is no plate box, keep the frame unchanged rather than risking a bad blur.
-    """
+    """Keep the plate sharp and blur everything else."""
     if plate_box is None:
         return frame.copy()
 
@@ -240,7 +240,7 @@ def extract_license_plate(
     use_fast_hsv: bool = False,
     registry_lookup=None,
 ) -> Tuple[str, Optional[str]]:
-    """Compatibility OCR helper for existing worker imports."""
+    """Compatibility OCR helper for worker imports."""
     if pytesseract is None:
         return ("11111", "Tesseract is not installed")
 
@@ -295,15 +295,7 @@ def process_video(
     blur_strength: int = 0,
     extract_frame_at: float = 0.5,
 ) -> Tuple[bytes, bytes]:
-    """Build processed review video.
-
-    Safe behavior:
-    - detect plate
-    - track plate for short misses
-    - blur everything except the plate
-    - if no plate is known, leave frame unchanged
-    - never use unsafe full-frame blur fallback
-    """
+    """Build processed review video safely."""
     kernel = _normalize_kernel(blur_strength or BLUR_KERNEL)
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
