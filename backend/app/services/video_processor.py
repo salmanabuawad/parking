@@ -1,6 +1,6 @@
 """Video processing for review mode.
 
-Behavior requested:
+Behavior:
 - detect plate first
 - keep the plate area sharp
 - blur everything else
@@ -14,6 +14,7 @@ This file preserves the main public API used by the repo:
 - process_video_fast_hsv(...)
 - process_video_with_violation_pipeline(...)
 """
+
 from __future__ import annotations
 
 import json
@@ -45,6 +46,7 @@ try:
             break
 except ImportError:
     pytesseract = None
+
 
 HSV_LOWER_YELLOW = (10, 40, 40)
 HSV_UPPER_YELLOW = (50, 255, 255)
@@ -90,6 +92,7 @@ class PlateTracker:
             if self.last_box is None:
                 self.last_box = box
                 return box
+
             x = int(self.alpha * box[0] + (1 - self.alpha) * self.last_box[0])
             y = int(self.alpha * box[1] + (1 - self.alpha) * self.last_box[1])
             w = int(self.alpha * box[2] + (1 - self.alpha) * self.last_box[2])
@@ -129,6 +132,7 @@ def _get_ffprobe() -> Optional[str]:
     ffprobe = shutil.which("ffprobe")
     if ffprobe:
         return ffprobe
+
     try:
         ffmpeg = _get_ffmpeg()
         base = Path(ffmpeg).parent
@@ -138,12 +142,14 @@ def _get_ffprobe() -> Optional[str]:
                 return str(p)
     except RuntimeError:
         pass
+
     return None
 
 
 def _parse_iso6709_location(s: str) -> Optional[dict]:
     if not s or not isinstance(s, str):
         return None
+
     s = s.strip().rstrip("/")
     m = re.match(r"([+-]?\d+(?:\.\d+)?)([+-]?\d+(?:\.\d+)?)$", s)
     if m:
@@ -154,6 +160,7 @@ def _parse_iso6709_location(s: str) -> Optional[dict]:
                 return {"latitude": lat, "longitude": lon}
         except ValueError:
             pass
+
     return None
 
 
@@ -162,6 +169,7 @@ def extract_video_params(input_path: str) -> dict:
     ffprobe = _get_ffprobe()
     if not ffprobe:
         return out
+
     try:
         result = subprocess.run(
             [ffprobe, "-v", "quiet", "-show_format", "-show_streams", "-print_format", "json", input_path],
@@ -182,11 +190,13 @@ def extract_video_params(input_path: str) -> dict:
             out["duration_sec"] = round(float(fmt["duration"]), 2)
         except (TypeError, ValueError):
             pass
+
     if fmt.get("size"):
         try:
             out["size_bytes"] = int(fmt["size"])
         except (TypeError, ValueError):
             pass
+
     if fmt.get("bit_rate") and fmt["bit_rate"] != "N/A":
         try:
             out["bit_rate"] = int(fmt["bit_rate"])
@@ -217,27 +227,33 @@ def extract_video_params(input_path: str) -> dict:
                     out["width"] = int(stream["width"])
                 except (TypeError, ValueError):
                     pass
+
             if stream.get("height") is not None:
                 try:
                     out["height"] = int(stream["height"])
                 except (TypeError, ValueError):
                     pass
+
             if stream.get("codec_name"):
                 out["codec"] = str(stream["codec_name"])
+
             if stream.get("r_frame_rate"):
                 out["r_frame_rate"] = str(stream["r_frame_rate"])
+
             if stream.get("nb_frames"):
                 try:
                     out["nb_frames"] = int(stream["nb_frames"])
                 except (TypeError, ValueError):
                     pass
             break
+
     return out
 
 
 def _process_ffmpeg_only(input_path: str, blur: int = 0) -> bytes:
     ffmpeg = _get_ffmpeg()
     out_path = tempfile.mktemp(suffix="_h264.mp4")
+
     try:
         cmd = [
             ffmpeg,
@@ -253,6 +269,7 @@ def _process_ffmpeg_only(input_path: str, blur: int = 0) -> bytes:
             "-an",
             out_path,
         ]
+
         if blur > 0:
             cmd = [
                 ffmpeg,
@@ -270,6 +287,7 @@ def _process_ffmpeg_only(input_path: str, blur: int = 0) -> bytes:
                 "-an",
                 out_path,
             ]
+
         subprocess.run(cmd, check=True, capture_output=True, timeout=120)
         return Path(out_path).read_bytes()
     finally:
@@ -302,8 +320,17 @@ def _extract_frame_ffmpeg(input_path: str, at_sec: float = 0.5) -> bytes:
 
 def detect_plate_boxes(frame: np.ndarray, max_candidates: int = 3) -> list[Tuple[int, int, int, int]]:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(hsv, np.array(HSV_LOWER_YELLOW, dtype=np.uint8), np.array(HSV_UPPER_YELLOW, dtype=np.uint8))
-    mask_light = cv2.inRange(hsv, np.array(HSV_LOWER_LIGHT, dtype=np.uint8), np.array(HSV_UPPER_LIGHT, dtype=np.uint8))
+
+    mask = cv2.inRange(
+        hsv,
+        np.array(HSV_LOWER_YELLOW, dtype=np.uint8),
+        np.array(HSV_UPPER_YELLOW, dtype=np.uint8),
+    )
+    mask_light = cv2.inRange(
+        hsv,
+        np.array(HSV_LOWER_LIGHT, dtype=np.uint8),
+        np.array(HSV_UPPER_LIGHT, dtype=np.uint8),
+    )
     mask = cv2.bitwise_or(mask, mask_light)
 
     k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
@@ -327,10 +354,14 @@ def detect_plate_boxes(frame: np.ndarray, max_candidates: int = 3) -> list[Tuple
         if area > frame_area * MAX_PLATE_AREA_RATIO:
             continue
 
-        aspect_ratio_fit = min(1.0, max(0.0, 1.0 - min(abs(ratio - p["ratio"]) for p in PLATE_FORMAT_PRESETS) / 2.0))
+        aspect_ratio_fit = min(
+            1.0,
+            max(0.0, 1.0 - min(abs(ratio - p["ratio"]) for p in PLATE_FORMAT_PRESETS) / 2.0),
+        )
         compactness = cv2.contourArea(contour) / area if area > 0 else 0
         compactness_fit = min(1.0, compactness)
         score = area * (0.5 + aspect_ratio_fit) * (0.5 + compactness_fit)
+
         candidates.append(((x, y, w, h), score))
 
     candidates.sort(key=lambda c: c[1], reverse=True)
@@ -351,7 +382,14 @@ def _is_valid_israeli_plate(cleaned: str) -> bool:
 
 def _preprocess_black_on_yellow(crop: np.ndarray) -> np.ndarray:
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
+    binary = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        11,
+        2,
+    )
     return cv2.bitwise_not(binary)
 
 
@@ -360,32 +398,53 @@ def _crop_to_digit_region(crop: np.ndarray) -> np.ndarray:
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         ys, xs = np.where(binary > 0)
+
         if len(ys) < 20 or len(xs) < 20:
             return crop
+
         pad = 2
         y1 = max(0, int(ys.min()) - pad)
         y2 = min(crop.shape[0], int(ys.max()) + 1 + pad)
         x1 = max(0, int(xs.min()) - pad)
         x2 = min(crop.shape[1], int(xs.max()) + 1 + pad)
+
         if (y2 - y1) < 15 or (x2 - x1) < 30:
             return crop
+
         return crop[y1:y2, x1:x2].copy()
     except Exception:
         return crop
 
 
 def _sharpen_denoise(crop: np.ndarray) -> np.ndarray:
-    denoised = cv2.fastNlMeansDenoisingColored(crop, None, h=6, hForColorComponents=6, templateWindowSize=7, searchWindowSize=21)
-    kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+    try:
+        denoised = cv2.fastNlMeansDenoisingColored(crop, None, 6, 6, 7, 21)
+    except Exception:
+        denoised = crop
+
+    kernel = np.array(
+        [
+            [-1, -1, -1],
+            [-1, 9, -1],
+            [-1, -1, -1],
+        ],
+        dtype=np.float32,
+    )
     return cv2.filter2D(denoised, -1, kernel)
 
 
-def _ocr_plate_crop(crop: np.ndarray, enhance_black_on_yellow: bool = True, debug_context: str = "") -> Tuple[Optional[str], Optional[str]]:
+def _ocr_plate_crop(
+    crop: np.ndarray,
+    enhance_black_on_yellow: bool = True,
+    debug_context: str = "",
+) -> Tuple[Optional[str], Optional[str]]:
     if pytesseract is None:
         return (None, "Tesseract is not installed.")
+
     try:
         crop = _sharpen_denoise(crop)
         crop = _crop_to_digit_region(crop)
+
         if enhance_black_on_yellow:
             proc = _preprocess_black_on_yellow(crop)
         else:
@@ -413,6 +472,7 @@ def _ocr_plate_from_frame_fast_hsv(frame: np.ndarray, debug_prefix: str = "") ->
         x2 = min(frame.shape[1], x + w + pad)
         y2 = min(frame.shape[0], y + h + pad)
         crop = frame[y1:y2, x1:x2]
+
         if crop.size < 100:
             last_reason = "Plate crop too small for OCR."
             continue
@@ -423,14 +483,18 @@ def _ocr_plate_from_frame_fast_hsv(frame: np.ndarray, debug_prefix: str = "") ->
 
         ctx = f"{debug_prefix} candidate_{i}" if debug_prefix else f"candidate_{i}"
         digits, ocr_err = _ocr_plate_crop(crop, enhance_black_on_yellow=True, debug_context=ctx)
+
         if ocr_err:
             last_reason = ocr_err
             continue
+
         if digits and _is_valid_israeli_plate(digits):
             return (digits, None)
+
         if digits:
             last_reason = f"OCR read only '{digits}' ({len(digits)} digit(s)); Israeli plates have 7 or 8 digits."
             continue
+
         last_reason = "OCR returned no digits."
 
     return (None, last_reason or "No valid plate from any candidate.")
@@ -453,9 +517,11 @@ def extract_license_plate(
         frame = cv2.imdecode(np.frombuffer(frame_jpeg, np.uint8), cv2.IMREAD_COLOR)
         if frame is None:
             return ("11111", "Could not decode frame image.")
+
         plate, reason = ocr_fn(frame, debug_prefix="ticket_frame")
         if plate:
             return (plate, None)
+
         if not video_bytes:
             return ("11111", reason or "Plate detected visually; OCR could not read valid 7–8 digit number.")
 
@@ -515,20 +581,31 @@ def extract_license_plate(
         Path(input_path).unlink(missing_ok=True)
 
 
-def _expand_box(box: Tuple[int, int, int, int], frame_shape: Tuple[int, int, int], ratio: float = 0.20) -> Tuple[int, int, int, int]:
+def _expand_box(
+    box: Tuple[int, int, int, int],
+    frame_shape: Tuple[int, int, int],
+    ratio: float = 0.20,
+) -> Tuple[int, int, int, int]:
     x, y, w, h = box
     dh = int(h * ratio)
     dw = int(w * ratio)
+
     x1 = max(0, x - dw)
     y1 = max(0, y - dh)
     x2 = min(frame_shape[1], x + w + dw)
     y2 = min(frame_shape[0], y + h + dh)
+
     return x1, y1, x2 - x1, y2 - y1
 
 
-def _apply_inverse_blur(frame: np.ndarray, plate_box: Optional[Tuple[int, int, int, int]], kernel: int) -> np.ndarray:
+def _apply_inverse_blur(
+    frame: np.ndarray,
+    plate_box: Optional[Tuple[int, int, int, int]],
+    kernel: int,
+) -> np.ndarray:
     """Blur everything except the plate ROI."""
     blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
+
     if plate_box is None:
         return blurred
 
@@ -536,7 +613,6 @@ def _apply_inverse_blur(frame: np.ndarray, plate_box: Optional[Tuple[int, int, i
     if w <= 0 or h <= 0:
         return blurred
 
-    # Restore only the plate area to remain sharp.
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w]
     return blurred
 
@@ -568,6 +644,7 @@ def process_video(
         raw_path = tempfile.mktemp(suffix=".mp4")
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out = cv2.VideoWriter(raw_path, fourcc, fps, (width, height))
+
         ticket_frame: Optional[np.ndarray] = None
         frame_idx_for_ticket = int(total_frames * extract_frame_at) if total_frames > 0 else 0
         frame_idx = 0
@@ -584,8 +661,10 @@ def process_video(
             output = _apply_inverse_blur(frame, tracked_plate, k)
 
             out.write(output)
+
             if frame_idx == frame_idx_for_ticket:
                 ticket_frame = output.copy()
+
             frame_idx += 1
 
         cap.release()
@@ -635,6 +714,7 @@ def process_video(
                 ticket_jpeg = jpeg_buf.tobytes()
 
         return processed_bytes, ticket_jpeg
+
     finally:
         Path(input_path).unlink(missing_ok=True)
 
@@ -644,7 +724,11 @@ def process_video_fast_hsv(
     blur_strength: int = 0,
     extract_frame_at: float = 0.5,
 ) -> Tuple[bytes, bytes]:
-    return process_video(video_bytes, blur_strength=blur_strength, extract_frame_at=extract_frame_at)
+    return process_video(
+        video_bytes,
+        blur_strength=blur_strength,
+        extract_frame_at=extract_frame_at,
+    )
 
 
 def process_video_with_violation_pipeline(
@@ -659,5 +743,9 @@ def process_video_with_violation_pipeline(
         blur_strength=int(blur_kernel_size or 0),
         extract_frame_at=extract_frame_at,
     )
-    best_plate, _ = extract_license_plate(video_bytes=video_bytes, frame_jpeg=ticket_frame_jpeg, use_fast_hsv=True)
+    best_plate, _ = extract_license_plate(
+        video_bytes=video_bytes,
+        frame_jpeg=ticket_frame_jpeg,
+        use_fast_hsv=True,
+    )
     return processed_video_bytes, ticket_frame_jpeg, best_plate
