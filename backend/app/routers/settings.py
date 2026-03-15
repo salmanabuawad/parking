@@ -86,3 +86,12 @@ def update_settings(
         "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
         "use_violation_pipeline": cfg.use_violation_pipeline,
     }
+
+
+@router.put("")
+def update_settings_put(
+    body: SettingsUpdate = Body(...),
+    db: Session = Depends(get_db),
+    _=Depends(get_current_user),
+):
+    return update_settings(body=body, db=db, _=_)

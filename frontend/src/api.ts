@@ -16,12 +16,23 @@ function buildUrl(path: string): string {
 function authHeader(): Record<string, string> {
   const token = localStorage.getItem("parking_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
+  // Auto-prefix with /api unless already present
+  const apiRight = right.startsWith("/api") ? right : `/api${right}`;
+  return `${left}${apiRight}`;
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = localStorage.getItem("parking_token");
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
 }
 
 async function fetchBlob(path: string): Promise<Blob> {
   const res = await fetch(buildUrl(path), {
     credentials: "include",
-    headers: authHeader(),
+    headers: authHeaders(),
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
@@ -30,10 +41,14 @@ async function fetchBlob(path: string): Promise<Blob> {
 }
 
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(buildUrl(path), {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers || {}) },
     ...init,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...authHeaders(init?.headers as Record<string, string>),
+    },
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
@@ -46,7 +61,7 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return await res.json();
 }
 
-// Default export: axios-style wrapper used by Upload, QueueMaintenance, AuthContext
+// Default export: axios-style wrapper used by AuthContext, Upload, QueueMaintenance
 const api = {
   async post<T = any>(
     path: string,
@@ -54,15 +69,44 @@ const api = {
     options?: { headers?: Record<string, string> }
   ): Promise<{ data: T }> {
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
-    const headers: Record<string, string> = isFormData
-      ? { ...authHeader() }
-      : { "Content-Type": "application/json", ...authHeader(), ...(options?.headers || {}) };
+
+    // Use XHR for FormData: fetch + explicit headers object can strip the multipart boundary
+    // in some browsers. XHR always sets Content-Type correctly when body is FormData.
+    if (isFormData) {
+      return new Promise<{ data: T }>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", buildUrl(path), true);
+        xhr.withCredentials = true;
+        const token = localStorage.getItem("parking_token");
+        if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+        if (options?.headers) {
+          for (const [k, v] of Object.entries(options.headers)) {
+            xhr.setRequestHeader(k, v);
+          }
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve({ data: JSON.parse(xhr.responseText) }); }
+            catch { resolve({ data: xhr.responseText as unknown as T }); }
+          } else {
+            let detail = `HTTP ${xhr.status}`;
+            try { detail = JSON.parse(xhr.responseText)?.detail || detail; } catch (_) {}
+            reject(new Error(detail));
+          }
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.send(body as FormData);
+      });
+    }
 
     const res = await fetch(buildUrl(path), {
       method: "POST",
       credentials: "include",
-      headers,
-      body: isFormData ? (body as FormData) : body !== undefined ? JSON.stringify(body) : undefined,
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(options?.headers),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
       let detail = `HTTP ${res.status}`;
@@ -84,19 +128,15 @@ export const ticketsApi = {
     const qs = status ? `?status=${encodeURIComponent(status)}` : "";
     return fetchJson(`/tickets${qs}`).then((data) => ({ data }));
   },
-
   getVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/video`);
   },
-
   getProcessedVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/processed-video`);
   },
-
   getRawVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/raw-video`);
   },
-
   reprocessVideo(ticketId: number | string) {
     return fetchJson(`/tickets/${ticketId}/reprocess-video`, { method: "POST" });
   },
