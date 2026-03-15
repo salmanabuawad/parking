@@ -65,9 +65,9 @@ function MobileShell() {
 const NAV_LINKS = [
   { to: '/', label: he.app.home },
   { to: '/tickets', label: he.app.tickets },
-  { to: '/cameras', label: he.app.cameras, disabled: true },
   { to: '/queue', label: he.app.queue },
   { to: '/settings', label: he.app.settings },
+  { to: '/cameras', label: he.app.cameras, disabled: true },
 ]
 
 function NavLink({ to, label, disabled }: { to: string; label: string; disabled?: boolean }) {
