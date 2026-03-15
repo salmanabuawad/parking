@@ -313,36 +313,11 @@ def _find_best_plate_box(
     return best_box
 
 
-def extract_license_plate(
-    video_bytes: Optional[bytes] = None,
-    frame_jpeg: Optional[bytes] = None,
-    use_fast_hsv: bool = False,
-    registry_lookup=None,
-) -> Tuple[str, Optional[str]]:
-    """Compatibility OCR helper for worker imports."""
-    if pytesseract is None:
-        return ("11111", "Tesseract is not installed")
-    frame: Optional[np.ndarray] = None
-    if frame_jpeg:
-        arr = np.frombuffer(frame_jpeg, np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    if frame is None and video_bytes:
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
-            f.write(video_bytes)
-            input_path = f.name
-        try:
-            cap = cv2.VideoCapture(input_path)
-            ok, candidate = cap.read()
-            cap.release()
-            if ok:
-                frame = candidate
-        finally:
-            Path(input_path).unlink(missing_ok=True)
-    if frame is None:
-        return ("11111", "No image frame available for OCR")
+def _ocr_frame(frame: np.ndarray) -> Tuple[str, Optional[str]]:
+    """Run OCR on a single unblurred frame. Returns (plate, reason)."""
     plate_box = detect_plate_box(frame)
     if plate_box is None:
-        return ("11111", "Plate not detected")
+        return ("11111", "Plate not detected in frame")
     x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.2)
     crop = frame[y:y + h, x:x + w]
     if crop.size == 0:
@@ -357,6 +332,50 @@ def extract_license_plate(
     if 7 <= len(digits) <= 8:
         return (digits, None)
     return ("11111", "OCR could not read valid 7-8 digit plate")
+
+
+def extract_license_plate(
+    video_bytes: Optional[bytes] = None,
+    frame_jpeg: Optional[bytes] = None,
+    use_fast_hsv: bool = False,
+    registry_lookup=None,
+) -> Tuple[str, Optional[str]]:
+    """OCR on original (unblurred) frames. Scans multiple frames to find plate.
+    frame_jpeg is ignored — always use original video_bytes to avoid OCR on blurred output.
+    """
+    if pytesseract is None:
+        return ("11111", "Tesseract is not installed")
+    if not video_bytes:
+        return ("11111", "No video provided for OCR")
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(video_bytes)
+        input_path = f.name
+    try:
+        cap = cv2.VideoCapture(input_path)
+        if not cap.isOpened():
+            return ("11111", "Could not open video for OCR")
+
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        sample_count = 20
+        step = max(1, total // sample_count) if total > 0 else 1
+        last_reason = "No frames decoded"
+
+        for i in range(0, max(total, 1), step):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            plate, reason = _ocr_frame(frame)
+            if plate != "11111":
+                cap.release()
+                return (plate, None)
+            last_reason = reason or last_reason
+
+        cap.release()
+        return ("11111", last_reason)
+    finally:
+        Path(input_path).unlink(missing_ok=True)
 
 
 def process_video(
@@ -485,14 +504,11 @@ def process_video_with_violation_pipeline(
     extract_frame_at: float = 0.5,
     blur_kernel_size: Optional[int] = None,
 ):
+    # OCR first on the original unblurred video, then blur.
+    best_plate, _ = extract_license_plate(video_bytes=video_bytes)
     processed_video_bytes, ticket_frame_jpeg = process_video(
         video_bytes=video_bytes,
         blur_strength=int(blur_kernel_size or BLUR_KERNEL),
         extract_frame_at=extract_frame_at,
-    )
-    best_plate, _ = extract_license_plate(
-        video_bytes=video_bytes,
-        frame_jpeg=ticket_frame_jpeg,
-        use_fast_hsv=True,
     )
     return processed_video_bytes, ticket_frame_jpeg, best_plate
