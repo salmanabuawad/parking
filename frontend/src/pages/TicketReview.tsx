@@ -1,7 +1,54 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ticketsApi } from "../api";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
+
+interface TicketDetail {
+  id: number;
+  license_plate: string;
+  plate_detection_reason?: string;
+  status: string;
+  violation_zone?: string;
+  location?: string;
+  captured_at?: string;
+  created_at?: string;
+  description?: string;
+  admin_notes?: string;
+  fine_amount?: number;
+}
+
+interface Screenshot {
+  id: number;
+  storage_path: string;
+  frame_time_seconds: number | null;
+  created_at: string | null;
+}
+
+const PLATE_UNKNOWN = "11111";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: "#888", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  pending_review: "#d97706",
+  approved: "#16a34a",
+  rejected: "#dc2626",
+  paid: "#2563eb",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  pending_review: "ממתין לבדיקה",
+  approved: "אושר",
+  rejected: "נדחה",
+  paid: "שולם",
+};
 
 export default function TicketReview() {
   const ticketId = useMemo(() => {
@@ -12,6 +59,16 @@ export default function TicketReview() {
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [expanded, setExpanded] = useState<number | null>(null);
+
+  // Admin edit state
+  const [editMode, setEditMode] = useState(false);
+  const [editNotes, setEditNotes] = useState("");
+  const [editFine, setEditFine] = useState<string>("");
+  const [editPlate, setEditPlate] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let currentUrl = "";
@@ -20,14 +77,24 @@ export default function TicketReview() {
     async function load() {
       setState("loading");
       setError(null);
-
       try {
-        const blob = await ticketsApi.getProcessedVideo(ticketId);
+        const [detail, blob] = await Promise.all([
+          ticketsApi.getDetail(ticketId).catch(() => null),
+          ticketsApi.getProcessedVideo(ticketId),
+        ]);
         if (cancelled) return;
+        if (detail) {
+          setTicket(detail);
+          setEditNotes(detail.admin_notes || "");
+          setEditFine(detail.fine_amount != null ? String(detail.fine_amount) : "");
+          setEditPlate(detail.license_plate || "");
+        }
         const url = URL.createObjectURL(blob);
         currentUrl = url;
         setVideoUrl(url);
         setState("ready");
+        // Load screenshots (non-blocking)
+        ticketsApi.listScreenshots(ticketId).then(setScreenshots).catch(() => {});
       } catch (err: any) {
         if (!cancelled) {
           setState("error");
@@ -37,7 +104,6 @@ export default function TicketReview() {
     }
 
     load();
-
     return () => {
       cancelled = true;
       if (currentUrl) URL.revokeObjectURL(currentUrl);
@@ -62,51 +128,297 @@ export default function TicketReview() {
     }
   }
 
+  async function handleStatusChange(status: "approved" | "rejected") {
+    if (!ticket) return;
+    setSaving(true);
+    try {
+      const updated = await ticketsApi.updateTicket(ticketId, { status });
+      setTicket(updated);
+    } catch (err: any) {
+      alert(err?.message || "שגיאה בשמירה");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!ticket) return;
+    setSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        admin_notes: editNotes || null,
+        license_plate: editPlate || ticket.license_plate,
+      };
+      const fineVal = parseInt(editFine, 10);
+      payload.fine_amount = isNaN(fineVal) ? null : fineVal;
+      const updated = await ticketsApi.updateTicket(ticketId, payload);
+      setTicket(updated);
+      setEditMode(false);
+    } catch (err: any) {
+      alert(err?.message || "שגיאה בשמירה");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const plateOk = ticket && ticket.license_plate && ticket.license_plate !== PLATE_UNKNOWN && ticket.license_plate !== "";
+
   return (
-    <div dir="rtl" style={{ padding: 24, maxWidth: 1100, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-        <h1 style={{ margin: 0 }}>בדיקת דוח</h1>
-        <button onClick={handleReprocess} style={{ padding: "10px 14px", cursor: "pointer" }}>
-          עבד מחדש
+    <div dir="rtl" style={{ padding: 24, maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <h1 style={{ margin: 0, fontSize: 22 }}>בדיקת דוח #{ticketId}</h1>
+          <Link to="/queue" style={{ fontSize: 13, color: "#2563eb" }}>← תור עיבוד</Link>
+          <Link to="/tickets" style={{ fontSize: 13, color: "#2563eb" }}>← כל הדוחות</Link>
+        </div>
+        <button
+          onClick={handleReprocess}
+          disabled={state === "loading"}
+          style={{ padding: "8px 16px", cursor: "pointer", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb" }}
+        >
+          {state === "loading" ? "טוען…" : "עבד מחדש"}
         </button>
       </div>
 
-      {state === "loading" && <div>טוען וידאו מעובד…</div>}
-      {state === "error" && <div style={{ color: "crimson" }}>שגיאה: {error}</div>}
+      {state === "error" && (
+        <div style={{ color: "crimson", marginBottom: 12, padding: "8px 12px", background: "#fef2f2", borderRadius: 6 }}>
+          שגיאה: {error}
+        </div>
+      )}
 
-      <div
-        style={{
-          marginTop: 16,
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          padding: 16,
-          background: "#fff",
-          boxShadow: "0 2px 10px rgba(0,0,0,0.05)",
-        }}
-      >
-        <div style={{ marginBottom: 12, color: "#555" }}>
-          במסך זה מוצג רק וידאו מעובד. אין fallback אוטומטי לוידאו המקורי.
+      {/* Side-by-side: video + details */}
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+
+        {/* Video panel */}
+        <div style={{ flex: "1 1 340px", minWidth: 280 }}>
+          <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", background: "#000" }}>
+            {videoUrl ? (
+              <video
+                key={videoUrl}
+                src={videoUrl}
+                controls
+                playsInline
+                style={{ width: "100%", maxHeight: 320, display: "block" }}
+              />
+            ) : (
+              <div style={{ padding: 32, textAlign: "center", color: "#9ca3af", background: "#111" }}>
+                {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
+              </div>
+            )}
+          </div>
         </div>
 
-        {videoUrl ? (
-          <video
-            key={videoUrl}
-            src={videoUrl}
-            controls
-            playsInline
-            style={{
-              width: "100%",
-              maxHeight: 560,
-              borderRadius: 8,
-              background: "#000",
-            }}
-          />
-        ) : (
-          <div style={{ padding: 24, background: "#fafafa", borderRadius: 8 }}>
-            אין וידאו זמין להצגה.
+        {/* Details panel */}
+        {ticket && (
+          <div style={{ flex: "1 1 320px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+
+            {/* Plate */}
+            <Field label="מספר לוחית">
+              {editMode ? (
+                <input
+                  value={editPlate}
+                  onChange={e => setEditPlate(e.target.value)}
+                  style={{ fontFamily: "monospace", fontSize: 18, padding: "4px 8px", border: "1px solid #d1d5db", borderRadius: 4, width: "100%" }}
+                />
+              ) : plateOk ? (
+                <div>
+                  <span style={{ fontWeight: 700, fontSize: 24, letterSpacing: 3, fontFamily: "monospace" }}>
+                    {ticket.license_plate}
+                  </span>
+                  {ticket.plate_detection_reason && (
+                    <div style={{ fontSize: 12, color: "#b45309", marginTop: 4, background: "#fffbeb", padding: "4px 8px", borderRadius: 4 }}>
+                      ⚠ {ticket.plate_detection_reason}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <span style={{ fontWeight: 600, color: "#dc2626" }}>לא זוהה</span>
+                  {ticket.plate_detection_reason && (
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>{ticket.plate_detection_reason}</div>
+                  )}
+                </div>
+              )}
+            </Field>
+
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+
+            {/* Status */}
+            <Field label="סטטוס">
+              <span style={{
+                fontWeight: 600,
+                color: STATUS_COLORS[ticket.status] || "#374151",
+                background: "#f8fafc",
+                padding: "2px 10px",
+                borderRadius: 12,
+                fontSize: 14,
+              }}>
+                {STATUS_LABELS[ticket.status] || ticket.status}
+              </span>
+            </Field>
+
+            {/* Violation zone */}
+            {ticket.violation_zone && (
+              <Field label="אזור עצירה">
+                <span>{ticket.violation_zone}</span>
+              </Field>
+            )}
+
+            {/* Fine */}
+            <Field label="קנס">
+              {editMode ? (
+                <input
+                  type="number"
+                  value={editFine}
+                  onChange={e => setEditFine(e.target.value)}
+                  placeholder="סכום ₪"
+                  style={{ padding: "4px 8px", border: "1px solid #d1d5db", borderRadius: 4, width: 120 }}
+                />
+              ) : ticket.fine_amount != null ? (
+                <span style={{ fontWeight: 600, color: "#dc2626" }}>₪{ticket.fine_amount}</span>
+              ) : (
+                <span style={{ color: "#9ca3af", fontSize: 13 }}>לא נקבע</span>
+              )}
+            </Field>
+
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+
+            {/* Location */}
+            {ticket.location && (
+              <Field label="מיקום">
+                <span style={{ fontSize: 13, color: "#374151" }}>{ticket.location}</span>
+              </Field>
+            )}
+
+            {/* Capture time */}
+            {ticket.captured_at && (
+              <Field label="זמן צילום">
+                {new Date(ticket.captured_at).toLocaleString("he-IL")}
+              </Field>
+            )}
+
+            {/* Submission time */}
+            {ticket.created_at && (
+              <Field label="זמן הגשה">
+                {new Date(ticket.created_at).toLocaleString("he-IL")}
+              </Field>
+            )}
+
+            {/* Description */}
+            {ticket.description && (
+              <Field label="תיאור">
+                <span style={{ fontSize: 13, color: "#4b5563" }}>{ticket.description}</span>
+              </Field>
+            )}
+
+            {/* Admin notes */}
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <Field label="הערות מנהל">
+              {editMode ? (
+                <textarea
+                  value={editNotes}
+                  onChange={e => setEditNotes(e.target.value)}
+                  rows={3}
+                  style={{ width: "100%", padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 4, fontSize: 13, resize: "vertical" }}
+                />
+              ) : ticket.admin_notes ? (
+                <span style={{ fontSize: 13 }}>{ticket.admin_notes}</span>
+              ) : (
+                <span style={{ color: "#9ca3af", fontSize: 13 }}>אין הערות</span>
+              )}
+            </Field>
+
+            {/* Admin action buttons */}
+            <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 16, paddingTop: 14 }}>
+              {editMode ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={handleSaveEdit}
+                    disabled={saving}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                  >
+                    {saving ? "שומר…" : "שמור"}
+                  </button>
+                  <button
+                    onClick={() => { setEditMode(false); setEditNotes(ticket.admin_notes || ""); setEditFine(ticket.fine_amount != null ? String(ticket.fine_amount) : ""); setEditPlate(ticket.license_plate || ""); }}
+                    disabled={saving}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb", cursor: "pointer" }}
+                  >
+                    ביטול
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {ticket.status !== "approved" && (
+                    <button
+                      onClick={() => handleStatusChange("approved")}
+                      disabled={saving}
+                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "#16a34a", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      ✓ אשר
+                    </button>
+                  )}
+                  {ticket.status !== "rejected" && (
+                    <button
+                      onClick={() => handleStatusChange("rejected")}
+                      disabled={saving}
+                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "#dc2626", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    >
+                      ✗ דחה
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setEditMode(true)}
+                    disabled={saving}
+                    style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb", cursor: "pointer" }}
+                  >
+                    ✎ ערוך
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Screenshot gallery */}
+      {screenshots.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h3 style={{ fontSize: 16, marginBottom: 12 }}>צילומי מסך ({screenshots.length})</h3>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {screenshots.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: expanded === s.id ? "2px solid #2563eb" : "2px solid transparent", background: "#f1f5f9" }}
+              >
+                <img
+                  src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
+                  alt={`Screenshot ${s.id}`}
+                  style={{ width: 160, height: 90, objectFit: "cover", display: "block" }}
+                  loading="lazy"
+                />
+                {s.frame_time_seconds != null && (
+                  <div style={{ fontSize: 11, textAlign: "center", padding: "3px 0", color: "#6b7280" }}>
+                    {s.frame_time_seconds.toFixed(1)}s
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          {/* Expanded screenshot */}
+          {expanded !== null && (
+            <div style={{ marginTop: 16, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", maxWidth: 640 }}>
+              <img
+                src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
+                alt="Expanded screenshot"
+                style={{ width: "100%", display: "block" }}
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

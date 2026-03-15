@@ -10,6 +10,12 @@ export function getApiBase(): string {
 function buildUrl(path: string): string {
   const left = API_BASE.replace(/\/$/, "");
   const right = path.startsWith("/") ? path : `/${path}`;
+  return `${left}/api${right}`;
+}
+
+function authHeader(): Record<string, string> {
+  const token = localStorage.getItem("parking_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
   // Auto-prefix with /api unless already present
   const apiRight = right.startsWith("/api") ? right : `/api${right}`;
   return `${left}${apiRight}`;
@@ -134,6 +140,22 @@ export const ticketsApi = {
   reprocessVideo(ticketId: number | string) {
     return fetchJson(`/tickets/${ticketId}/reprocess-video`, { method: "POST" });
   },
+
+  getDetail(ticketId: number | string): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/detail`);
+  },
+  listScreenshots(ticketId: number | string): Promise<any[]> {
+    return fetchJson(`/tickets/${ticketId}/screenshots`);
+  },
+  screenshotImageUrl(ticketId: number | string, screenshotId: number): string {
+    return buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
+  },
+  updateTicket(ticketId: number | string, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 export const camerasApi = {
@@ -174,9 +196,9 @@ export const uploadApi = {
     return fetchJson(`/upload/jobs?limit=${limit}`).then((data) => ({ data }));
   },
   resetStuckJobs(): Promise<{ data: any }> {
-    return fetchJson("/upload/reset-stuck", { method: "POST" }).then((data) => ({ data }));
+    return fetchJson("/upload/reset-stuck-jobs", { method: "POST" }).then((data) => ({ data }));
   },
   rerunJob(jobId: number): Promise<{ data: any }> {
-    return fetchJson(`/upload/jobs/${jobId}/rerun`, { method: "POST" }).then((data) => ({ data }));
+    return fetchJson(`/upload/job/${jobId}/rerun`, { method: "POST" }).then((data) => ({ data }));
   },
 };

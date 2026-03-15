@@ -31,6 +31,7 @@ from app.services.video_processor import (
     process_video_with_violation_pipeline,
     extract_license_plate,
     extract_video_params,
+    extract_frames,
 )
 
 # Use same videos_dir as API (from config) so uploads from UI resolve correctly
@@ -187,9 +188,8 @@ def process_one_job() -> bool:
             from app.violation.services.registry import VehicleRegistryService
             registry = VehicleRegistryService()
             if not registry.plate_exists(license_plate):
-                print(f"[Job {job.id}] Plate {license_plate} not in MoT registry, rejecting", flush=True)
-                plate_reason = "Plate not found in Ministry of Transport registry (data.gov.il)"
-                license_plate = "11111"
+                print(f"[Job {job.id}] Plate {license_plate} not found in MoT registry (keeping detected value)", flush=True)
+                plate_reason = f"Detected plate {license_plate} — not found in Ministry of Transport registry (data.gov.il); may be OCR error or unregistered vehicle"
 
         # Store "" for "not identified" in DB (UI shows Hebrew "לא זוהה")
         display_plate = "" if (not license_plate or license_plate == "11111") else license_plate
@@ -239,6 +239,36 @@ def process_one_job() -> bool:
             pass
 
         ticket = ticket_repo.create(**ticket_kw)
+
+        # Extract 5 evenly-spaced screenshots from the blurred video and save them
+        try:
+            frames = extract_frames(blurred_bytes, count=5)
+            screenshots_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
+            from sqlalchemy import text as _text
+            now_utc = datetime.now(timezone.utc)
+            for jpeg_bytes, frame_sec in frames:
+                fname = f"shot_{int(frame_sec * 1000):08d}ms.jpg"
+                fpath = screenshots_dir / fname
+                fpath.write_bytes(jpeg_bytes)
+                rel = f"screenshots/ticket_{ticket.id}/{fname}"
+                try:
+                    db.execute(
+                        _text("""
+                            INSERT INTO ticket_screenshots
+                                (ticket_id, storage_path, frame_time_seconds, created_at, is_blurred_source)
+                            VALUES
+                                (:ticket_id, :storage_path, :frame_time_seconds, :created_at, true)
+                        """),
+                        {"ticket_id": ticket.id, "storage_path": rel,
+                         "frame_time_seconds": frame_sec, "created_at": now_utc},
+                    )
+                except Exception:
+                    db.rollback()
+            db.commit()
+            print(f"[Job {job.id}] Saved {len(frames)} screenshots for ticket {ticket.id}", flush=True)
+        except Exception as ss_err:
+            print(f"[Job {job.id}] Screenshot extraction failed (non-fatal): {ss_err}", flush=True)
 
         job_repo.update(
             job.id,

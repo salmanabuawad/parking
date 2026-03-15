@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react'
+import { Component, type ReactNode, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
 
 const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
@@ -12,6 +12,17 @@ import TicketReview from './pages/TicketReview'
 import QueueMaintenance from './pages/QueueMaintenance'
 import Login from './pages/Login'
 import { he } from './i18n/he'
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return isMobile
+}
 
 export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
   state = { hasError: false as boolean, error: undefined as Error | undefined }
@@ -34,10 +45,27 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   }
 }
 
+function MobileShell() {
+  return (
+    <div dir="rtl" style={{ minHeight: '100vh', background: '#f9fafb' }}>
+      <header style={{ padding: '12px 16px', background: '#1e3a8a', color: '#fff', textAlign: 'center' }}>
+        <strong style={{ fontSize: '1.1rem' }}>דיווח חנייה אסורה</strong>
+      </header>
+      <Upload />
+    </div>
+  )
+}
+
 function AppShell() {
   const { isLoggedIn, loading, logout, user } = useAuth()
+  const isMobile = useIsMobile()
 
   if (loading) return <div dir="rtl" style={{ padding: 24 }}>{he.app.loading}</div>
+
+  // Mobile: only show the upload page, no login required
+  if (isMobile) {
+    return <MobileShell />
+  }
 
   if (!isLoggedIn) {
     return (
