@@ -291,11 +291,12 @@ def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.5
 def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
     """Blur the entire frame; restore the plate region unblurred.
     When no plate box is found, the entire frame stays blurred.
+    Uses ratio=1.0 expansion to ensure the full plate is always clear.
     """
     blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
     if plate_box is None:
         return blurred
-    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.5)
+    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=1.0)
     if w <= 0 or h <= 0:
         return blurred
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
@@ -559,9 +560,12 @@ def process_video(
         ret, frame = cap.read()
         if not ret:
             break
-        plate        = detect_plate_near_curb(frame, curb_box)
+        plate         = detect_plate_near_curb(frame, curb_box)
         tracked_plate = tracker.update(plate)
-        output = _blur_everything_except_plate(frame, tracked_plate, kernel)
+        # If tracker lost the plate, fall back to the pre-scanned best box
+        # so the plate region is never accidentally blurred
+        effective_plate = tracked_plate if tracked_plate is not None else global_best
+        output = _blur_everything_except_plate(frame, effective_plate, kernel)
         writer.write(output)
         if frame_index == preview_index:
             preview_frame = output.copy()
