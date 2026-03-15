@@ -220,18 +220,55 @@ def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.7
 
 
 def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
-    """Keep the plate sharp and blur everything else."""
-    if plate_box is None:
-        return frame.copy()
-
+    """Blur the entire frame, then restore the plate region unblurred.
+    When no plate box is available, the entire frame stays blurred.
+    """
     blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
+
+    if plate_box is None:
+        return blurred
+
     x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.75)
 
     if w <= 0 or h <= 0:
-        return frame.copy()
+        return blurred
 
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
     return blurred
+
+
+def _find_best_plate_box(cap: cv2.VideoCapture, sample_count: int = 30) -> Optional[BBox]:
+    """Pre-scan sampled frames to find the single best plate bounding box.
+    Resets the capture position to 0 when done.
+    """
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    if total_frames <= 0:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        return None
+
+    step = max(1, total_frames // sample_count)
+    best_box: Optional[BBox] = None
+    best_score = 0.0
+
+    for i in range(0, total_frames, step):
+        cap.set(cv2.CAP_PROP_POS_FRAMES, i)
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        box = detect_plate_box(frame)
+        if box is None:
+            continue
+        x, y, w, h = box
+        h_frame = frame.shape[0]
+        area = w * h
+        lower_half_bonus = 1.0 + (y / max(1, h_frame))
+        score = area * lower_half_bonus
+        if score > best_score:
+            best_score = score
+            best_box = box
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    return best_box
 
 
 def extract_license_plate(
@@ -325,7 +362,14 @@ def process_video(
         (width, height),
     )
 
+    # Pre-scan to find the best plate location; seed tracker so the plate
+    # region is preserved even on frames where per-frame detection fails.
+    global_best_plate = _find_best_plate_box(cap, sample_count=30)
+
     tracker = PlateTracker()
+    if global_best_plate is not None:
+        tracker.last_box = global_best_plate
+
     frame_index = 0
     preview_frame = None
     preview_index = int(total_frames * extract_frame_at)
