@@ -526,10 +526,11 @@ def process_video(
         Path(input_path).unlink(missing_ok=True)
         raise RuntimeError("Could not read video dimensions")
 
-    temp_out = tempfile.mktemp(suffix=".mp4")
+    # Use AVI+XVID for the intermediate file: more reliable than mp4v on Linux
+    temp_out = tempfile.mktemp(suffix=".avi")
     writer = cv2.VideoWriter(
         temp_out,
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"XVID"),
         fps,
         (width, height),
     )
@@ -577,23 +578,25 @@ def process_video(
     ffmpeg    = get_ffmpeg()
     final_out = tempfile.mktemp(suffix=".mp4")
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
                 ffmpeg, "-y",
                 "-i", temp_out,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-crf", "28",
-                "-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+                "-vf", "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 "-threads", "2",
                 "-an",
                 final_out,
             ],
-            check=True,
             capture_output=True,
         )
+        if result.returncode != 0:
+            err_msg = result.stderr.decode(errors="replace")[-800:]
+            raise RuntimeError(f"ffmpeg failed (code {result.returncode}): {err_msg}")
         processed_video = Path(final_out).read_bytes()
     finally:
         Path(temp_out).unlink(missing_ok=True)
