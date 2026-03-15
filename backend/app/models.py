@@ -90,6 +90,11 @@ class Ticket(Base):
     location = Column(String(255), nullable=True)
     violation_zone = Column(String(20), nullable=True)
     description = Column(Text, nullable=True)
+    violation_rule_id = Column(String(30), nullable=True)       # e.g. IL-STATIC-001
+    violation_decision = Column(String(30), nullable=True)      # confirmed_violation | suspected_violation | ...
+    violation_confidence = Column(Float, nullable=True)         # 0.0 – 1.0
+    violation_description_he = Column(Text, nullable=True)
+    violation_description_en = Column(Text, nullable=True)
     admin_notes = Column(Text, nullable=True)
     fine_amount = Column(Integer, nullable=True)
     status = Column(String(20), default=TicketStatus.PENDING_REVIEW.value)

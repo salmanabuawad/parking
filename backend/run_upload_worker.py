@@ -240,6 +240,32 @@ def process_one_job() -> bool:
 
         ticket = ticket_repo.create(**ticket_kw)
 
+        # Run violation analysis on the original (unblurred) video
+        try:
+            from app.violation.services.violation_analyzer import ViolationAnalyzer
+            analyzer = ViolationAnalyzer()
+            v_result = analyzer.analyze(video_bytes, violation_zone=job.violation_zone)
+            v_update = {
+                "violation_rule_id":        v_result.rule_id or None,
+                "violation_decision":       v_result.decision_state,
+                "violation_confidence":     v_result.confidence,
+                "violation_description_he": v_result.description_he or None,
+                "violation_description_en": v_result.description_en or None,
+            }
+            try:
+                ticket_repo.update(ticket.id, **v_update)
+            except Exception:
+                for k, v in v_update.items():
+                    setattr(ticket, k, v)
+                db.commit()
+            print(
+                f"[Job {job.id}] Violation: rule={v_result.rule_id} "
+                f"state={v_result.decision_state} conf={v_result.confidence:.2f}",
+                flush=True,
+            )
+        except Exception as va_err:
+            print(f"[Job {job.id}] Violation analysis failed (non-fatal): {va_err}", flush=True)
+
         # Extract 5 evenly-spaced screenshots from the blurred video and save them
         try:
             frames = extract_frames(blurred_bytes, count=5)
