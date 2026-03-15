@@ -290,17 +290,43 @@ def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.5
 
 def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
     """Blur the entire frame; restore the plate region unblurred.
-    When no plate box is found, the entire frame stays blurred.
+    When no plate box is found, return the original frame unblurred so the
+    relevant plate is never accidentally hidden.
     Uses ratio=1.0 expansion to ensure the full plate is always clear.
     """
-    blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
     if plate_box is None:
-        return blurred
+        # Detection failed — show original so the relevant plate stays visible
+        return frame
+    blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
     x, y, w, h = _expand_box(plate_box, frame.shape, ratio=1.0)
     if w <= 0 or h <= 0:
-        return blurred
+        return frame
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
     return blurred
+
+
+def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int = 80) -> np.ndarray:
+    """Crop the plate region and paste a magnified version in the top-left corner."""
+    px, py, pw, ph = plate_box
+    if pw <= 0 or ph <= 0:
+        return frame
+    crop = frame[py:py + ph, px:px + pw]
+    if crop.size == 0:
+        return frame
+    scale = target_h / ph
+    new_w = max(1, int(pw * scale))
+    zoomed = cv2.resize(crop, (new_w, target_h), interpolation=cv2.INTER_CUBIC)
+    # Add a thin white border
+    border = 2
+    fh, fw = frame.shape[:2]
+    x0, y0 = 10, 10
+    x1, y1 = x0 + new_w + border * 2, y0 + target_h + border * 2
+    if x1 > fw or y1 > fh:
+        return frame
+    out = frame.copy()
+    out[y0:y1, x0:x1] = (255, 255, 255)
+    out[y0 + border:y1 - border, x0 + border:x1 - border] = zoomed
+    return out
 
 
 def _find_best_plate_box(
@@ -574,10 +600,15 @@ def process_video(
             break
         plate         = detect_plate_near_curb(frame, curb_box)
         tracked_plate = tracker.update(plate)
-        # If tracker lost the plate, fall back to the pre-scanned best box
-        # so the plate region is never accidentally blurred
+        # If tracker lost the plate, fall back to the pre-scanned best box;
+        # if that's also missing, try a generic full-frame plate search so the
+        # relevant plate is never accidentally blurred.
         effective_plate = tracked_plate if tracked_plate is not None else global_best
+        if effective_plate is None:
+            effective_plate = detect_plate_box(frame)
         output = _blur_everything_except_plate(frame, effective_plate, kernel)
+        if effective_plate is not None:
+            output = _overlay_plate_magnified(output, effective_plate)
         writer.write(output)
         if frame_index == preview_index:
             preview_frame = output.copy()
