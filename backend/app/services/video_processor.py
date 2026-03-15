@@ -527,14 +527,26 @@ def process_video(
         Path(input_path).unlink(missing_ok=True)
         raise RuntimeError("Could not read video dimensions")
 
-    # Use AVI+XVID for the intermediate file: more reliable than mp4v on Linux
-    temp_out = tempfile.mktemp(suffix=".avi")
+    # Use MP4+mp4v for the intermediate file
+    temp_out = tempfile.mktemp(suffix=".mp4")
     writer = cv2.VideoWriter(
         temp_out,
-        cv2.VideoWriter_fourcc(*"XVID"),
+        cv2.VideoWriter_fourcc(*"mp4v"),
         fps,
         (width, height),
     )
+    if not writer.isOpened():
+        # fallback: try AVI+XVID
+        temp_out = tempfile.mktemp(suffix=".avi")
+        writer = cv2.VideoWriter(
+            temp_out,
+            cv2.VideoWriter_fourcc(*"XVID"),
+            fps,
+            (width, height),
+        )
+    if not writer.isOpened():
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError("cv2.VideoWriter failed to open with mp4v and XVID codecs")
 
     # Step 1: find the red/white curb in the first readable frames.
     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -578,6 +590,12 @@ def process_video(
         Path(temp_out).unlink(missing_ok=True)
         Path(input_path).unlink(missing_ok=True)
         raise RuntimeError("No frames decoded; refusing unsafe fallback")
+
+    temp_size = Path(temp_out).stat().st_size if Path(temp_out).exists() else 0
+    if temp_size < 1024:
+        Path(temp_out).unlink(missing_ok=True)
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError(f"Intermediate video file too small ({temp_size} bytes) — writer may have failed silently")
 
     ffmpeg    = get_ffmpeg()
     final_out = tempfile.mktemp(suffix=".mp4")
