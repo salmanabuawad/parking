@@ -9,10 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "ag-grid-community": "^35.1.0",
+    "ag-grid-react": "^35.1.0",
+    "axios": "^1.6.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.21.1",
-    "axios": "^1.6.2"
+    "react-router-dom": "^6.21.1"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",
