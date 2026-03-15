@@ -10,11 +10,19 @@ export function getApiBase(): string {
 function buildUrl(path: string): string {
   const left = API_BASE.replace(/\/$/, "");
   const right = path.startsWith("/") ? path : `/${path}`;
-  return `${left}${right}`;
+  return `${left}/api${right}`;
+}
+
+function authHeader(): Record<string, string> {
+  const token = localStorage.getItem("parking_token");
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 async function fetchBlob(path: string): Promise<Blob> {
-  const res = await fetch(buildUrl(path), { credentials: "include" });
+  const res = await fetch(buildUrl(path), {
+    credentials: "include",
+    headers: authHeader(),
+  });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
@@ -24,7 +32,7 @@ async function fetchBlob(path: string): Promise<Blob> {
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   const res = await fetch(buildUrl(path), {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: { "Content-Type": "application/json", ...authHeader(), ...(init?.headers || {}) },
     ...init,
   });
   if (!res.ok) {
@@ -47,8 +55,8 @@ const api = {
   ): Promise<{ data: T }> {
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
     const headers: Record<string, string> = isFormData
-      ? {}
-      : { "Content-Type": "application/json", ...(options?.headers || {}) };
+      ? { ...authHeader() }
+      : { "Content-Type": "application/json", ...authHeader(), ...(options?.headers || {}) };
 
     const res = await fetch(buildUrl(path), {
       method: "POST",
@@ -136,9 +144,9 @@ export const uploadApi = {
     return fetchJson(`/upload/jobs?limit=${limit}`).then((data) => ({ data }));
   },
   resetStuckJobs(): Promise<{ data: any }> {
-    return fetchJson("/upload/reset-stuck", { method: "POST" }).then((data) => ({ data }));
+    return fetchJson("/upload/reset-stuck-jobs", { method: "POST" }).then((data) => ({ data }));
   },
   rerunJob(jobId: number): Promise<{ data: any }> {
-    return fetchJson(`/upload/jobs/${jobId}/rerun`, { method: "POST" }).then((data) => ({ data }));
+    return fetchJson(`/upload/job/${jobId}/rerun`, { method: "POST" }).then((data) => ({ data }));
   },
 };
