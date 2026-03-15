@@ -341,13 +341,13 @@ def list_screenshots(
 
     from sqlalchemy import text as _text
     rows = db.execute(
-        _text("SELECT id, storage_path, frame_time_seconds, frame_time_sec, created_at FROM ticket_screenshots WHERE ticket_id = :tid ORDER BY id"),
+        _text("SELECT id, storage_path, frame_time_sec, frame_timestamp_ms, created_at FROM ticket_screenshots WHERE ticket_id = :tid ORDER BY id"),
         {"tid": ticket_id},
     ).fetchall()
 
     result = []
     for r in rows:
-        frame_sec = r[2] if r[2] is not None else r[3]
+        frame_sec = r[2] if r[2] is not None else (r[3] / 1000.0 if r[3] is not None else None)
         result.append({
             "id": r[0],
             "storage_path": r[1],

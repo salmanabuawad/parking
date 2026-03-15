@@ -291,11 +291,12 @@ def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.5
 def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
     """Blur the entire frame; restore the plate region unblurred.
     When no plate box is found, the entire frame stays blurred.
+    Uses ratio=1.0 expansion to ensure the full plate is always clear.
     """
     blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
     if plate_box is None:
         return blurred
-    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.5)
+    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=1.0)
     if w <= 0 or h <= 0:
         return blurred
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
@@ -526,10 +527,11 @@ def process_video(
         Path(input_path).unlink(missing_ok=True)
         raise RuntimeError("Could not read video dimensions")
 
-    temp_out = tempfile.mktemp(suffix=".mp4")
+    # Use AVI+XVID for the intermediate file: more reliable than mp4v on Linux
+    temp_out = tempfile.mktemp(suffix=".avi")
     writer = cv2.VideoWriter(
         temp_out,
-        cv2.VideoWriter_fourcc(*"mp4v"),
+        cv2.VideoWriter_fourcc(*"XVID"),
         fps,
         (width, height),
     )
@@ -558,9 +560,12 @@ def process_video(
         ret, frame = cap.read()
         if not ret:
             break
-        plate        = detect_plate_near_curb(frame, curb_box)
+        plate         = detect_plate_near_curb(frame, curb_box)
         tracked_plate = tracker.update(plate)
-        output = _blur_everything_except_plate(frame, tracked_plate, kernel)
+        # If tracker lost the plate, fall back to the pre-scanned best box
+        # so the plate region is never accidentally blurred
+        effective_plate = tracked_plate if tracked_plate is not None else global_best
+        output = _blur_everything_except_plate(frame, effective_plate, kernel)
         writer.write(output)
         if frame_index == preview_index:
             preview_frame = output.copy()
@@ -577,23 +582,25 @@ def process_video(
     ffmpeg    = get_ffmpeg()
     final_out = tempfile.mktemp(suffix=".mp4")
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
                 ffmpeg, "-y",
                 "-i", temp_out,
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-crf", "28",
-                "-vf", "scale='min(1280,iw)':'min(720,ih)':force_original_aspect_ratio=decrease",
+                "-vf", "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 "-threads", "2",
                 "-an",
                 final_out,
             ],
-            check=True,
             capture_output=True,
         )
+        if result.returncode != 0:
+            err_msg = result.stderr.decode(errors="replace")[-800:]
+            raise RuntimeError(f"ffmpeg failed (code {result.returncode}): {err_msg}")
         processed_video = Path(final_out).read_bytes()
     finally:
         Path(temp_out).unlink(missing_ok=True)

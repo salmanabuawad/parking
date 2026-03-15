@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ticketsApi } from "../api";
 
@@ -34,8 +34,8 @@ const PLATE_UNKNOWN = "11111";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: "#888", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ fontSize: 10, color: "#888", marginBottom: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
       <div>{children}</div>
     </div>
   );
@@ -67,6 +67,10 @@ export default function TicketReview() {
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [captureMsg, setCaptureMsg] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Admin edit state
   const [editMode, setEditMode] = useState(false);
@@ -166,6 +170,29 @@ export default function TicketReview() {
     }
   }
 
+  async function captureScreenshot() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    setCapturing(true);
+    setCaptureMsg(null);
+    try {
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext("2d")?.drawImage(video, 0, 0);
+      const frameTime = video.currentTime;
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+      await ticketsApi.saveScreenshot(ticketId, dataUrl, frameTime);
+      const updated = await ticketsApi.listScreenshots(ticketId);
+      setScreenshots(updated);
+      setCaptureMsg(`✓ נשמר בשניה ${frameTime.toFixed(1)}`);
+    } catch (err: any) {
+      setCaptureMsg(`✗ ${err?.message || "שגיאה"}`);
+    } finally {
+      setCapturing(false);
+    }
+  }
+
   const plateOk = ticket && ticket.license_plate && ticket.license_plate !== PLATE_UNKNOWN && ticket.license_plate !== "";
 
   return (
@@ -177,13 +204,6 @@ export default function TicketReview() {
           <Link to="/queue" style={{ fontSize: 13, color: "#2563eb" }}>← תור עיבוד</Link>
           <Link to="/tickets" style={{ fontSize: 13, color: "#2563eb" }}>← כל הדוחות</Link>
         </div>
-        <button
-          onClick={handleReprocess}
-          disabled={state === "loading"}
-          style={{ padding: "8px 16px", cursor: "pointer", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb" }}
-        >
-          {state === "loading" ? "טוען…" : "עבד מחדש"}
-        </button>
       </div>
 
       {state === "error" && (
@@ -195,11 +215,15 @@ export default function TicketReview() {
       {/* Side-by-side: video + details */}
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
 
+        {/* Left column: violation analysis + video */}
+        <div style={{ flex: "1 1 340px", minWidth: 280, display: "flex", flexDirection: "column", gap: 16 }}>
+
         {/* Video panel */}
-        <div style={{ flex: "1 1 340px", minWidth: 280 }}>
+        <div>
           <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", background: "#000" }}>
             {videoUrl ? (
               <video
+                ref={videoRef}
                 key={videoUrl}
                 src={videoUrl}
                 controls
@@ -211,12 +235,86 @@ export default function TicketReview() {
                 {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
               </div>
             )}
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+          {videoUrl && (
+            <div style={{ padding: "10px 12px", background: "#0f172a", display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={captureScreenshot}
+                disabled={capturing || state !== "ready"}
+                style={{
+                  padding: "7px 16px",
+                  background: capturing ? "#475569" : "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: capturing ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                }}
+              >
+                {capturing ? "שומר…" : "📸 צלם תמונה"}
+              </button>
+              {captureMsg && (
+                <span style={{ fontSize: "0.85rem", color: captureMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>
+                  {captureMsg}
+                </span>
+              )}
+            </div>
+          )}
           </div>
         </div>
 
-        {/* Details panel */}
+        {/* Screenshot gallery — under video */}
+        {(screenshots.length > 0 || videoUrl) && (
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>
+              צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
+            </h3>
+            {screenshots.length === 0 ? (
+              <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  {screenshots.map((s) => (
+                    <div
+                      key={s.id}
+                      onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                      style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: expanded === s.id ? "2px solid #2563eb" : "2px solid transparent", background: "#f1f5f9" }}
+                    >
+                      <img
+                        src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
+                        alt={`Screenshot ${s.id}`}
+                        style={{ width: 140, height: 80, objectFit: "cover", display: "block" }}
+                        loading="lazy"
+                      />
+                      <div style={{ fontSize: 11, textAlign: "center", padding: "3px 0", color: "#6b7280" }}>
+                        {s.frame_time_seconds != null ? `⏱ ${s.frame_time_seconds.toFixed(1)}s` : "—"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {expanded !== null && (
+                  <div style={{ marginTop: 12, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                    <img
+                      src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
+                      alt="Expanded screenshot"
+                      style={{ width: "100%", display: "block" }}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        </div>{/* end left column */}
+
+        {/* Right section: violation analysis + details side by side */}
+        <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "row", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+
         {ticket && (
-          <div style={{ flex: "1 1 320px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px" }}>
 
             {/* Plate */}
             <Field label="מספר לוחית">
@@ -228,7 +326,7 @@ export default function TicketReview() {
                 />
               ) : plateOk ? (
                 <div>
-                  <span style={{ fontWeight: 700, fontSize: 24, letterSpacing: 3, fontFamily: "monospace" }}>
+                  <span style={{ fontWeight: 700, fontSize: 20, letterSpacing: 3, fontFamily: "monospace" }}>
                     {ticket.license_plate}
                   </span>
                   {ticket.plate_detection_reason && (
@@ -247,7 +345,7 @@ export default function TicketReview() {
               )}
             </Field>
 
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
 
             {/* Status */}
             <Field label="סטטוס">
@@ -287,7 +385,7 @@ export default function TicketReview() {
               )}
             </Field>
 
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
 
             {/* Location */}
             {ticket.location && (
@@ -318,7 +416,7 @@ export default function TicketReview() {
             )}
 
             {/* Admin notes */}
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
             <Field label="הערות מנהל">
               {editMode ? (
                 <textarea
@@ -335,7 +433,7 @@ export default function TicketReview() {
             </Field>
 
             {/* Admin action buttons */}
-            <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 16, paddingTop: 14 }}>
+            <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 8, paddingTop: 8 }}>
               {editMode ? (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
@@ -385,94 +483,57 @@ export default function TicketReview() {
             </div>
           </div>
         )}
-      </div>
 
-      {/* Violation analysis panel */}
-      {ticket && ticket.violation_decision && (
-        <div style={{ marginTop: 24, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
-          <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
-          {(() => {
-            const dec = ticket.violation_decision!;
-            const conf = ticket.violation_confidence ?? 0;
-            const color = dec === "confirmed_violation" ? "#dc2626"
-              : dec === "suspected_violation" ? "#d97706"
-              : dec === "no_violation" ? "#16a34a"
-              : "#6b7280";
-            const labelHe = dec === "confirmed_violation" ? "הפרה מאושרת"
-              : dec === "suspected_violation" ? "הפרה חשודה"
-              : dec === "no_violation" ? "ללא הפרה"
-              : "עדויות לא מספיקות";
-            return (
-              <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                  <span style={{ fontWeight: 700, fontSize: 15, color, background: color + "18", padding: "3px 12px", borderRadius: 12 }}>
-                    {labelHe}
-                  </span>
-                  {ticket.violation_rule_id && (
-                    <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
+        {/* Violation analysis */}
+        {ticket && ticket.violation_decision && (
+          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+            <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
+            {(() => {
+              const dec = ticket.violation_decision!;
+              const conf = ticket.violation_confidence ?? 0;
+              const color = dec === "confirmed_violation" ? "#dc2626"
+                : dec === "suspected_violation" ? "#d97706"
+                : dec === "no_violation" ? "#16a34a"
+                : "#6b7280";
+              const labelHe = dec === "confirmed_violation" ? "הפרה מאושרת"
+                : dec === "suspected_violation" ? "הפרה חשודה"
+                : dec === "no_violation" ? "ללא הפרה"
+                : "עדויות לא מספיקות";
+              return (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color, background: color + "18", padding: "3px 12px", borderRadius: 12 }}>
+                      {labelHe}
+                    </span>
+                    {ticket.violation_rule_id && (
+                      <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
+                    )}
+                    <span style={{ fontSize: 12, color: "#6b7280" }}>ביטחון: {Math.round(conf * 100)}%</span>
+                  </div>
+                  <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, marginBottom: 10 }}>
+                    <div style={{ height: "100%", width: `${Math.round(conf * 100)}%`, background: color, borderRadius: 3 }} />
+                  </div>
+                  {ticket.violation_description_he && (
+                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>
+                      {ticket.violation_description_he}
+                    </div>
                   )}
-                  <span style={{ fontSize: 12, color: "#6b7280" }}>ביטחון: {Math.round(conf * 100)}%</span>
-                </div>
-                {/* Confidence bar */}
-                <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, marginBottom: 10, maxWidth: 300 }}>
-                  <div style={{ height: "100%", width: `${Math.round(conf * 100)}%`, background: color, borderRadius: 3 }} />
-                </div>
-                {ticket.violation_description_he && (
-                  <div style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>
-                    {ticket.violation_description_he}
+                  {ticket.violation_description_en && (
+                    <div style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>
+                      {ticket.violation_description_en}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
+                    * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
                   </div>
-                )}
-                {ticket.violation_description_en && (
-                  <div style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>
-                    {ticket.violation_description_en}
-                  </div>
-                )}
-                <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
-                  * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
                 </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
-
-      {/* Screenshot gallery */}
-      {screenshots.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 16, marginBottom: 12 }}>צילומי מסך ({screenshots.length})</h3>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {screenshots.map((s) => (
-              <div
-                key={s.id}
-                onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-                style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: expanded === s.id ? "2px solid #2563eb" : "2px solid transparent", background: "#f1f5f9" }}
-              >
-                <img
-                  src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
-                  alt={`Screenshot ${s.id}`}
-                  style={{ width: 160, height: 90, objectFit: "cover", display: "block" }}
-                  loading="lazy"
-                />
-                {s.frame_time_seconds != null && (
-                  <div style={{ fontSize: 11, textAlign: "center", padding: "3px 0", color: "#6b7280" }}>
-                    {s.frame_time_seconds.toFixed(1)}s
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })()}
           </div>
-          {/* Expanded screenshot */}
-          {expanded !== null && (
-            <div style={{ marginTop: 16, borderRadius: 10, overflow: "hidden", border: "1px solid #e2e8f0", maxWidth: 640 }}>
-              <img
-                src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
-                alt="Expanded screenshot"
-                style={{ width: "100%", display: "block" }}
-              />
-            </div>
-          )}
-        </div>
-      )}
+        )}
+
+        </div>{/* end right column */}
+      </div>
     </div>
   );
 }

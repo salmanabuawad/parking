@@ -64,16 +64,37 @@ function MobileShell() {
 
 const NAV_LINKS = [
   { to: '/', label: he.app.home },
-  { to: '/upload', label: he.app.upload },
   { to: '/tickets', label: he.app.tickets },
-  { to: '/cameras', label: he.app.cameras },
   { to: '/queue', label: he.app.queue },
   { to: '/settings', label: he.app.settings },
+  { to: '/cameras', label: he.app.cameras, disabled: true },
 ]
 
-function NavLink({ to, label }: { to: string; label: string }) {
+function NavLink({ to, label, disabled }: { to: string; label: string; disabled?: boolean }) {
   const loc = useLocation()
-  const active = to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to)
+  const active = !disabled && (to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to))
+
+  if (disabled) {
+    return (
+      <span
+        title="בפיתוח 🚧"
+        style={{
+          padding: '6px 14px',
+          borderRadius: 8,
+          fontWeight: 400,
+          color: '#64748b',
+          fontSize: '1.05rem',
+          cursor: 'not-allowed',
+          userSelect: 'none',
+          opacity: 0.55,
+          position: 'relative',
+        }}
+      >
+        {label}
+      </span>
+    )
+  }
+
   return (
     <Link
       to={to}
@@ -84,7 +105,7 @@ function NavLink({ to, label }: { to: string; label: string }) {
         fontWeight: active ? 700 : 400,
         color: active ? '#fff' : '#cbd5e1',
         background: active ? 'rgba(255,255,255,0.18)' : 'transparent',
-        fontSize: '0.92rem',
+        fontSize: '1.05rem',
         transition: 'all 0.15s',
       }}
     >
@@ -118,8 +139,8 @@ function AppShell() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '0 20px',
-        height: 56,
+        padding: '0 24px',
+        height: 68,
         background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
         position: 'sticky',
@@ -127,25 +148,25 @@ function AppShell() {
         zIndex: 100,
       }}>
         <nav style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: '1rem', marginLeft: 12, letterSpacing: '0.03em' }}>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', marginLeft: 16, letterSpacing: '0.03em' }}>
             {he.app.title}
           </span>
           {NAV_LINKS.map((l) => (
-            <NavLink key={l.to} to={l.to} label={l.label} />
+            <NavLink key={l.to} to={l.to} label={l.label} disabled={l.disabled} />
           ))}
         </nav>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ color: '#bfdbfe', fontSize: '0.88rem' }}>{user?.username}</span>
+          <span style={{ color: '#bfdbfe', fontSize: '1rem' }}>{user?.username}</span>
           <button
             onClick={logout}
             style={{
-              padding: '5px 14px',
+              padding: '6px 16px',
               background: 'rgba(255,255,255,0.15)',
               color: '#fff',
               border: '1px solid rgba(255,255,255,0.3)',
               borderRadius: 8,
               cursor: 'pointer',
-              fontSize: '0.88rem',
+              fontSize: '1rem',
               fontFamily: 'inherit',
             }}
           >
