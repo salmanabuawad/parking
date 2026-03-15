@@ -144,3 +144,11 @@ def get_job_status(
         "ticket_id": job.ticket_id,
         "error_message": job.error_message,
     }
+
+@router.post("/reset-stuck")
+def reset_stuck_alias(
+    stuck_minutes: int = 5,
+    job_repo: UploadJobRepository = Depends(get_upload_job_repo),
+):
+    count = job_repo.reset_stuck_processing(stuck_minutes=stuck_minutes)
+    return {"reset_count": count, "message": f"Reset {count} stuck job(s) to queued"}

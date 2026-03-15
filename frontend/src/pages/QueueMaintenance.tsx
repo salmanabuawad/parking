@@ -107,7 +107,7 @@ export default function QueueMaintenance() {
       fd.append('captured_at', new Date().toISOString())
       fd.append('license_plate', '')
       fd.append('violation_zone', 'red_white')
-      await api.post('/upload/violation', fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      await api.post('/upload/violation', fd)
       await fetchJobs()
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
