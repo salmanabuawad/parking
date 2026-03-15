@@ -10,11 +10,24 @@ export function getApiBase(): string {
 function buildUrl(path: string): string {
   const left = API_BASE.replace(/\/$/, "");
   const right = path.startsWith("/") ? path : `/${path}`;
-  return `${left}${right}`;
+  // Auto-prefix with /api unless already present
+  const apiRight = right.startsWith("/api") ? right : `/api${right}`;
+  return `${left}${apiRight}`;
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = localStorage.getItem("parking_token");
+  return {
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...extra,
+  };
 }
 
 async function fetchBlob(path: string): Promise<Blob> {
-  const res = await fetch(buildUrl(path), { credentials: "include" });
+  const res = await fetch(buildUrl(path), {
+    credentials: "include",
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   }
@@ -22,10 +35,14 @@ async function fetchBlob(path: string): Promise<Blob> {
 }
 
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(buildUrl(path), {
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     ...init,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...authHeaders(init?.headers as Record<string, string>),
+    },
   });
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
@@ -38,7 +55,7 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   return await res.json();
 }
 
-// Default export: axios-style wrapper used by Upload, QueueMaintenance, AuthContext
+// Default export: axios-style wrapper used by AuthContext, Upload, QueueMaintenance
 const api = {
   async post<T = any>(
     path: string,
@@ -46,14 +63,13 @@ const api = {
     options?: { headers?: Record<string, string> }
   ): Promise<{ data: T }> {
     const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
-    const headers: Record<string, string> = isFormData
-      ? {}
-      : { "Content-Type": "application/json", ...(options?.headers || {}) };
-
     const res = await fetch(buildUrl(path), {
       method: "POST",
       credentials: "include",
-      headers,
+      headers: {
+        ...(isFormData ? {} : { "Content-Type": "application/json" }),
+        ...authHeaders(options?.headers),
+      },
       body: isFormData ? (body as FormData) : body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!res.ok) {
@@ -76,19 +92,15 @@ export const ticketsApi = {
     const qs = status ? `?status=${encodeURIComponent(status)}` : "";
     return fetchJson(`/tickets${qs}`).then((data) => ({ data }));
   },
-
   getVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/video`);
   },
-
   getProcessedVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/processed-video`);
   },
-
   getRawVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/raw-video`);
   },
-
   reprocessVideo(ticketId: number | string) {
     return fetchJson(`/tickets/${ticketId}/reprocess-video`, { method: "POST" });
   },
