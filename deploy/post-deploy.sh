@@ -32,9 +32,12 @@ else
   echo "Created database 'parking'."
 fi
 
+# Ensure postgres user password matches .env default
+sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';" 2>/dev/null || true
+
 # Run migrations
 echo "Running migrations..."
-sudo -u "$APP_USER" "$BACKEND_DIR/.venv/bin/python" -m alembic -c "$BACKEND_DIR/alembic.ini" upgrade head
+sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && '$BACKEND_DIR/.venv/bin/python' -m alembic -c '$BACKEND_DIR/alembic.ini' upgrade head"
 echo "Migrations done."
 
 # Start services
