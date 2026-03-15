@@ -292,3 +292,89 @@ def list_tickets(
         }
         for t in all_tickets
     ]
+
+
+@router.patch("/{ticket_id}")
+def update_ticket(
+    ticket_id: int,
+    payload: dict,
+    db=Depends(get_db),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+):
+    """Update ticket status, fine, admin notes, or license plate. Used for approve/reject/edit."""
+    from datetime import datetime, timezone
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    allowed = {"status", "fine_amount", "admin_notes", "license_plate", "description", "violation_zone"}
+    update_kw = {k: v for k, v in payload.items() if k in allowed}
+
+    if "status" in update_kw and update_kw["status"] in ("approved", "rejected"):
+        update_kw["reviewed_at"] = datetime.now(timezone.utc)
+
+    try:
+        ticket_repo.update(ticket_id, **update_kw)
+    except TypeError:
+        for k, v in update_kw.items():
+            setattr(ticket, k, v)
+        db.commit()
+
+    ticket = ticket_repo.get(ticket_id)
+    return _ticket_dict(ticket)
+
+
+@router.get("/{ticket_id}/screenshots")
+def list_screenshots(
+    ticket_id: int,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    db=Depends(get_db),
+):
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    from sqlalchemy import text as _text
+    rows = db.execute(
+        _text("SELECT id, storage_path, frame_time_seconds, frame_time_sec, created_at FROM ticket_screenshots WHERE ticket_id = :tid ORDER BY id"),
+        {"tid": ticket_id},
+    ).fetchall()
+
+    result = []
+    for r in rows:
+        frame_sec = r[2] if r[2] is not None else r[3]
+        result.append({
+            "id": r[0],
+            "storage_path": r[1],
+            "frame_time_seconds": frame_sec,
+            "created_at": r[4].isoformat() if r[4] else None,
+        })
+    return result
+
+
+@router.get("/{ticket_id}/screenshots/{screenshot_id}/image")
+def get_screenshot_image(
+    ticket_id: int,
+    screenshot_id: int,
+    db=Depends(get_db),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+):
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("SELECT storage_path FROM ticket_screenshots WHERE id = :sid AND ticket_id = :tid"),
+        {"sid": screenshot_id, "tid": ticket_id},
+    ).fetchone()
+
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    fp = Path(settings.videos_dir) / str(row[0]).replace("\\", "/")
+    if not fp.exists():
+        raise HTTPException(status_code=404, detail="Screenshot file missing")
+
+    return Response(content=fp.read_bytes(), media_type="image/jpeg",
+                    headers={"Cache-Control": "max-age=86400"})

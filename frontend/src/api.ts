@@ -144,6 +144,18 @@ export const ticketsApi = {
   getDetail(ticketId: number | string): Promise<any> {
     return fetchJson(`/tickets/${ticketId}/detail`);
   },
+  listScreenshots(ticketId: number | string): Promise<any[]> {
+    return fetchJson(`/tickets/${ticketId}/screenshots`);
+  },
+  screenshotImageUrl(ticketId: number | string, screenshotId: number): string {
+    return buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
+  },
+  updateTicket(ticketId: number | string, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 export const camerasApi = {
