@@ -64,9 +64,7 @@ function MobileShell() {
 
 const NAV_LINKS = [
   { to: '/', label: he.app.home },
-  { to: '/upload', label: he.app.upload },
   { to: '/tickets', label: he.app.tickets },
-  { to: '/cameras', label: he.app.cameras },
   { to: '/queue', label: he.app.queue },
   { to: '/settings', label: he.app.settings },
 ]
