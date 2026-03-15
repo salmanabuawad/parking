@@ -589,7 +589,7 @@ def process_video(
                 "-c:v", "libx264",
                 "-preset", "ultrafast",
                 "-crf", "28",
-                "-vf", "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease",
+                "-vf", "scale=trunc(min(1280\\,iw)/2)*2:trunc(min(720\\,ih)/2)*2:force_original_aspect_ratio=decrease",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
                 "-threads", "2",
