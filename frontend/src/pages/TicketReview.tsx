@@ -310,12 +310,12 @@ export default function TicketReview() {
 
         </div>{/* end left column */}
 
-        {/* Right column: violation analysis + details */}
-        <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Right section: violation analysis + details side by side */}
+        <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "row", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
 
-        {/* Violation analysis — top of right column */}
+        {/* Violation analysis */}
         {ticket && ticket.violation_decision && (
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
             <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
             {(() => {
               const dec = ticket.violation_decision!;
@@ -362,7 +362,7 @@ export default function TicketReview() {
         )}
 
         {ticket && (
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
 
             {/* Plate */}
             <Field label="מספר לוחית">
