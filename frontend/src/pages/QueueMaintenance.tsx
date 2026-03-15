@@ -67,7 +67,6 @@ export default function QueueMaintenance() {
   const [jobs, setJobs] = useState<UploadJob[]>([])
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loading, setLoading] = useState(true)
-  const [rerunning, setRerunning] = useState<number | null>(null)
   const [resettingStuck, setResettingStuck] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [quickFilter, setQuickFilter] = useState('')
@@ -108,19 +107,6 @@ export default function QueueMaintenance() {
       alert(ax.response?.data?.detail || ax.message)
     } finally {
       setResettingStuck(false)
-    }
-  }
-
-  const handleRerun = async (jobId: number) => {
-    setRerunning(jobId)
-    try {
-      await uploadApi.rerunJob(jobId)
-      await fetchJobs()
-    } catch (err: unknown) {
-      const ax = err as { response?: { data?: { detail?: string } }; message?: string }
-      alert(ax.response?.data?.detail || ax.message)
-    } finally {
-      setRerunning(null)
     }
   }
 
@@ -173,34 +159,6 @@ export default function QueueMaintenance() {
       headerName: t('failingReason'),
       flex: 2,
       cellRenderer: (p: ICellRendererParams<UploadJob>) => <ErrorCell value={p.value} />,
-    },
-    {
-      headerName: t('rerun'),
-      width: 110,
-      sortable: false,
-      filter: false,
-      cellRenderer: (p: ICellRendererParams<UploadJob>) => {
-        if (!p.data) return null
-        const jid = p.data.job_id
-        return (
-          <button
-            onClick={() => handleRerun(jid)}
-            disabled={rerunning === jid}
-            style={{
-              padding: '4px 12px',
-              background: rerunning === jid ? '#94a3b8' : '#1e40af',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 6,
-              cursor: rerunning === jid ? 'not-allowed' : 'pointer',
-              fontSize: '0.82rem',
-              fontFamily: 'inherit',
-            }}
-          >
-            {rerunning === jid ? t('rerunning') : t('rerun')}
-          </button>
-        )
-      },
     },
   ]
 
