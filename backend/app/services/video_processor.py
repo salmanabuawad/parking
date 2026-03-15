@@ -25,6 +25,15 @@ SMOOTH_ALPHA = 0.70
 HSV_LOWER_YELLOW = (10, 40, 40)
 HSV_UPPER_YELLOW = (50, 255, 255)
 
+# Red curb detection (HSV hue wraps: 0-10 and 160-180)
+HSV_RED_LO1 = (0,   80,  80)
+HSV_RED_HI1 = (10,  255, 255)
+HSV_RED_LO2 = (160, 80,  80)
+HSV_RED_HI2 = (180, 255, 255)
+# White curb detection
+HSV_WHITE_LO = (0,  0,   180)
+HSV_WHITE_HI = (180, 50, 255)
+
 BBox = Tuple[int, int, int, int]
 
 
@@ -207,6 +216,72 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     return best
 
 
+def detect_redwhite_curb(frame: np.ndarray) -> Optional[BBox]:
+    """Detect the red-and-white striped no-parking curb marking.
+
+    Returns the bounding box of the curb region, or None if not found.
+    """
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    red1 = cv2.inRange(hsv, np.array(HSV_RED_LO1, dtype=np.uint8), np.array(HSV_RED_HI1, dtype=np.uint8))
+    red2 = cv2.inRange(hsv, np.array(HSV_RED_LO2, dtype=np.uint8), np.array(HSV_RED_HI2, dtype=np.uint8))
+    red_mask = cv2.bitwise_or(red1, red2)
+    white_mask = cv2.inRange(hsv, np.array(HSV_WHITE_LO, dtype=np.uint8), np.array(HSV_WHITE_HI, dtype=np.uint8))
+
+    # Dilate both so overlapping areas indicate a mixed red/white curb stripe
+    h_frame = frame.shape[0]
+    dil_k = cv2.getStructuringElement(cv2.MORPH_RECT, (max(3, frame.shape[1] // 40), max(3, h_frame // 30)))
+    red_dil   = cv2.dilate(red_mask, dil_k)
+    white_dil = cv2.dilate(white_mask, dil_k)
+
+    curb_mask = cv2.bitwise_and(red_dil, white_dil)
+    close_k = cv2.getStructuringElement(cv2.MORPH_RECT, (max(5, frame.shape[1] // 20), max(5, h_frame // 20)))
+    curb_mask = cv2.morphologyEx(curb_mask, cv2.MORPH_CLOSE, close_k)
+
+    contours, _ = cv2.findContours(curb_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    best: Optional[BBox] = None
+    best_score = 0.0
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        if w < frame.shape[1] // 10:   # too narrow to be a curb
+            continue
+        ratio = w / float(h) if h > 0 else 0.0
+        if ratio < 1.5:                # must be wider than tall
+            continue
+        score = float(w * h)
+        if score > best_score:
+            best_score = score
+            best = (x, y, w, h)
+
+    return best
+
+
+def detect_plate_near_curb(frame: np.ndarray, curb_box: Optional[BBox]) -> Optional[BBox]:
+    """Find the yellow license plate on the car parked next to the curb.
+
+    Searches in the region above/around the curb first; falls back to
+    full-frame yellow-plate search when nothing is found there.
+    """
+    h_frame, w_frame = frame.shape[:2]
+
+    if curb_box is not None:
+        cx, cy, cw, ch = curb_box
+        # Car body sits above the curb — search up to 70 % of frame height above it
+        sy1 = max(0, cy - int(h_frame * 0.70))
+        sy2 = min(h_frame, cy + ch + int(h_frame * 0.05))
+        sx1 = max(0, cx - int(cw * 0.20))
+        sx2 = min(w_frame, cx + cw + int(cw * 0.20))
+        region = frame[sy1:sy2, sx1:sx2]
+        box = detect_plate_box(region)
+        if box is not None:
+            bx, by, bw, bh = box
+            return (sx1 + bx, sy1 + by, bw, bh)
+
+    # Fallback: full-frame search
+    return detect_plate_box(frame)
+
+
 def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.75) -> BBox:
     x, y, w, h = box
     dw = int(w * ratio)
@@ -237,8 +312,15 @@ def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], 
     return blurred
 
 
-def _find_best_plate_box(cap: cv2.VideoCapture, sample_count: int = 30) -> Optional[BBox]:
+def _find_best_plate_box(
+    cap: cv2.VideoCapture,
+    sample_count: int = 30,
+    curb_box: Optional[BBox] = None,
+) -> Optional[BBox]:
     """Pre-scan sampled frames to find the single best plate bounding box.
+
+    Uses curb-aware detection when curb_box is provided so the search is
+    focused on the car parked next to the red/white curb.
     Resets the capture position to 0 when done.
     """
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
@@ -255,7 +337,7 @@ def _find_best_plate_box(cap: cv2.VideoCapture, sample_count: int = 30) -> Optio
         ret, frame = cap.read()
         if not ret:
             continue
-        box = detect_plate_box(frame)
+        box = detect_plate_near_curb(frame, curb_box)
         if box is None:
             continue
         x, y, w, h = box
@@ -362,9 +444,18 @@ def process_video(
         (width, height),
     )
 
-    # Pre-scan to find the best plate location; seed tracker so the plate
-    # region is preserved even on frames where per-frame detection fails.
-    global_best_plate = _find_best_plate_box(cap, sample_count=30)
+    # Step 1: Detect the red/white curb in the first readable frame.
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    curb_box: Optional[BBox] = None
+    for _probe in range(min(10, total_frames)):
+        ret_p, probe_frame = cap.read()
+        if ret_p:
+            curb_box = detect_redwhite_curb(probe_frame)
+            if curb_box is not None:
+                break
+
+    # Step 2: Pre-scan frames to find the best plate near the curb.
+    global_best_plate = _find_best_plate_box(cap, sample_count=30, curb_box=curb_box)
 
     tracker = PlateTracker()
     if global_best_plate is not None:
@@ -379,7 +470,7 @@ def process_video(
         if not ret:
             break
 
-        plate = detect_plate_box(frame)
+        plate = detect_plate_near_curb(frame, curb_box)
         tracked_plate = tracker.update(plate)
 
         output = _blur_everything_except_plate(frame, tracked_plate, kernel)
