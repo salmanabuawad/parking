@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 
+from app.auth import get_current_user
 from app.database import get_db
 from app.dependencies import get_camera_video_repo, get_ticket_repo, get_upload_job_repo
 from app.models import AppConfig
@@ -226,3 +227,27 @@ def reprocess_ticket_video(
         ticket_repo.update(ticket_id, video_path=processed_rel_path)
 
     return {"ok": True, "message": "Video reprocessed with blur", "video_path": processed_rel_path}
+
+@router.get("")
+def list_tickets(
+    status: Optional[str] = None,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
+):
+    all_tickets = ticket_repo.list_all()
+    if status:
+        all_tickets = [t for t in all_tickets if t.status == status]
+    return [
+        {
+            "id": t.id,
+            "license_plate": t.license_plate,
+            "status": t.status,
+            "location": t.location,
+            "violation_zone": t.violation_zone,
+            "captured_at": t.captured_at.isoformat() if t.captured_at else None,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "description": t.description,
+            "fine_amount": t.fine_amount,
+        }
+        for t in all_tickets
+    ]
