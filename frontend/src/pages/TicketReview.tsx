@@ -34,8 +34,8 @@ const PLATE_UNKNOWN = "11111";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: "#888", marginBottom: 3, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+    <div style={{ marginBottom: 6 }}>
+      <div style={{ fontSize: 10, color: "#888", marginBottom: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
       <div>{children}</div>
     </div>
   );
@@ -314,7 +314,7 @@ export default function TicketReview() {
         <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "row", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
 
         {ticket && (
-          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px" }}>
 
             {/* Plate */}
             <Field label="מספר לוחית">
@@ -326,7 +326,7 @@ export default function TicketReview() {
                 />
               ) : plateOk ? (
                 <div>
-                  <span style={{ fontWeight: 700, fontSize: 24, letterSpacing: 3, fontFamily: "monospace" }}>
+                  <span style={{ fontWeight: 700, fontSize: 20, letterSpacing: 3, fontFamily: "monospace" }}>
                     {ticket.license_plate}
                   </span>
                   {ticket.plate_detection_reason && (
@@ -345,7 +345,7 @@ export default function TicketReview() {
               )}
             </Field>
 
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
 
             {/* Status */}
             <Field label="סטטוס">
@@ -385,7 +385,7 @@ export default function TicketReview() {
               )}
             </Field>
 
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
 
             {/* Location */}
             {ticket.location && (
@@ -416,7 +416,7 @@ export default function TicketReview() {
             )}
 
             {/* Admin notes */}
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "12px 0" }} />
+            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
             <Field label="הערות מנהל">
               {editMode ? (
                 <textarea
@@ -433,7 +433,7 @@ export default function TicketReview() {
             </Field>
 
             {/* Admin action buttons */}
-            <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 16, paddingTop: 14 }}>
+            <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 8, paddingTop: 8 }}>
               {editMode ? (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
