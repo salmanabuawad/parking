@@ -187,9 +187,8 @@ def process_one_job() -> bool:
             from app.violation.services.registry import VehicleRegistryService
             registry = VehicleRegistryService()
             if not registry.plate_exists(license_plate):
-                print(f"[Job {job.id}] Plate {license_plate} not in MoT registry, rejecting", flush=True)
-                plate_reason = "Plate not found in Ministry of Transport registry (data.gov.il)"
-                license_plate = "11111"
+                print(f"[Job {job.id}] Plate {license_plate} not found in MoT registry (keeping detected value)", flush=True)
+                plate_reason = f"Detected plate {license_plate} — not found in Ministry of Transport registry (data.gov.il); may be OCR error or unregistered vehicle"
 
         # Store "" for "not identified" in DB (UI shows Hebrew "לא זוהה")
         display_plate = "" if (not license_plate or license_plate == "11111") else license_plate
