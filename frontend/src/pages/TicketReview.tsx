@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ticketsApi } from "../api";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
-type VideoMode = "processed" | "review" | "none";
 
 export default function TicketReview() {
   const ticketId = useMemo(() => {
@@ -11,43 +10,29 @@ export default function TicketReview() {
   }, []);
 
   const [videoUrl, setVideoUrl] = useState<string>("");
-  const [videoMode, setVideoMode] = useState<VideoMode>("none");
   const [state, setState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let revoked: string[] = [];
+    let currentUrl = "";
     let cancelled = false;
 
     async function load() {
       setState("loading");
       setError(null);
 
-      const attempts: Array<{ fn: () => Promise<Blob>; mode: VideoMode }> = [
-        { fn: () => ticketsApi.getProcessedVideo(ticketId), mode: "processed" },
-        { fn: () => ticketsApi.getVideo(ticketId), mode: "review" },
-      ];
-
-      let lastErr: any = null;
-
-      for (const attempt of attempts) {
-        try {
-          const blob = await attempt.fn();
-          if (cancelled) return;
-          const url = URL.createObjectURL(blob);
-          revoked.push(url);
-          setVideoUrl(url);
-          setVideoMode(attempt.mode);
-          setState("ready");
-          return;
-        } catch (err) {
-          lastErr = err;
+      try {
+        const blob = await ticketsApi.getProcessedVideo(ticketId);
+        if (cancelled) return;
+        const url = URL.createObjectURL(blob);
+        currentUrl = url;
+        setVideoUrl(url);
+        setState("ready");
+      } catch (err: any) {
+        if (!cancelled) {
+          setState("error");
+          setError(err?.message || "Failed to load processed video");
         }
-      }
-
-      if (!cancelled) {
-        setState("error");
-        setError(lastErr?.message || "לא ניתן לטעון את הווידאו המעובד");
       }
     }
 
@@ -55,7 +40,7 @@ export default function TicketReview() {
 
     return () => {
       cancelled = true;
-      revoked.forEach((u) => URL.revokeObjectURL(u));
+      if (currentUrl) URL.revokeObjectURL(currentUrl);
     };
   }, [ticketId]);
 
@@ -70,11 +55,10 @@ export default function TicketReview() {
         if (prev) URL.revokeObjectURL(prev);
         return url;
       });
-      setVideoMode("processed");
       setState("ready");
     } catch (err: any) {
       setState("error");
-      setError(err?.message || "עיבוד מחדש נכשל");
+      setError(err?.message || "Reprocessing failed");
     }
   }
 
