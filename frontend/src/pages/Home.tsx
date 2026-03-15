@@ -1,9 +1,14 @@
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { AgGridReact } from 'ag-grid-react'
+import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community'
+import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { uploadApi } from '../api'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
+
+ModuleRegistry.registerModules([AllCommunityModule])
 
 interface UploadJob {
   job_id: number
@@ -19,6 +24,23 @@ const STATUS_STYLE: Record<string, { color: string; bg: string; label: string }>
   processing: { color: '#1e40af', bg: '#dbeafe', label: 'מעובד' },
   completed:  { color: '#065f46', bg: '#d1fae5', label: 'הושלם' },
   failed:     { color: '#991b1b', bg: '#fee2e2', label: 'נכשל' },
+}
+
+function StatusCell({ value }: { value: string }) {
+  const s = STATUS_STYLE[value] ?? { color: '#374151', bg: '#f3f4f6', label: value }
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '3px 10px',
+      borderRadius: 999,
+      background: s.bg,
+      color: s.color,
+      fontWeight: 600,
+      fontSize: '0.82rem',
+    }}>
+      {s.label}
+    </span>
+  )
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
@@ -45,8 +67,9 @@ export default function Home() {
   const [jobs, setJobs] = useState<UploadJob[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [quickFilter, setQuickFilter] = useState('')
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       const { data } = await uploadApi.listJobs()
       setJobs(data)
@@ -56,9 +79,13 @@ export default function Home() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { fetchJobs() }, [])
+  useEffect(() => { fetchJobs() }, [fetchJobs])
+  useEffect(() => {
+    const id = setInterval(fetchJobs, 5000)
+    return () => clearInterval(id)
+  }, [fetchJobs])
 
   const counts = {
     total: jobs.length,
@@ -67,8 +94,64 @@ export default function Home() {
     failed: jobs.filter((j) => j.status === 'failed').length,
   }
 
+  const colDefs: ColDef<UploadJob>[] = [
+    { field: 'job_id', headerName: he.home.job, width: 90, sort: 'desc' },
+    {
+      field: 'status',
+      headerName: he.home.status,
+      width: 140,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) => <StatusCell value={p.value} />,
+    },
+    {
+      field: 'license_plate',
+      headerName: he.home.plate,
+      width: 140,
+      valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : he.home.plateNotIdentified),
+    },
+    {
+      field: 'created_at',
+      headerName: he.home.created,
+      flex: 1,
+      valueFormatter: (p) => p.value ? new Date(p.value).toLocaleString('he-IL') : '—',
+    },
+    {
+      field: 'error_message',
+      headerName: he.home.error,
+      flex: 1.5,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) =>
+        p.value
+          ? <span title={p.value} style={{ color: '#dc2626', fontSize: '0.82rem' }}>
+              {p.value.length > 70 ? `${p.value.slice(0, 70)}…` : p.value}
+            </span>
+          : <span style={{ color: '#94a3b8' }}>—</span>,
+    },
+    {
+      headerName: he.home.openTicket,
+      width: 120,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) =>
+        p.data?.ticket_id ? (
+          <button
+            onClick={() => navigate(`/tickets/${p.data!.ticket_id}`)}
+            style={{
+              padding: '4px 12px',
+              borderRadius: 6,
+              border: '1px solid #e2e8f0',
+              background: '#f8fafc',
+              color: '#1e40af',
+              cursor: 'pointer',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              fontFamily: 'inherit',
+            }}
+          >
+            {he.home.openTicket}
+          </button>
+        ) : null,
+    },
+  ]
+
   return (
-    <div style={{ padding: '1.5rem 2rem', maxWidth: 960, margin: '0 auto' }}>
+    <div style={{ padding: '1.5rem 2rem', maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ marginBottom: '1.25rem' }}>
         <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', color: '#0f172a' }}>{he.home.title}</h1>
         <p style={{ margin: 0, color: '#64748b', fontSize: '0.95rem' }}>{he.home.subtitle}</p>
@@ -82,97 +165,52 @@ export default function Home() {
         <StatCard label="נכשלו" value={counts.failed} color="#dc2626" />
       </div>
 
-      {/* Job list */}
-      <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.85rem 1rem', borderBottom: '1px solid #f1f5f9' }}>
+      {/* Queue grid */}
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>{he.home.queueTitle}</h2>
-          <button
-            onClick={() => { setRefreshing(true); fetchJobs() }}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 8,
-              border: 'none',
-              background: '#1e40af',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '0.85rem',
-              fontFamily: 'inherit',
-            }}
-          >
-            {refreshing ? he.home.refreshing : he.home.refresh}
-          </button>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="search"
+              placeholder="חיפוש..."
+              value={quickFilter}
+              onChange={(e) => setQuickFilter(e.target.value)}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid #d7dfeb', fontSize: '0.88rem', width: 180, direction: 'rtl' }}
+            />
+            <button
+              onClick={() => { setRefreshing(true); fetchJobs() }}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 8,
+                border: 'none',
+                background: '#1e40af',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontFamily: 'inherit',
+              }}
+            >
+              {refreshing ? he.home.refreshing : he.home.refresh}
+            </button>
+          </div>
         </div>
 
         {loading ? (
           <div style={{ padding: '2rem', color: '#64748b', textAlign: 'center' }}>{he.home.loading}</div>
-        ) : jobs.length === 0 ? (
-          <div style={{ padding: '2rem', color: '#94a3b8', textAlign: 'center' }}>{he.home.empty}</div>
         ) : (
-          <div>
-            {jobs.map((job, idx) => {
-              const ss = STATUS_STYLE[job.status] ?? { color: '#374151', bg: '#f3f4f6', label: job.status }
-              return (
-                <div
-                  key={job.job_id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 1rem',
-                    borderBottom: idx < jobs.length - 1 ? '1px solid #f1f5f9' : 'none',
-                    gap: 12,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ color: '#94a3b8', fontSize: '0.85rem', minWidth: 50 }}>#{job.job_id}</span>
-                    <span style={{
-                      padding: '3px 10px',
-                      borderRadius: 999,
-                      background: ss.bg,
-                      color: ss.color,
-                      fontWeight: 600,
-                      fontSize: '0.82rem',
-                    }}>
-                      {ss.label}
-                    </span>
-                    <span style={{ fontSize: '0.9rem', color: '#334155' }}>
-                      {job.license_plate && job.license_plate !== '11111'
-                        ? job.license_plate
-                        : he.home.plateNotIdentified}
-                    </span>
-                    {job.created_at && (
-                      <span style={{ fontSize: '0.82rem', color: '#94a3b8' }}>
-                        {new Date(job.created_at).toLocaleString('he-IL')}
-                      </span>
-                    )}
-                    {job.error_message && (
-                      <span style={{ fontSize: '0.82rem', color: '#dc2626', maxWidth: 260 }} title={job.error_message}>
-                        {job.error_message.length > 60 ? `${job.error_message.slice(0, 60)}…` : job.error_message}
-                      </span>
-                    )}
-                  </div>
-                  {job.ticket_id ? (
-                    <button
-                      onClick={() => navigate(`/tickets/${job.ticket_id}`)}
-                      style={{
-                        padding: '6px 14px',
-                        borderRadius: 8,
-                        border: '1px solid #e2e8f0',
-                        background: '#f8fafc',
-                        color: '#1e40af',
-                        cursor: 'pointer',
-                        fontSize: '0.85rem',
-                        fontWeight: 600,
-                        fontFamily: 'inherit',
-                      }}
-                    >
-                      {he.home.openTicket}
-                    </button>
-                  ) : null}
-                </div>
-              )
-            })}
+          <div style={{ height: 460, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+            <AgGridReact<UploadJob>
+              theme={themeQuartz}
+              rowData={jobs}
+              columnDefs={colDefs}
+              quickFilterText={quickFilter}
+              enableRtl={true}
+              pagination={true}
+              paginationPageSize={15}
+              rowHeight={46}
+              defaultColDef={{ sortable: true, filter: true, resizable: true }}
+              overlayNoRowsTemplate={`<span style="color:#94a3b8">${he.home.empty}</span>`}
+            />
           </div>
         )}
       </div>
