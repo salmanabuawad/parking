@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ticketsApi } from "../api";
 
@@ -67,6 +67,10 @@ export default function TicketReview() {
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [captureMsg, setCaptureMsg] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   // Admin edit state
   const [editMode, setEditMode] = useState(false);
@@ -166,6 +170,29 @@ export default function TicketReview() {
     }
   }
 
+  async function captureScreenshot() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    setCapturing(true);
+    setCaptureMsg(null);
+    try {
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext("2d")?.drawImage(video, 0, 0);
+      const frameTime = video.currentTime;
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+      await ticketsApi.saveScreenshot(ticketId, dataUrl, frameTime);
+      const updated = await ticketsApi.listScreenshots(ticketId);
+      setScreenshots(updated);
+      setCaptureMsg(`✓ נשמר בשניה ${frameTime.toFixed(1)}`);
+    } catch (err: any) {
+      setCaptureMsg(`✗ ${err?.message || "שגיאה"}`);
+    } finally {
+      setCapturing(false);
+    }
+  }
+
   const plateOk = ticket && ticket.license_plate && ticket.license_plate !== PLATE_UNKNOWN && ticket.license_plate !== "";
 
   return (
@@ -200,6 +227,7 @@ export default function TicketReview() {
           <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", background: "#000" }}>
             {videoUrl ? (
               <video
+                ref={videoRef}
                 key={videoUrl}
                 src={videoUrl}
                 controls
@@ -211,6 +239,33 @@ export default function TicketReview() {
                 {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
               </div>
             )}
+          <canvas ref={canvasRef} style={{ display: "none" }} />
+          {videoUrl && (
+            <div style={{ padding: "10px 12px", background: "#0f172a", display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                onClick={captureScreenshot}
+                disabled={capturing || state !== "ready"}
+                style={{
+                  padding: "7px 16px",
+                  background: capturing ? "#475569" : "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: capturing ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                }}
+              >
+                {capturing ? "שומר…" : "📸 צלם תמונה"}
+              </button>
+              {captureMsg && (
+                <span style={{ fontSize: "0.85rem", color: captureMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>
+                  {captureMsg}
+                </span>
+              )}
+            </div>
+          )}
           </div>
         </div>
 
@@ -437,9 +492,14 @@ export default function TicketReview() {
       )}
 
       {/* Screenshot gallery */}
-      {screenshots.length > 0 && (
+      {(screenshots.length > 0 || videoUrl) && (
         <div style={{ marginTop: 24 }}>
-          <h3 style={{ fontSize: 16, marginBottom: 12 }}>צילומי מסך ({screenshots.length})</h3>
+          <h3 style={{ fontSize: 16, marginBottom: 12 }}>
+            צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
+          </h3>
+          {screenshots.length === 0 && (
+            <p style={{ color: "#94a3b8", fontSize: 13 }}>עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
+          )}
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             {screenshots.map((s) => (
               <div
@@ -453,11 +513,9 @@ export default function TicketReview() {
                   style={{ width: 160, height: 90, objectFit: "cover", display: "block" }}
                   loading="lazy"
                 />
-                {s.frame_time_seconds != null && (
-                  <div style={{ fontSize: 11, textAlign: "center", padding: "3px 0", color: "#6b7280" }}>
-                    {s.frame_time_seconds.toFixed(1)}s
-                  </div>
-                )}
+                <div style={{ fontSize: 11, textAlign: "center", padding: "3px 0", color: "#6b7280" }}>
+                  {s.frame_time_seconds != null ? `⏱ ${s.frame_time_seconds.toFixed(1)}s` : "—"}
+                </div>
               </div>
             ))}
           </div>

@@ -150,6 +150,12 @@ export const ticketsApi = {
   screenshotImageUrl(ticketId: number | string, screenshotId: number): string {
     return buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
   },
+  saveScreenshot(ticketId: number | string, imageBase64: string, frameTimeSec: number): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/screenshots`, {
+      method: "POST",
+      body: JSON.stringify({ image_base64: imageBase64, frame_time_sec: frameTimeSec }),
+    });
+  },
   updateTicket(ticketId: number | string, payload: Record<string, unknown>): Promise<any> {
     return fetchJson(`/tickets/${ticketId}`, {
       method: "PATCH",
