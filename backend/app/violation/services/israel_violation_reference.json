@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "source": "Israeli Traffic Ordinance [New Version] 5721-1961, relevant sections",
+  "rules": [
+    {
+      "rule_id": "IL-STATIC-001",
+      "title_he": "עצירה/חניה באזור שפה אדומה-לבנה",
+      "title_en": "Stopping/parking in a red-white curb prohibition zone",
+      "legal_basis_he": "תקנה 72 לתקנות התעבורה — חניה/עצירה אסורה בכל עת",
+      "legal_basis_en": "Traffic Regulations §72 — stopping/parking prohibited at all times",
+      "description_he": "שפה צבועה אדום-לבן מציינת איסור מוחלט לעצור או לחנות בכל עת ובכל תנאי. החל על כלל כלי הרכב ללא יוצא מן הכלל.",
+      "description_en": "Red-white curb markings indicate an absolute prohibition on stopping or parking at any time under any condition. Applies to all vehicles without exception.",
+      "fine_ils": 1000,
+      "detection_cues": ["red_white_curb_stripes", "alternating_red_white_pattern_at_road_edge"]
+    },
+    {
+      "rule_id": "IL-STATIC-002",
+      "title_he": "חניה באזור שפה כחולה-לבנה ללא תשלום או היתר",
+      "title_en": "Parking in a blue-white regulated zone without valid payment or permit",
+      "legal_basis_he": "תקנה 72א — חניה בתשלום, וחוקי העיריות בדבר אזורי חניה מוסדרים",
+      "legal_basis_en": "Traffic Regulations §72a — paid parking; municipal bylaws for regulated parking zones",
+      "description_he": "שפה כחולה-לבנה מסמנת אזור חניה מוסדר הדורש תשלום או תג חניה תקף. חניה ללא תשלום או היתר מהווה עבירה.",
+      "description_en": "Blue-white curb marks a regulated parking zone requiring payment or a valid parking permit. Parking without payment or a valid permit is a violation.",
+      "fine_ils": 250,
+      "detection_cues": ["blue_white_curb_stripes", "pay_and_display_sign", "parking_meter"]
+    },
+    {
+      "rule_id": "IL-STATIC-003",
+      "title_he": "חניה כפולה — חסימת נתיב נסיעה",
+      "title_en": "Double parking — blocking the traffic lane",
+      "legal_basis_he": "תקנה 71(א)(1) — אסור לחנות באופן שיפריע לתנועת כלי רכב אחרים",
+      "legal_basis_en": "Traffic Regulations §71(a)(1) — prohibited to park in a way that obstructs other vehicle movement",
+      "description_he": "חניה כפולה היא חניית רכב לצד רכב חונה אחר, תוך חסימת נתיב הנסיעה. מהווה סכנה לתנועה ועבירה על פקודת התעבורה.",
+      "description_en": "Double parking means parking alongside another parked vehicle, blocking the travel lane. This constitutes a traffic hazard and a violation of Israeli traffic law.",
+      "fine_ils": 500,
+      "detection_cues": ["large_vehicle_blob_in_travel_lane", "vehicle_not_at_curb_edge", "stationary_over_time"]
+    },
+    {
+      "rule_id": "IL-STATIC-005",
+      "title_he": "עצירה/חניה בתחנת אוטובוס",
+      "title_en": "Stopping or parking in a bus stop area",
+      "legal_basis_he": "תקנה 71(ב) — אסור לעצור או לחנות במרחק של פחות מ-12 מטר לפני תחנת אוטובוס ו-6 מטר אחריה",
+      "legal_basis_en": "Traffic Regulations §71(b) — prohibited to stop or park within 12 m before and 6 m after a bus stop",
+      "description_he": "שפה אדומה-צהובה מסמנת תחנת אוטובוס ואזורי גישה של תחבורה ציבורית. עצירה או חניה של כלי רכב פרטי בתחנה אסורה בהחלט.",
+      "description_en": "Red-yellow curb markings indicate a bus stop or public transport zone. Stopping or parking private vehicles in or immediately adjacent to a bus stop is strictly prohibited.",
+      "fine_ils": 750,
+      "detection_cues": ["red_yellow_curb_stripes", "bus_stop_sign", "shelter_or_bench"]
+    },
+    {
+      "rule_id": "IL-STATIC-013",
+      "title_he": "חניה בקרבת מעבר חצייה באופן אסור",
+      "title_en": "Parking too close to a pedestrian crosswalk",
+      "legal_basis_he": "תקנה 71(א)(2) — אסור לחנות במרחק של פחות מ-12 מטר לפני מעבר חציה",
+      "legal_basis_en": "Traffic Regulations §71(a)(2) — prohibited to park within 12 m before a pedestrian crosswalk",
+      "description_he": "חניית רכב בתוך 12 מטר לפני מעבר חציה חוסמת את שדה הראייה של הולכי הרגל ומסכנת חיים.",
+      "description_en": "Parking within 12 m before a pedestrian crossing obstructs pedestrian sightlines and endangers lives.",
+      "fine_ils": 500,
+      "detection_cues": ["white_parallel_stripes_on_road", "pedestrian_crossing_sign"]
+    },
+    {
+      "rule_id": "IL-STATIC-014",
+      "title_he": "עצירה באזור שלט 'אסור לעצור'",
+      "title_en": "Stopping where a no-stopping sign is in effect",
+      "legal_basis_he": "תקנה 36(1) — שלט עגול אדום עם שתי קווים אלכסוניים מקבילים אוסר עצירה ממושכת",
+      "legal_basis_en": "Traffic Regulations §36(1) — red circular sign with two parallel diagonal bars prohibits any stop beyond momentary",
+      "description_he": "שלט עגול אדום עם שני פסים אלכסוניים מקבילים (אסור לעצור). כל עצירה שאינה הכרחית מיידית מהווה עבירה.",
+      "description_en": "Red circular sign with two parallel diagonal lines (no stopping). Any stop that is not immediately necessary constitutes a violation.",
+      "fine_ils": 1000,
+      "detection_cues": ["red_circle_sign", "two_diagonal_bars", "mounted_above_road_level"]
+    },
+    {
+      "rule_id": "IL-STATIC-015",
+      "title_he": "חניה באזור שלט 'אסור לחנות'",
+      "title_en": "Parking where a no-parking sign is in effect",
+      "legal_basis_he": "תקנה 36(2) — שלט עגול אדום עם קו אלכסוני אחד אוסר חניה (עצירה קצרה מותרת)",
+      "legal_basis_en": "Traffic Regulations §36(2) — red circular sign with one diagonal bar prohibits parking (brief stops permitted)",
+      "description_he": "שלט עגול אדום עם פס אלכסוני אחד (אסור לחנות). מותר לעצור לשם עלייה/ירידה, אך חניה ממושכת אסורה.",
+      "description_en": "Red circular sign with one diagonal bar (no parking). Brief stops for boarding/alighting are permitted, but leaving the vehicle is prohibited.",
+      "fine_ils": 750,
+      "detection_cues": ["red_circle_sign", "single_diagonal_bar", "mounted_above_road_level"]
+    }
+  ]
+}
