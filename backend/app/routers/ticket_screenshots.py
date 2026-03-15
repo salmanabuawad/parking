@@ -102,11 +102,9 @@ def save_ticket_screenshot(
         now = datetime.now(timezone.utc)
         frame_ms = int(frame_time_sec * 1000)
 
-        # Raw INSERT matching actual DB schema. NOT NULL: ticket_id, storage_path, frame_time_seconds.
         params = {
             "ticket_id": ticket_id,
             "storage_path": stored_rel,
-            "frame_time_seconds": frame_time_sec,
             "video_timestamp": captured_at,
             "created_by": username,
             "created_at": now,
@@ -122,12 +120,12 @@ def save_ticket_screenshot(
                 text(
                     """
                     INSERT INTO ticket_screenshots (
-                        ticket_id, storage_path, frame_time_seconds,
+                        ticket_id, storage_path,
                         video_timestamp, created_by, created_at,
                         frame_time_sec, captured_at, image_path, frame_timestamp_ms,
                         video_timestamp_text, captured_by, is_blurred_source
                     ) VALUES (
-                        :ticket_id, :storage_path, :frame_time_seconds,
+                        :ticket_id, :storage_path,
                         :video_timestamp, :created_by, :created_at,
                         :frame_time_sec, :captured_at, :image_path, :frame_timestamp_ms,
                         :video_timestamp_text, :captured_by_val, true
@@ -144,15 +142,15 @@ def save_ticket_screenshot(
                 row = db.execute(
                     text(
                         """
-                        INSERT INTO ticket_screenshots (ticket_id, storage_path, frame_time_seconds)
-                        VALUES (:ticket_id, :storage_path, :frame_time_seconds)
+                        INSERT INTO ticket_screenshots (ticket_id, storage_path, frame_time_sec)
+                        VALUES (:ticket_id, :storage_path, :frame_time_sec)
                         RETURNING id, created_at
                         """
                     ),
                     {
                         "ticket_id": ticket_id,
                         "storage_path": stored_rel,
-                        "frame_time_seconds": frame_time_sec,
+                        "frame_time_sec": frame_time_sec,
                     },
                 ).fetchone()
             else:
