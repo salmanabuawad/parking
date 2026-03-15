@@ -197,6 +197,48 @@ export const settingsApi = {
   },
 };
 
+export const violationRulesApi = {
+  list(): Promise<{ data: any[] }> {
+    return fetchJson("/violation-rules").then((data) => ({ data }));
+  },
+  update(ruleId: string, payload: Record<string, unknown>): Promise<{ data: any }> {
+    return fetchJson(`/violation-rules/${encodeURIComponent(ruleId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }).then((data) => ({ data }));
+  },
+};
+
+export const parkingZonesApi = {
+  list(): Promise<{ data: any[] }> {
+    return fetchJson("/parking-zones").then((data) => ({ data }));
+  },
+  create(payload: unknown): Promise<{ data: any }> {
+    return fetchJson("/parking-zones", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((data) => ({ data }));
+  },
+  update(id: number, payload: Record<string, unknown>): Promise<{ data: any }> {
+    return fetchJson(`/parking-zones/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }).then((data) => ({ data }));
+  },
+  delete(id: number): Promise<void> {
+    return fetchJson(`/parking-zones/${id}`, { method: "DELETE" });
+  },
+  getCameraZones(cameraId: number): Promise<{ data: any[] }> {
+    return fetchJson(`/parking-zones/camera/${cameraId}`).then((data) => ({ data }));
+  },
+  setCameraZones(cameraId: number, zoneIds: number[]): Promise<{ data: any[] }> {
+    return fetchJson(`/parking-zones/camera/${cameraId}`, {
+      method: "PUT",
+      body: JSON.stringify(zoneIds),
+    }).then((data) => ({ data }));
+  },
+};
+
 export const uploadApi = {
   listJobs(limit = 50): Promise<{ data: any[] }> {
     return fetchJson(`/upload/jobs?limit=${limit}`).then((data) => ({ data }));

@@ -1,14 +1,16 @@
 #!/bin/bash
-# Deploy Parking Enforcement app on Ubuntu (185.229.226.37)
-# Run as root or with sudo. App directory: set DEPLOY_ROOT or defaults to /opt/parking.
+# Deploy NEW version to /opt/advancedparking (parking.wavelync.com subdomain).
+# The EXISTING deployment at /opt/parking is NOT touched.
+# Run as root: sudo bash deploy/setup-advancedparking.sh
 
 set -e
-DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/parking}"
-APP_USER="${APP_USER:-parking}"
+DEPLOY_ROOT="${DEPLOY_ROOT:-/opt/advancedparking}"
+APP_USER="${APP_USER:-advancedparking}"
+NGINX_SITE="advancedparking"
+BACKEND_PORT=8002   # different port from existing parking (8001)
 
-echo "=== Parking app deploy: $DEPLOY_ROOT ==="
+echo "=== Advanced Parking deploy: $DEPLOY_ROOT (nginx site: $NGINX_SITE, port: $BACKEND_PORT) ==="
 
-# Detect script location: if run from repo, SCRIPT_DIR is deploy/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -d "$SCRIPT_DIR/../backend" ]]; then
   REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -16,30 +18,19 @@ else
   REPO_ROOT="$DEPLOY_ROOT"
 fi
 
-# Install system packages (Ubuntu/Debian)
+# Install system packages (skip if already installed)
 apt-get update
 apt-get install -y \
   python3 python3-venv python3-pip \
-  postgresql postgresql-contrib \
   nginx \
   tesseract-ocr tesseract-ocr-heb \
   ffmpeg \
   curl
 
-# Node 18.x (NodeSource)
+# Node 18+ (NodeSource)
 if ! command -v node &>/dev/null || [[ $(node -v | cut -d. -f1 | tr -d v) -lt 18 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y nodejs
-fi
-
-# Optional: install deploy/authorized_keys for root (passwordless SSH for deployer)
-if [[ -f "$SCRIPT_DIR/authorized_keys" ]]; then
-  mkdir -p /root/.ssh
-  chmod 700 /root/.ssh
-  cat "$SCRIPT_DIR/authorized_keys" >> /root/.ssh/authorized_keys
-  sort -u /root/.ssh/authorized_keys -o /root/.ssh/authorized_keys
-  chmod 600 /root/.ssh/authorized_keys
-  echo "Installed deploy/authorized_keys into /root/.ssh/authorized_keys"
 fi
 
 # App user
@@ -49,16 +40,14 @@ fi
 mkdir -p "$DEPLOY_ROOT"
 chown "$APP_USER:$APP_USER" "$DEPLOY_ROOT"
 
-# Copy app if we have a repo
+# Copy app files (preserve existing .env)
 if [[ -d "$REPO_ROOT/backend" ]] && [[ "$REPO_ROOT" != "$DEPLOY_ROOT" ]]; then
   rsync -a --exclude '.venv' --exclude '__pycache__' --exclude 'node_modules' \
     "$REPO_ROOT/backend/" "$DEPLOY_ROOT/backend/"
   rsync -a --exclude 'node_modules' --exclude 'dist' \
     "$REPO_ROOT/frontend/" "$DEPLOY_ROOT/frontend/"
-  cp -r "$REPO_ROOT/nginx" "$DEPLOY_ROOT/" 2>/dev/null || true
   chown -R "$APP_USER:$APP_USER" "$DEPLOY_ROOT"
 fi
-# Ensure app in DEPLOY_ROOT is owned by APP_USER (e.g. when copied by deploy-to-remote)
 if [[ -d "$DEPLOY_ROOT/backend" ]]; then
   chown -R "$APP_USER:$APP_USER" "$DEPLOY_ROOT"
 fi
@@ -71,25 +60,27 @@ if [[ -d "$BACKEND_DIR" ]]; then
     python3 -m venv .venv
     .venv/bin/pip install --upgrade pip
     .venv/bin/pip install -r requirements.txt
+    # Install cryptography for video signing
+    .venv/bin/pip install cryptography 2>/dev/null || true
   "
   mkdir -p "$BACKEND_DIR/videos"/{raw,processed,frames,screenshots}
   chown -R "$APP_USER:$APP_USER" "$BACKEND_DIR/videos"
 fi
 
-# Frontend build (API base /api for nginx proxy)
+# Frontend build (API base / for nginx proxy on subdomain)
 FRONTEND_DIR="$DEPLOY_ROOT/frontend"
 if [[ -d "$FRONTEND_DIR" ]]; then
   sudo -u "$APP_USER" bash -c "
     cd '$FRONTEND_DIR'
     npm ci 2>/dev/null || npm install
-    VITE_API_BASE_URL=/api npm run build
+    VITE_API_BASE_URL= npm run build
   "
 fi
 
-# Systemd: backend (uvicorn via run_backend.py; for production consider gunicorn + uvicorn workers)
-cat > /etc/systemd/system/parking-backend.service << EOF
+# Systemd: backend on port BACKEND_PORT
+cat > /etc/systemd/system/advancedparking-backend.service << EOF
 [Unit]
-Description=Parking Enforcement API
+Description=Advanced Parking Enforcement API
 After=network.target postgresql.service
 
 [Service]
@@ -98,8 +89,9 @@ User=$APP_USER
 WorkingDirectory=$BACKEND_DIR
 Environment=PATH=$BACKEND_DIR/.venv/bin:/usr/bin
 Environment=PRODUCTION=1
+Environment=PORT=$BACKEND_PORT
 EnvironmentFile=-$BACKEND_DIR/.env
-ExecStart=$BACKEND_DIR/.venv/bin/python run_backend.py
+ExecStart=$BACKEND_DIR/.venv/bin/uvicorn main:app --host 127.0.0.1 --port $BACKEND_PORT --workers 2
 Restart=always
 RestartSec=5
 
@@ -107,11 +99,11 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
 
-# Worker
-cat > /etc/systemd/system/parking-worker.service << EOF
+# Systemd: upload worker
+cat > /etc/systemd/system/advancedparking-worker.service << EOF
 [Unit]
-Description=Parking Upload Worker
-After=network.target postgresql.service parking-backend.service
+Description=Advanced Parking Upload Worker
+After=network.target postgresql.service advancedparking-backend.service
 
 [Service]
 Type=simple
@@ -127,8 +119,7 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Nginx: serve static frontend + proxy /api under parking.wavelync.com subdomain
-# If the Let's Encrypt cert for wavelync.com exists use it; otherwise fall back to snakeoil.
+# Nginx: NEW site for parking.wavelync.com subdomain — does NOT touch existing 'parking' site
 FRONTEND_DIST="$DEPLOY_ROOT/frontend/dist"
 SSL_CERT="/etc/letsencrypt/live/wavelync.com/fullchain.pem"
 SSL_KEY="/etc/letsencrypt/live/wavelync.com/privkey.pem"
@@ -137,25 +128,30 @@ if [[ ! -f "$SSL_CERT" ]]; then
   SSL_KEY="/etc/ssl/private/ssl-cert-snakeoil.key"
 fi
 
-cat > /etc/nginx/sites-available/parking << EOF
-# Redirect HTTP → HTTPS
+cat > /etc/nginx/sites-available/$NGINX_SITE << EOF
+# Redirect HTTP → HTTPS for subdomain
 server {
     listen 80;
-    server_name parking.wavelync.com 185.229.226.37;
+    server_name parking.wavelync.com;
     return 301 https://parking.wavelync.com\$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name parking.wavelync.com 185.229.226.37 localhost;
+    server_name parking.wavelync.com;
     ssl_certificate     $SSL_CERT;
     ssl_certificate_key $SSL_KEY;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
     client_max_body_size 100M;
 
+    location = /index.html {
+        root $FRONTEND_DIST;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+
     location /api/ {
-        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_pass http://127.0.0.1:$BACKEND_PORT/api/;
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
@@ -176,22 +172,17 @@ server {
     location / {
         root $FRONTEND_DIST;
         try_files \$uri \$uri/ /index.html;
-        add_header Cache-Control "no-cache, no-store, must-revalidate" for_location=/index.html;
     }
 }
 EOF
 
-ln -sf /etc/nginx/sites-available/parking /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
-
-# Enable and start nginx
-systemctl enable nginx
+# Enable new site — DO NOT remove the existing 'parking' site
+ln -sf /etc/nginx/sites-available/$NGINX_SITE /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx || systemctl start nginx
 
 echo "=== Setup done. Next steps ==="
-echo "1. Create $BACKEND_DIR/.env (DATABASE_URL, SECRET_KEY, VIDEOS_DIR)"
-echo "2. Point parking.wavelync.com DNS A-record to 185.229.226.37"
-echo "3. (If needed) obtain a wildcard cert: certbot certonly --nginx -d wavelync.com -d '*.wavelync.com'"
-echo "4. Create DB and run migrations (see deploy/README.md)"
-echo "5. systemctl daemon-reload && systemctl enable parking-backend parking-worker && systemctl start parking-backend parking-worker && systemctl reload nginx"
-echo "6. Open https://parking.wavelync.com"
+echo "1. Create $BACKEND_DIR/.env with DATABASE_URL=postgresql://postgres:postgres@localhost:5432/advancedparking"
+echo "2. Run: sudo DEPLOY_ROOT=$DEPLOY_ROOT APP_USER=$APP_USER bash $DEPLOY_ROOT/deploy/post-deploy-advancedparking.sh"
+echo "3. Point parking.wavelync.com DNS A-record to 185.229.226.37"
+echo "4. (If needed) expand SSL cert: certbot certonly --nginx --expand -d wavelync.com -d parking.wavelync.com"
+echo "5. Open https://parking.wavelync.com"

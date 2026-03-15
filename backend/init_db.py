@@ -1,6 +1,6 @@
 """Initialize database tables."""
 from app.database import engine, Base
-from app.models import Admin, Camera, CameraVideo, Ticket, UploadJob
+from app.models import Admin, Camera, CameraVideo, Ticket, UploadJob, ViolationRule
 
 if __name__ == "__main__":
     Base.metadata.create_all(bind=engine)

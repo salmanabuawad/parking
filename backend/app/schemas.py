@@ -15,6 +15,8 @@ class CameraBase(BaseModel):
     manufacturer: Optional[str] = None
     model: Optional[str] = None
     is_active: bool = True
+    violation_rules: Optional[list[str]] = None   # e.g. ["IL-STATIC-001", "IL-STATIC-005"]
+    violation_zone: Optional[str] = None           # "red_white" | "blue_white" | None
 
 
 class CameraCreate(CameraBase):
@@ -31,6 +33,8 @@ class CameraUpdate(BaseModel):
     manufacturer: Optional[str] = None
     model: Optional[str] = None
     is_active: Optional[bool] = None
+    violation_rules: Optional[list[str]] = None
+    violation_zone: Optional[str] = None
 
 
 class CameraResponse(CameraBase):

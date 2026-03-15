@@ -1,6 +1,6 @@
 """Auth: password hashing, JWT, get_current_user."""
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from jose import JWTError, jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
@@ -11,7 +11,6 @@ from app.database import get_db
 from app.repositories import AdminRepository
 from app.dependencies import get_admin_repo
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login", auto_error=False)
 
 ALGORITHM = "HS256"
@@ -19,11 +18,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    try:
+        return _bcrypt.checkpw(plain.encode(), hashed.encode())
+    except Exception:
+        return False
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return _bcrypt.hashpw(plain.encode(), _bcrypt.gensalt()).decode()
 
 
 def create_access_token(data: dict) -> str:

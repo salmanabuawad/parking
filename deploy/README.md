@@ -1,12 +1,38 @@
-# Deploy Parking Enforcement App on Ubuntu (185.229.226.37)
+# Deploy Parking Enforcement App
 
-## Overview
+## Two deployments on one server
 
-- **Backend**: FastAPI on port 8000 (gunicorn + uvicorn workers)
-- **Frontend**: Static build served by nginx
-- **Upload worker**: Background process (systemd)
-- **PostgreSQL**: Installed on the same server with default credentials (`postgres` / `postgres`, database `postgres`)
-- **Nginx**: Reverse proxy on port 80 (HTTP) and **8443** (HTTPS; use 8443 when 443 is in use)
+| | Existing (backup) | New (advanced) |
+|---|---|---|
+| **URL** | http://185.229.226.37 | https://parking.wavelync.com |
+| **Directory** | `/opt/parking` | `/opt/advancedparking` |
+| **Database** | `parking` | `advancedparking` |
+| **Backend port** | 8001 | 8002 |
+| **Systemd** | `parking-backend` / `parking-worker` | `advancedparking-backend` / `advancedparking-worker` |
+| **Nginx site** | `parking` | `advancedparking` |
+| **Deploy script** | `deploy-to-remote.ps1` | `deploy-to-advancedparking.ps1` |
+
+The two deployments coexist on the same server and share the same PostgreSQL instance. Neither deploy script touches the other's files, database, or systemd services.
+
+---
+
+## Prerequisites for the subdomain deployment
+
+### DNS
+
+Add an **A record**: `parking.wavelync.com` → `185.229.226.37` in your DNS provider.
+
+### SSL certificate (must cover the subdomain)
+
+The existing Let's Encrypt cert covers `wavelync.com` only. Expand it to include the subdomain:
+
+```bash
+sudo certbot certonly --nginx --expand -d wavelync.com -d parking.wavelync.com
+# or get a wildcard (covers all subdomains):
+sudo certbot certonly --nginx -d wavelync.com -d '*.wavelync.com'
+```
+
+After reissuing: `sudo systemctl reload nginx`
 
 ## 1. Server preparation
 
@@ -27,98 +53,61 @@ ssh root@185.229.226.37 "sudo bash /tmp/create-parking-user.sh 'YOUR_PASSWORD'"
 # Then log in as parking: ssh parking@185.229.226.37
 ```
 
-## 2. Run the setup script (or full redeploy with DB init)
+## 2. Deploy the new version (advancedparking)
 
-From your **local machine** (with the repo), copy the deploy files to the server and run setup:
+### From your local machine (PowerShell)
 
-**Full redeploy and init DB (recreate DB from scratch):**
+**Normal deploy — keeps existing DB, only creates `advancedparking` if missing:**
 ```powershell
-.\deploy\deploy-to-remote.ps1 -RecreateDb
+.\deploy\deploy-to-advancedparking.ps1
 ```
 
-**Normal deploy (keeps existing DB, create only if missing):**
+**Full redeploy with fresh database:**
 ```powershell
-.\deploy\deploy-to-remote.ps1
+.\deploy\deploy-to-advancedparking.ps1 -RecreateDb
 ```
 
-**On the server only – init or recreate DB (no app copy):**
-```bash
-# Init: create DB if missing, run migrations
-sudo DEPLOY_ROOT=/opt/parking bash /opt/parking/deploy/init-db.sh
+This script:
+1. SCPs `backend/`, `frontend/`, `deploy/` to the server
+2. Runs `setup-advancedparking.sh` — installs deps, builds frontend, writes systemd units, creates nginx site `advancedparking` (does **not** touch existing `parking` site)
+3. Runs `post-deploy-advancedparking.sh` — creates `advancedparking` DB, runs Alembic migrations, seeds violation rules, starts `advancedparking-backend` + `advancedparking-worker`
 
-# Recreate: drop DB, create, run migrations
-sudo RECREATE_DB=1 DEPLOY_ROOT=/opt/parking bash /opt/parking/deploy/init-db.sh
+### Existing deployment (backup)
+
+To redeploy the old version to `/opt/parking`:
+```powershell
+.\deploy\deploy-to-remote.ps1          # keep existing DB
+.\deploy\deploy-to-remote.ps1 -RecreateDb  # recreate 'parking' DB
 ```
-
-**Manual copy + setup (alternative):**
-```bash
-# Copy deploy folder and run (replace with your repo path)
-scp -r parking/deploy parking/backend parking/frontend parking/nginx root@185.229.226.37:/tmp/
-ssh root@185.229.226.37 'bash -s' < parking/deploy/setup-ubuntu.sh
-```
-
-Or on the **server** after cloning the repo:
-
-```bash
-cd /opt  # or your preferred directory
-git clone <your-repo-url> parking
-cd parking
-sudo bash deploy/setup-ubuntu.sh
-```
-
-The script will:
-
-- Install Python 3, Node 18+, PostgreSQL, nginx, Tesseract OCR, ffmpeg
-- Create app user `parking`
-- Create a virtualenv and install backend deps
-- Build the frontend with `VITE_API_BASE_URL=/api`
-- Create systemd units for backend and worker
-- Install and enable **nginx**: apply `deploy/nginx-parking.conf` (proxy `/api/` → backend:8000, serve frontend from `frontend/dist`), disable default site, enable and reload nginx
 
 ## 3. Configure environment
 
-PostgreSQL is on the same server with **default credentials** (user `postgres`, password `postgres`, default database `postgres`). The app can use the default database or you can create a dedicated one.
-
-On the server, create the backend env file:
+The `post-deploy-advancedparking.sh` script creates `/opt/advancedparking/backend/.env` automatically if it doesn't exist (using `.env.example` as template and pointing to the `advancedparking` database). Review and update the generated file:
 
 ```bash
-sudo -u parking bash
-cd /opt/parking/backend   # or DEPLOY_ROOT from setup
-cp .env.example .env
-nano .env
+sudo nano /opt/advancedparking/backend/.env
 ```
 
-**Option A – Use default Postgres database** (no DB setup needed):
+Minimum required:
 
 ```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/advancedparking
 SECRET_KEY=your-long-random-secret-key
-VIDEOS_DIR=/opt/parking/backend/videos
+VIDEOS_DIR=/opt/advancedparking/backend/videos
 PRODUCTION=1
 ```
 
-**Option B – Create a dedicated database** (recommended for production):
-
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/parking
-SECRET_KEY=your-long-random-secret-key
-VIDEOS_DIR=/opt/parking/backend/videos
-PRODUCTION=1
-```
-
-Then create the database (as postgres):
+To run migrations manually:
 
 ```bash
-sudo -u postgres psql -c "CREATE DATABASE parking OWNER postgres;"
+cd /opt/advancedparking/backend
+sudo -u advancedparking .venv/bin/python -m alembic upgrade head
 ```
 
-Run migrations:
+To seed violation rules:
 
 ```bash
-cd /opt/parking/backend
-source .venv/bin/activate
-alembic upgrade head
-# or: python -m alembic upgrade head
+sudo -u advancedparking .venv/bin/python seed_violation_rules.py
 ```
 
 Create an admin user (if you have a script):
@@ -140,30 +129,37 @@ print('Admin created.')
 
 ## 4. Start services
 
+Services are started automatically by `post-deploy-advancedparking.sh`. To manage manually:
+
 ```bash
+# New deployment (advancedparking)
 sudo systemctl daemon-reload
-sudo systemctl enable parking-backend parking-worker
-sudo systemctl start parking-backend parking-worker
+sudo systemctl enable advancedparking-backend advancedparking-worker
+sudo systemctl start advancedparking-backend advancedparking-worker
 sudo systemctl reload nginx
+
+# Check status
+sudo systemctl status advancedparking-backend advancedparking-worker nginx
 ```
 
-Check status:
-
-```bash
-sudo systemctl status parking-backend parking-worker nginx
-```
+The existing `parking-backend` / `parking-worker` services are unaffected.
 
 ## 5. Nginx
 
-- Config used by setup: **`deploy/nginx-parking.conf`** (copied to `/etc/nginx/sites-available/parking` on the server).
-- Listen: **80** (HTTP), **8443** (HTTPS; use when 443 is in use). Proxies **`/api/`** to `http://127.0.0.1:8000/api/`. Serves frontend from **`/opt/parking/frontend/dist`**.
-- HTTPS uses the default snakeoil cert; if missing run `sudo apt-get install ssl-cert` or point `ssl_certificate` to your own certs.
-- Test config: `sudo nginx -t`. Reload: `sudo systemctl reload nginx`.
+Two nginx sites coexist:
+
+| Site file | Serves | Proxies to |
+|---|---|---|
+| `/etc/nginx/sites-available/parking` | `185.229.226.37` (HTTP) | `127.0.0.1:8001` |
+| `/etc/nginx/sites-available/advancedparking` | `parking.wavelync.com` (HTTPS) | `127.0.0.1:8002` |
+
+Test config: `sudo nginx -t`. Reload: `sudo systemctl reload nginx`.
 
 ## 6. Open the app
 
-- **HTTP**: http://185.229.226.37  
-- **HTTPS**: https://185.229.226.37:8443 (port 8443 used because 443 is in use; nginx listens on 8443 with SSL). For real certs, point `ssl_certificate` / `ssl_certificate_key` in `deploy/nginx-parking.conf` to your certs and reload nginx.
+- **Primary URL**: https://parking.wavelync.com
+- **Direct IP (fallback)**: https://185.229.226.37 (uses the same cert — only valid if cert covers the IP or you accept the warning)
+- HTTP on port 80 redirects automatically to HTTPS.
 
 ## 7. CORS (if needed)
 
@@ -176,16 +172,18 @@ Allow HTTP/HTTPS and SSH:
 ```bash
 sudo ufw allow 22
 sudo ufw allow 80
-sudo ufw allow 8443
+sudo ufw allow 443
 sudo ufw enable
 ```
 
 ## 9. Troubleshooting
 
-- **502 Bad Gateway**: Backend not running or not listening on 127.0.0.1:8000. Check `journalctl -u parking-backend -f`.
-- **Videos not loading**: Ensure `VIDEOS_DIR` exists and is writable by user `parking`; worker and backend must use the same path.
-- **Tesseract (plate OCR)**: Install with `apt install tesseract-ocr`; worker sets path to `/usr/bin/tesseract` on Linux.
-- **Logs**:  
-  - Backend: `journalctl -u parking-backend -f`  
-  - Worker: `journalctl -u parking-worker -f`  
+- **502 Bad Gateway on parking.wavelync.com**: `advancedparking-backend` not running. Check `journalctl -u advancedparking-backend -f`.
+- **Videos not loading**: Ensure `VIDEOS_DIR=/opt/advancedparking/backend/videos` exists and is writable by user `advancedparking`.
+- **Video signing error**: Requires `cryptography` package — if missing: `sudo -u advancedparking /opt/advancedparking/backend/.venv/bin/pip install cryptography`
+- **Tesseract (plate OCR)**: Install with `apt install tesseract-ocr tesseract-ocr-heb`.
+- **Logs**:
+  - New backend: `journalctl -u advancedparking-backend -f`
+  - New worker:  `journalctl -u advancedparking-worker -f`
+  - Old backend: `journalctl -u parking-backend -f`
   - Nginx: `/var/log/nginx/error.log`

@@ -332,6 +332,25 @@ def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int =
     return out
 
 
+def _apply_watermark(frame: np.ndarray) -> np.ndarray:
+    """Burn a semi-transparent 'Parking Enforcement' watermark into the bottom-right corner."""
+    label = "שוטר חניה | Parking Enforcement"
+    font      = cv2.FONT_HERSHEY_SIMPLEX
+    h, w      = frame.shape[:2]
+    scale     = max(0.35, w / 2200)
+    thickness = 1
+    (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
+    pad = 6
+    x = w - tw - pad - 4
+    y = h - pad
+    # Semi-transparent dark rectangle
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x - pad, y - th - pad), (x + tw + pad, y + baseline + pad), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.45, frame, 0.55, 0, frame)
+    cv2.putText(frame, label, (x, y), font, scale, (200, 200, 200), thickness, cv2.LINE_AA)
+    return frame
+
+
 def _find_best_plate_box(
     cap: cv2.VideoCapture,
     sample_count: int = 30,
@@ -612,6 +631,7 @@ def process_video(
         output = _blur_everything_except_plate(frame, effective_plate, kernel)
         if effective_plate is not None:
             output = _overlay_plate_magnified(output, effective_plate)
+        output = _apply_watermark(output)
         writer.write(output)
         if frame_index == preview_index:
             preview_frame = output.copy()
@@ -728,6 +748,7 @@ def extract_frames(
             else:
                 label = f"+{frame_sec:.1f}s"
             frame = _burn_timestamp(frame, label)
+            frame = _apply_watermark(frame)
             ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ok2:
                 results.append((buf.tobytes(), frame_sec))
