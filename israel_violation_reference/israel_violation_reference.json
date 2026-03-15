@@ -1,0 +1,846 @@
+{
+  "meta": {
+    "name": "Israel Traffic and Parking Violation Reference",
+    "version": "0.9-draft",
+    "jurisdiction": "Israel",
+    "language": [
+      "he",
+      "en"
+    ],
+    "status": "engineering_reference_not_legal_certification",
+    "created_utc": "2026-03-15",
+    "purpose": "Machine-readable rule reference for software that detects likely traffic and parking violations.",
+    "important_note": "This pack is a deep engineering draft created without live verification of official sources in this session. Before operational enforcement, every source field, rule text, sign meaning, municipal override, and penalty mapping must be validated against current official Israeli law, sign catalog, and local municipal by-laws.",
+    "primary_source_hints": [
+      "פקודת התעבורה",
+      "תקנות התעבורה, תשכ\"א-1961",
+      "לוח התמרורים הישראלי / הנחיות משרד התחבורה",
+      "חוקי עזר עירוניים והסדרי חניה מקומיים",
+      "תמרור + לוחית נוספת + סימון דרך + צו/הסדר מקומי"
+    ],
+    "decision_states": [
+      "confirmed_violation",
+      "suspected_violation",
+      "no_violation",
+      "insufficient_evidence"
+    ]
+  },
+  "decision_policy": {
+    "global_principles": [
+      "Never issue confirmed_violation when a required legal element cannot be established from evidence or data.",
+      "Permit-, payment-, time-, and municipality-dependent cases usually require external verification or human review.",
+      "No-stopping and no-parking are not the same. The engine must model both separately.",
+      "Sign applicability may depend on direction, side of road, start/end of zone, supplementary plate, and vehicle class.",
+      "Road color / curb color is probative but should be cross-checked with sign context when possible."
+    ],
+    "minimum_audit_fields": [
+      "timestamp",
+      "camera_id",
+      "location",
+      "plate",
+      "source_frames",
+      "scene_calibration",
+      "rule_id",
+      "reasoning_trace",
+      "confidence"
+    ]
+  },
+  "entity_models": {
+    "vehicle_state": [
+      "moving",
+      "temporarily_stopped",
+      "standing",
+      "parked",
+      "unknown"
+    ],
+    "vehicle_classes": [
+      "private",
+      "commercial_light",
+      "commercial_heavy",
+      "motorcycle",
+      "bus",
+      "taxi",
+      "emergency",
+      "disabled_permit_holder",
+      "delivery",
+      "municipal_service",
+      "unknown"
+    ],
+    "evidence_quality_flags": [
+      "occluded_sign",
+      "faded_marking",
+      "plate_unreadable",
+      "low_light",
+      "bad_geometry",
+      "uncertain_lane",
+      "uncertain_vehicle_state",
+      "missing_time_window_data",
+      "missing_permit_data",
+      "missing_payment_data"
+    ]
+  },
+  "sign_semantics": [
+    {
+      "sign_key": "no_entry",
+      "he": "אין כניסה",
+      "applies_to": [
+        "moving"
+      ],
+      "needs_direction_resolution": true
+    },
+    {
+      "sign_key": "stop",
+      "he": "עצור",
+      "applies_to": [
+        "moving"
+      ],
+      "needs_stop_line_or_intersection_context": true
+    },
+    {
+      "sign_key": "no_left_turn",
+      "he": "אין פניה שמאלה",
+      "applies_to": [
+        "moving"
+      ]
+    },
+    {
+      "sign_key": "no_right_turn",
+      "he": "אין פניה ימינה",
+      "applies_to": [
+        "moving"
+      ]
+    },
+    {
+      "sign_key": "no_u_turn",
+      "he": "אין פניית פרסה",
+      "applies_to": [
+        "moving"
+      ]
+    },
+    {
+      "sign_key": "no_stopping",
+      "he": "אסורה עצירה",
+      "applies_to": [
+        "static"
+      ],
+      "stronger_than": "no_parking"
+    },
+    {
+      "sign_key": "no_parking",
+      "he": "אסורה חניה",
+      "applies_to": [
+        "static"
+      ]
+    },
+    {
+      "sign_key": "bus_lane",
+      "he": "נתיב תחבורה ציבורית",
+      "applies_to": [
+        "moving"
+      ],
+      "usually_requires_vehicle_class_check": true
+    },
+    {
+      "sign_key": "taxi_zone",
+      "he": "תחנת מוניות / מקום שמור למוניות",
+      "applies_to": [
+        "static"
+      ],
+      "vehicle_class_exception": [
+        "taxi"
+      ]
+    },
+    {
+      "sign_key": "disabled_bay",
+      "he": "חניית נכים",
+      "applies_to": [
+        "static"
+      ],
+      "usually_requires_permit_check": true
+    },
+    {
+      "sign_key": "loading_zone",
+      "he": "אזור פריקה וטעינה",
+      "applies_to": [
+        "static"
+      ],
+      "usually_requires_time_window": true,
+      "vehicle_class_exception": [
+        "delivery",
+        "commercial_light",
+        "commercial_heavy"
+      ]
+    },
+    {
+      "sign_key": "resident_only",
+      "he": "לתושבי אזור / בעלי היתר",
+      "applies_to": [
+        "static"
+      ],
+      "always_requires_permit_check": true
+    },
+    {
+      "sign_key": "paid_parking",
+      "he": "חניה בתשלום",
+      "applies_to": [
+        "static"
+      ],
+      "always_requires_payment_or_permit_check": true
+    }
+  ],
+  "road_markings": [
+    {
+      "marking_key": "red_white_curb",
+      "he": "אבני שפה אדום-לבן",
+      "typical_meaning": "prohibition_zone_static"
+    },
+    {
+      "marking_key": "blue_white_curb",
+      "he": "אבני שפה כחול-לבן",
+      "typical_meaning": "regulated_paid_or_permit_parking"
+    },
+    {
+      "marking_key": "crosswalk",
+      "he": "מעבר חציה",
+      "typical_meaning": "pedestrian_priority_area"
+    },
+    {
+      "marking_key": "stop_line",
+      "he": "קו עצירה",
+      "typical_meaning": "mandatory_stop_reference"
+    },
+    {
+      "marking_key": "disabled_symbol",
+      "he": "סימון חניית נכים",
+      "typical_meaning": "reserved_disabled_bay"
+    },
+    {
+      "marking_key": "bus_stop_area",
+      "he": "תחנת אוטובוס / מעטפת תחנה",
+      "typical_meaning": "public_transport_reserved"
+    },
+    {
+      "marking_key": "hatched_area",
+      "he": "מעטפת / שטח מסומן באלכסונים",
+      "typical_meaning": "keep_clear"
+    },
+    {
+      "marking_key": "sidewalk_polygon",
+      "he": "מדרכה",
+      "typical_meaning": "pedestrian_area"
+    },
+    {
+      "marking_key": "driveway_access",
+      "he": "פתח חניה / כניסה למקרקעין",
+      "typical_meaning": "access_must_remain_clear"
+    },
+    {
+      "marking_key": "bus_lane_surface",
+      "he": "נת\"צ",
+      "typical_meaning": "reserved_bus_lane"
+    }
+  ],
+  "evidence_profiles": {
+    "static_basic": {
+      "required": [
+        "vehicle_bbox",
+        "vehicle_state",
+        "timestamp",
+        "plate",
+        "location",
+        "scene_frame"
+      ],
+      "good_to_have": [
+        "multi_frame_track",
+        "map_segment_id"
+      ]
+    },
+    "static_with_sign": {
+      "required": [
+        "vehicle_bbox",
+        "vehicle_state",
+        "timestamp",
+        "plate",
+        "location",
+        "scene_frame",
+        "sign_detection"
+      ],
+      "good_to_have": [
+        "sign_zone_resolution",
+        "supplementary_plate_parse"
+      ]
+    },
+    "permit_dependent": {
+      "required": [
+        "vehicle_bbox",
+        "vehicle_state",
+        "timestamp",
+        "plate",
+        "location",
+        "scene_frame",
+        "restriction_basis"
+      ],
+      "extra_required": [
+        "permit_or_payment_lookup"
+      ],
+      "fallback_if_missing": "suspected_violation_or_insufficient_evidence"
+    },
+    "moving_basic": {
+      "required": [
+        "vehicle_track",
+        "timestamp",
+        "plate",
+        "location",
+        "scene_calibration",
+        "lane_or_path_geometry"
+      ],
+      "good_to_have": [
+        "multi_camera_confirmation"
+      ]
+    },
+    "distance_sensitive": {
+      "required": [
+        "vehicle_bbox",
+        "timestamp",
+        "plate",
+        "location",
+        "scene_calibration",
+        "reference_geometry"
+      ],
+      "review_recommended": true
+    }
+  },
+  "rules": [
+    {
+      "rule_id": "IL-STATIC-001",
+      "category": "parking_standing",
+      "title_he": "עצירה או חניה במקום שסומן באבני שפה אדום-לבן",
+      "title_en": "Stopping or parking in a red-white curb prohibition zone",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "red_white_curb",
+        "optional_supporting_sign"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND overlap(vehicle, red_white_zone) > 0",
+      "exceptions": [
+        "emergency_in_active_duty",
+        "police_instruction",
+        "temporary_traffic_control_if_documented"
+      ],
+      "evidence_profile": "static_basic",
+      "human_review_recommended": true,
+      "common_failure_modes": [
+        "paint_faded",
+        "work_zone_temp_marking",
+        "uncertain curb visibility"
+      ]
+    },
+    {
+      "rule_id": "IL-STATIC-002",
+      "category": "parking_standing",
+      "title_he": "חניה באזור כחול-לבן ללא תשלום/היתר/זכאות תקפה",
+      "title_en": "Parking in regulated blue-white area without valid payment/permit/entitlement",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "blue_white_curb",
+        "paid_parking_or_resident_sign",
+        "municipal_zone_policy"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND overlap(vehicle, blue_white_zone) > 0 AND NOT valid_payment_or_permit",
+      "exceptions": [
+        "resident_with_valid_permit",
+        "disabled_exemption_if_locally_applicable",
+        "other_municipal_exemption"
+      ],
+      "evidence_profile": "permit_dependent",
+      "human_review_recommended": true,
+      "external_data_required": [
+        "payment_session_status",
+        "resident_permit_status",
+        "municipal_zone_calendar"
+      ]
+    },
+    {
+      "rule_id": "IL-STATIC-003",
+      "category": "parking_standing",
+      "title_he": "חניה בחניית נכים ללא הרשאה",
+      "title_en": "Parking in a disabled bay without authorization",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "disabled_symbol",
+        "disabled_bay_sign"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND vehicle_in_disabled_bay == true AND NOT valid_disabled_authorization",
+      "exceptions": [
+        "authorized_disabled_permit_holder",
+        "emergency_in_active_duty_if_lawfully_permitted"
+      ],
+      "evidence_profile": "permit_dependent",
+      "human_review_recommended": true,
+      "external_data_required": [
+        "disabled_permit_status_if_legal_access_exists"
+      ]
+    },
+    {
+      "rule_id": "IL-STATIC-004",
+      "category": "parking_standing",
+      "title_he": "חניה באזור פריקה וטעינה שלא כדין",
+      "title_en": "Unlawful parking in a loading/unloading zone",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "loading_zone_sign",
+        "time_window",
+        "vehicle_class",
+        "supplementary_plate"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND in_loading_zone == true AND NOT vehicle_or_time_authorized",
+      "exceptions": [
+        "authorized_loading_vehicle",
+        "within_allowed_hours",
+        "other_local_exception"
+      ],
+      "evidence_profile": "permit_dependent",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-005",
+      "category": "parking_standing",
+      "title_he": "עצירה או חניה באזור תחנת אוטובוס",
+      "title_en": "Stopping or parking in a bus stop area",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "bus_stop_area",
+        "bus_stop_sign"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND overlaps_bus_stop_zone == true",
+      "exceptions": [
+        "public_bus_when_lawful",
+        "authorized_emergency_if_necessary"
+      ],
+      "evidence_profile": "static_with_sign",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-006",
+      "category": "parking_standing",
+      "title_he": "חניה או עצירה בתחנת מוניות/מקום שמור למוניות ללא זכאות",
+      "title_en": "Stopping or parking in a taxi stand / taxi-reserved area without entitlement",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "taxi_zone_sign",
+        "optional_marking"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND in_taxi_zone == true AND vehicle_class != taxi",
+      "exceptions": [
+        "authorized_taxi",
+        "emergency_if_lawful"
+      ],
+      "evidence_profile": "static_with_sign",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-007",
+      "category": "parking_standing",
+      "title_he": "חניה במקום השמור לבעלי היתר/תושבים ללא הרשאה",
+      "title_en": "Parking in a permit-holder/residents-only bay without authorization",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "resident_only_sign",
+        "permit_only_sign",
+        "municipal_rule"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND permit_restricted_bay == true AND NOT valid_permit",
+      "exceptions": [
+        "holder_of_matching_permit",
+        "other_local_exemption"
+      ],
+      "evidence_profile": "permit_dependent",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-008",
+      "category": "parking_standing",
+      "title_he": "חניה על מדרכה או באופן שאינו מותיר מעבר בטוח להולכי רגל",
+      "title_en": "Parking on a sidewalk or without sufficient pedestrian clearance",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "sidewalk_polygon",
+        "pedestrian_clearance"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND overlap(vehicle, sidewalk_polygon) > threshold AND pedestrian_clearance_m < configured_minimum",
+      "exceptions": [
+        "explicitly_marked_and_authorized_sidewalk_parking_if_local_rule_allows"
+      ],
+      "evidence_profile": "distance_sensitive",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-009",
+      "category": "parking_standing",
+      "title_he": "חניה כפולה",
+      "title_en": "Double parking",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "adjacent_lane_blockage",
+        "vehicle_alignment"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND not_in_marked_bay AND blocks_adjacent_travel_or_parking_lane == true",
+      "exceptions": [
+        "short_documented_dropoff_where_locally_tolerated_but_not_enforceable_by_default"
+      ],
+      "evidence_profile": "static_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-010",
+      "category": "parking_standing",
+      "title_he": "חסימת כניסה/יציאה לחניה, שער או דרך גישה",
+      "title_en": "Blocking a driveway, gate, or access route",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "driveway_access_polygon"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND overlap(vehicle, driveway_access_polygon) > threshold",
+      "exceptions": [
+        "property_owner_authorization_if provable",
+        "temporary_service_if_lawful"
+      ],
+      "evidence_profile": "distance_sensitive",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-011",
+      "category": "parking_standing",
+      "title_he": "חניה או עצירה באופן המפריע או מסכן את התנועה",
+      "title_en": "Stopping/parking in a manner that obstructs or endangers traffic",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "traffic_flow_obstruction",
+        "sight_distance_block",
+        "lane_blockage"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND creates_material_obstruction_or_hazard == true",
+      "exceptions": [
+        "temporary emergency necessity"
+      ],
+      "evidence_profile": "distance_sensitive",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-012",
+      "category": "parking_standing",
+      "title_he": "חניה בקרבת צומת באופן אסור",
+      "title_en": "Parking too close to an intersection where prohibited",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "intersection_geometry",
+        "distance_rule"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND distance_to_intersection < configured_legal_threshold",
+      "exceptions": [],
+      "evidence_profile": "distance_sensitive",
+      "human_review_recommended": true,
+      "notes": "Exact threshold must be validated from current official regulations."
+    },
+    {
+      "rule_id": "IL-STATIC-013",
+      "category": "parking_standing",
+      "title_he": "חניה בקרבת מעבר חציה באופן אסור",
+      "title_en": "Parking too close to a crosswalk where prohibited",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "crosswalk",
+        "distance_rule"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND distance_to_crosswalk < configured_legal_threshold",
+      "exceptions": [],
+      "evidence_profile": "distance_sensitive",
+      "human_review_recommended": true,
+      "notes": "Exact threshold must be validated from current official regulations."
+    },
+    {
+      "rule_id": "IL-STATIC-014",
+      "category": "parking_standing",
+      "title_he": "עצירה במקום שבו חל תמרור 'אסורה עצירה'",
+      "title_en": "Stopping where a no-stopping sign applies",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "no_stopping_sign",
+        "supplementary_plate",
+        "zone_resolution"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND in_no_stopping_zone == true",
+      "exceptions": [
+        "lawful_exception_defined_by sign or law",
+        "police_direction",
+        "emergency_if_lawful"
+      ],
+      "evidence_profile": "static_with_sign",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-015",
+      "category": "parking_standing",
+      "title_he": "חניה במקום שבו חל תמרור 'אסורה חניה'",
+      "title_en": "Parking where a no-parking sign applies",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "no_parking_sign",
+        "supplementary_plate",
+        "zone_resolution"
+      ],
+      "predicate": "vehicle_state in [standing, parked] AND in_no_parking_zone == true",
+      "exceptions": [
+        "temporary stop if legally allowed and does not violate stronger rule",
+        "other listed exception"
+      ],
+      "evidence_profile": "static_with_sign",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-STATIC-016",
+      "category": "parking_standing",
+      "title_he": "עצירה/חניה במקום שמור לרכב מסוים או לסוג רכב מסוים",
+      "title_en": "Stopping/parking in a bay reserved for a specific vehicle or class",
+      "trigger_type": "static_position",
+      "restriction_basis": [
+        "reserved_sign",
+        "vehicle_class",
+        "time_window"
+      ],
+      "predicate": "vehicle_state in [temporarily_stopped, standing, parked] AND reserved_bay == true AND NOT vehicle_entitled",
+      "exceptions": [
+        "vehicle_matches_reservation",
+        "local permit or authorization"
+      ],
+      "evidence_profile": "permit_dependent",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-001",
+      "category": "moving_violation",
+      "title_he": "אי עצירה כנדרש בתמרור עצור",
+      "title_en": "Failure to stop as required at a stop sign",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "stop_sign",
+        "stop_line_or_entry_reference"
+      ],
+      "predicate": "approaches_stop_controlled_intersection AND vehicle_speed_does_not_reach_stop_threshold_before_reference",
+      "exceptions": [
+        "traffic_officer_direction"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-002",
+      "category": "moving_violation",
+      "title_he": "חציית קו עצירה שלא כדין",
+      "title_en": "Unlawful crossing of a stop line",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "stop_line",
+        "signal_or_stop_control"
+      ],
+      "predicate": "vehicle_crosses_stop_line_when_prohibited == true",
+      "exceptions": [
+        "police_direction",
+        "unable_to_stop_safely_case_requires_review"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-003",
+      "category": "moving_violation",
+      "title_he": "כניסה בדרך אסורה / אין כניסה",
+      "title_en": "Entering a prohibited direction / no-entry road",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "no_entry_sign",
+        "direction_of_travel"
+      ],
+      "predicate": "vehicle_travel_direction conflicts_with no_entry_control",
+      "exceptions": [
+        "authorized_vehicle_when_explicitly_permitted",
+        "temporary_traffic_control"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-004",
+      "category": "moving_violation",
+      "title_he": "נסיעה בנתיב תחבורה ציבורית ללא הרשאה",
+      "title_en": "Driving in a bus/public-transport lane without authorization",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "bus_lane_sign",
+        "bus_lane_surface",
+        "vehicle_class",
+        "time_window"
+      ],
+      "predicate": "vehicle_uses_bus_lane == true AND NOT vehicle_authorized_for_bus_lane",
+      "exceptions": [
+        "bus",
+        "taxi_if_locally_allowed",
+        "motorcycle_if explicitly allowed",
+        "time-window exception"
+      ],
+      "evidence_profile": "permit_dependent",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-005",
+      "category": "moving_violation",
+      "title_he": "פנייה שמאלה בניגוד לתמרור",
+      "title_en": "Prohibited left turn",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "no_left_turn_sign"
+      ],
+      "predicate": "vehicle_executes_left_turn == true AND left_turn_prohibited_here == true",
+      "exceptions": [
+        "temporary traffic control"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-006",
+      "category": "moving_violation",
+      "title_he": "פנייה ימינה בניגוד לתמרור",
+      "title_en": "Prohibited right turn",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "no_right_turn_sign"
+      ],
+      "predicate": "vehicle_executes_right_turn == true AND right_turn_prohibited_here == true",
+      "exceptions": [
+        "temporary traffic control"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-007",
+      "category": "moving_violation",
+      "title_he": "פניית פרסה אסורה",
+      "title_en": "Prohibited U-turn",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "no_u_turn_sign",
+        "location_rule"
+      ],
+      "predicate": "vehicle_executes_u_turn == true AND u_turn_prohibited_here == true",
+      "exceptions": [
+        "traffic_officer_direction"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-008",
+      "category": "moving_violation",
+      "title_he": "נסיעה בניגוד לכיוון התנועה / בנתיב שאינו מיועד לכיוון",
+      "title_en": "Driving against the direction of travel / wrong-way movement",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "lane_direction",
+        "road_direction",
+        "signage"
+      ],
+      "predicate": "vehicle_travel_direction conflicts_with lane_or_road_direction",
+      "exceptions": [
+        "temporary traffic management"
+      ],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    },
+    {
+      "rule_id": "IL-MOVE-009",
+      "category": "moving_violation",
+      "title_he": "אי מתן זכות קדימה כאשר קיימת חובת מתן זכות קדימה",
+      "title_en": "Failure to yield where yielding is required",
+      "trigger_type": "interaction",
+      "restriction_basis": [
+        "yield_control",
+        "conflict_road_user"
+      ],
+      "predicate": "ego_required_to_yield == true AND conflicting_road_user_present == true AND unsafe_priority_take == true",
+      "exceptions": [],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true,
+      "notes": "High legal and evidentiary sensitivity; usually requires multi-object tracking and review."
+    },
+    {
+      "rule_id": "IL-MOVE-010",
+      "category": "moving_violation",
+      "title_he": "מעבר/חדירה לשטח מסומן שיש להותיר פנוי",
+      "title_en": "Entering a keep-clear / hatched area contrary to control",
+      "trigger_type": "moving_path",
+      "restriction_basis": [
+        "hatched_area",
+        "junction_keep_clear_rule"
+      ],
+      "predicate": "vehicle_enters_keep_clear_area_when_prohibited == true",
+      "exceptions": [],
+      "evidence_profile": "moving_basic",
+      "human_review_recommended": true
+    }
+  ],
+  "municipal_overrides_model": {
+    "description": "National rules are not sufficient for many parking cases. Municipal overlays are mandatory.",
+    "required_fields": [
+      "municipality_name",
+      "zone_id",
+      "street_segment_id",
+      "restriction_type",
+      "active_days",
+      "active_hours",
+      "resident_permit_classes",
+      "payment_required",
+      "payment_provider",
+      "vehicle_class_exceptions",
+      "holiday_logic",
+      "source_document_reference",
+      "last_verified_date"
+    ]
+  },
+  "software_guidance": {
+    "recommended_mvp_order": [
+      "IL-STATIC-001",
+      "IL-STATIC-002",
+      "IL-STATIC-003",
+      "IL-STATIC-008",
+      "IL-STATIC-009",
+      "IL-STATIC-010",
+      "IL-STATIC-005",
+      "IL-STATIC-014",
+      "IL-STATIC-015"
+    ],
+    "do_not_auto_confirm_without_external_checks": [
+      "permit-only parking",
+      "resident parking",
+      "blue-white payment enforcement",
+      "disabled bay entitlement",
+      "bus lane where exemptions vary by time/place"
+    ],
+    "recommended_output_schema": {
+      "status": "confirmed_violation|suspected_violation|no_violation|insufficient_evidence",
+      "rule_id": "string",
+      "confidence": "0.0-1.0",
+      "why": [
+        "list of factual reasons"
+      ],
+      "missing_checks": [
+        "list of missing legal/evidentiary checks"
+      ],
+      "review_required": "boolean",
+      "evidence_refs": [
+        "frame ids / clip ids / lookup ids"
+      ]
+    }
+  }
+}
