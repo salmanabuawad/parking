@@ -218,54 +218,6 @@ export default function TicketReview() {
         {/* Left column: violation analysis + video */}
         <div style={{ flex: "1 1 340px", minWidth: 280, display: "flex", flexDirection: "column", gap: 16 }}>
 
-        {/* Violation analysis — upper left */}
-        {ticket && ticket.violation_decision && (
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
-            <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
-            {(() => {
-              const dec = ticket.violation_decision!;
-              const conf = ticket.violation_confidence ?? 0;
-              const color = dec === "confirmed_violation" ? "#dc2626"
-                : dec === "suspected_violation" ? "#d97706"
-                : dec === "no_violation" ? "#16a34a"
-                : "#6b7280";
-              const labelHe = dec === "confirmed_violation" ? "הפרה מאושרת"
-                : dec === "suspected_violation" ? "הפרה חשודה"
-                : dec === "no_violation" ? "ללא הפרה"
-                : "עדויות לא מספיקות";
-              return (
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color, background: color + "18", padding: "3px 12px", borderRadius: 12 }}>
-                      {labelHe}
-                    </span>
-                    {ticket.violation_rule_id && (
-                      <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
-                    )}
-                    <span style={{ fontSize: 12, color: "#6b7280" }}>ביטחון: {Math.round(conf * 100)}%</span>
-                  </div>
-                  <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, marginBottom: 10 }}>
-                    <div style={{ height: "100%", width: `${Math.round(conf * 100)}%`, background: color, borderRadius: 3 }} />
-                  </div>
-                  {ticket.violation_description_he && (
-                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>
-                      {ticket.violation_description_he}
-                    </div>
-                  )}
-                  {ticket.violation_description_en && (
-                    <div style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>
-                      {ticket.violation_description_en}
-                    </div>
-                  )}
-                  <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
-                    * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
         {/* Video panel */}
         <div>
           <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", background: "#000" }}>
@@ -358,8 +310,57 @@ export default function TicketReview() {
 
         </div>{/* end left column */}
 
-        {/* Right column: details only */}
+        {/* Right column: violation analysis + details */}
         <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "column", gap: 16 }}>
+
+        {/* Violation analysis — top of right column */}
+        {ticket && ticket.violation_decision && (
+          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+            <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
+            {(() => {
+              const dec = ticket.violation_decision!;
+              const conf = ticket.violation_confidence ?? 0;
+              const color = dec === "confirmed_violation" ? "#dc2626"
+                : dec === "suspected_violation" ? "#d97706"
+                : dec === "no_violation" ? "#16a34a"
+                : "#6b7280";
+              const labelHe = dec === "confirmed_violation" ? "הפרה מאושרת"
+                : dec === "suspected_violation" ? "הפרה חשודה"
+                : dec === "no_violation" ? "ללא הפרה"
+                : "עדויות לא מספיקות";
+              return (
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color, background: color + "18", padding: "3px 12px", borderRadius: 12 }}>
+                      {labelHe}
+                    </span>
+                    {ticket.violation_rule_id && (
+                      <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
+                    )}
+                    <span style={{ fontSize: 12, color: "#6b7280" }}>ביטחון: {Math.round(conf * 100)}%</span>
+                  </div>
+                  <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, marginBottom: 10 }}>
+                    <div style={{ height: "100%", width: `${Math.round(conf * 100)}%`, background: color, borderRadius: 3 }} />
+                  </div>
+                  {ticket.violation_description_he && (
+                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>
+                      {ticket.violation_description_he}
+                    </div>
+                  )}
+                  {ticket.violation_description_en && (
+                    <div style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>
+                      {ticket.violation_description_en}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
+                    * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {ticket && (
           <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
 
