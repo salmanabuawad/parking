@@ -192,13 +192,12 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     best: Optional[BBox] = None
-    best_score = 0.0
-    h_frame = frame.shape[0]
+    best_area = 0
 
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
 
-        if w < 40 or h < 12:
+        if w < 40 or h < 15:
             continue
 
         ratio = w / float(h) if h > 0 else 0.0
@@ -206,11 +205,8 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
             continue
 
         area = w * h
-        lower_half_bonus = 1.0 + (y / max(1, h_frame))
-        score = area * lower_half_bonus
-
-        if score > best_score:
-            best_score = score
+        if area > best_area:
+            best_area = area
             best = (x, y, w, h)
 
     return best
@@ -303,7 +299,7 @@ def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], 
     if plate_box is None:
         return blurred
 
-    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.75)
+    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.5)
 
     if w <= 0 or h <= 0:
         return blurred
