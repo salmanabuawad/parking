@@ -1,5 +1,14 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+
+// Global base font size increase
+const style = document.createElement('style')
+style.textContent = `
+  *, *::before, *::after { box-sizing: border-box; }
+  html { font-size: 17px; }
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
+`
+document.head.appendChild(style)
 import { AuthProvider } from './context/AuthContext'
 import App, { AppErrorBoundary } from './App'
 

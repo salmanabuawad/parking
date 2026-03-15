@@ -84,7 +84,7 @@ function NavLink({ to, label }: { to: string; label: string }) {
         fontWeight: active ? 700 : 400,
         color: active ? '#fff' : '#cbd5e1',
         background: active ? 'rgba(255,255,255,0.18)' : 'transparent',
-        fontSize: '0.92rem',
+        fontSize: '1.05rem',
         transition: 'all 0.15s',
       }}
     >
@@ -118,8 +118,8 @@ function AppShell() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '0 20px',
-        height: 56,
+        padding: '0 24px',
+        height: 68,
         background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
         boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
         position: 'sticky',
@@ -127,7 +127,7 @@ function AppShell() {
         zIndex: 100,
       }}>
         <nav style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: '1rem', marginLeft: 12, letterSpacing: '0.03em' }}>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', marginLeft: 16, letterSpacing: '0.03em' }}>
             {he.app.title}
           </span>
           {NAV_LINKS.map((l) => (
@@ -135,17 +135,17 @@ function AppShell() {
           ))}
         </nav>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ color: '#bfdbfe', fontSize: '0.88rem' }}>{user?.username}</span>
+          <span style={{ color: '#bfdbfe', fontSize: '1rem' }}>{user?.username}</span>
           <button
             onClick={logout}
             style={{
-              padding: '5px 14px',
+              padding: '6px 16px',
               background: 'rgba(255,255,255,0.15)',
               color: '#fff',
               border: '1px solid rgba(255,255,255,0.3)',
               borderRadius: 8,
               cursor: 'pointer',
-              fontSize: '0.88rem',
+              fontSize: '1rem',
               fontFamily: 'inherit',
             }}
           >
