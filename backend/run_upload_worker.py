@@ -31,6 +31,7 @@ from app.services.video_processor import (
     process_video_with_violation_pipeline,
     extract_license_plate,
     extract_video_params,
+    extract_frames,
 )
 
 # Use same videos_dir as API (from config) so uploads from UI resolve correctly
@@ -238,6 +239,36 @@ def process_one_job() -> bool:
             pass
 
         ticket = ticket_repo.create(**ticket_kw)
+
+        # Extract 5 evenly-spaced screenshots from the blurred video and save them
+        try:
+            frames = extract_frames(blurred_bytes, count=5)
+            screenshots_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
+            screenshots_dir.mkdir(parents=True, exist_ok=True)
+            from sqlalchemy import text as _text
+            now_utc = datetime.now(timezone.utc)
+            for jpeg_bytes, frame_sec in frames:
+                fname = f"shot_{int(frame_sec * 1000):08d}ms.jpg"
+                fpath = screenshots_dir / fname
+                fpath.write_bytes(jpeg_bytes)
+                rel = f"screenshots/ticket_{ticket.id}/{fname}"
+                try:
+                    db.execute(
+                        _text("""
+                            INSERT INTO ticket_screenshots
+                                (ticket_id, storage_path, frame_time_seconds, created_at, is_blurred_source)
+                            VALUES
+                                (:ticket_id, :storage_path, :frame_time_seconds, :created_at, true)
+                        """),
+                        {"ticket_id": ticket.id, "storage_path": rel,
+                         "frame_time_seconds": frame_sec, "created_at": now_utc},
+                    )
+                except Exception:
+                    db.rollback()
+            db.commit()
+            print(f"[Job {job.id}] Saved {len(frames)} screenshots for ticket {ticket.id}", flush=True)
+        except Exception as ss_err:
+            print(f"[Job {job.id}] Screenshot extraction failed (non-fatal): {ss_err}", flush=True)
 
         job_repo.update(
             job.id,

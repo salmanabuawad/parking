@@ -517,6 +517,43 @@ def process_video(
     return processed_video, preview_jpeg
 
 
+def extract_frames(
+    video_bytes: bytes,
+    count: int = 5,
+) -> list:
+    """Extract `count` evenly-spaced frames from a video (blurred or otherwise).
+    Returns list of (jpeg_bytes: bytes, frame_time_sec: float).
+    """
+    results = []
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(video_bytes)
+        input_path = f.name
+    try:
+        cap = cv2.VideoCapture(input_path)
+        if not cap.isOpened():
+            return results
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        if total <= 0 or count <= 0:
+            cap.release()
+            return results
+        # Pick evenly-spaced frame indices, avoiding very first and very last frame
+        step = max(1, total // (count + 1))
+        indices = [step * (i + 1) for i in range(count) if step * (i + 1) < total]
+        for idx in indices:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ok2:
+                results.append((buf.tobytes(), round(idx / fps, 2)))
+        cap.release()
+    finally:
+        Path(input_path).unlink(missing_ok=True)
+    return results
+
+
 def process_video_fast_hsv(
     video_bytes: bytes,
     blur_strength: int = 0,
