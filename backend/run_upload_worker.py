@@ -13,12 +13,12 @@ import logging
 import sys
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Enable INFO logging so plate OCR debug output (method/PSM per frame) is visible
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
 from app.config import settings
@@ -34,18 +34,52 @@ from app.services.video_processor import (
     extract_frames,
 )
 
-# Use same videos_dir as API (from config) so uploads from UI resolve correctly
 _VIDEOS_DIR = settings.videos_dir
 
 
 def _fmt_queue(status: dict) -> str:
-    """Format queue status for logging: q=queued p=processing c=completed f=failed, plus next job IDs."""
     q, p, c, f = status.get("queued", 0), status.get("processing", 0), status.get("completed", 0), status.get("failed", 0)
     extra = ""
     ids = status.get("next_ids") or []
     if ids:
         extra = f" | next: {ids}"
     return f"q:{q} p:{p} c:{c} f:{f}{extra}"
+
+
+def _run_ocr(video_bytes: bytes, job_id: int) -> tuple[str, str | None]:
+    """OCR worker: runs in thread pool."""
+    try:
+        plate, reason = extract_license_plate(video_bytes=video_bytes)
+        if plate != "11111":
+            print(f"[Job {job_id}] OCR detected plate: {plate}", flush=True)
+        else:
+            print(f"[Job {job_id}] Plate not extracted: {reason or 'Unknown'}", flush=True)
+        return plate, reason
+    except Exception as e:
+        print(f"[Job {job_id}] OCR failed: {e}", flush=True)
+        return "11111", str(e)
+
+
+def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_id: int) -> dict:
+    """Violation analysis worker: runs in thread pool."""
+    try:
+        from app.violation.services.violation_analyzer import ViolationAnalyzer
+        analyzer = ViolationAnalyzer()
+        v = analyzer.analyze(video_bytes, violation_zone=violation_zone)
+        print(
+            f"[Job {job_id}] Violation: rule={v.rule_id} state={v.decision_state} conf={v.confidence:.2f}",
+            flush=True,
+        )
+        return {
+            "violation_rule_id":        v.rule_id or None,
+            "violation_decision":       v.decision_state,
+            "violation_confidence":     v.confidence,
+            "violation_description_he": v.description_he or None,
+            "violation_description_en": v.description_en or None,
+        }
+    except Exception as e:
+        print(f"[Job {job_id}] Violation analysis failed (non-fatal): {e}", flush=True)
+        return {}
 
 
 def process_one_job() -> bool:
@@ -61,32 +95,30 @@ def process_one_job() -> bool:
         if not job:
             s = job_repo.get_queue_status()
             print(f"[{datetime.now().isoformat()}] Queue: {_fmt_queue(s)}", flush=True)
-            # No queued jobs: reset any stuck in "processing" (worker crashed)
             reset = job_repo.reset_stuck_processing()
             if reset > 0:
                 print(f"[{datetime.now().isoformat()}] Reset {reset} stuck job(s) to queued", flush=True)
             return False
+
         if not job.raw_video_path:
             job_repo.update(job.id, status="failed", error_message="No raw video path (legacy job?)")
             return True
 
-        from datetime import timezone as tz
-        job_repo.update(job.id, status="processing", processing_started_at=datetime.now(tz.utc))
+        job_repo.update(job.id, status="processing", processing_started_at=datetime.now(timezone.utc))
         s = job_repo.get_queue_status()
         print(f"[{datetime.now().isoformat()}] Job {job.id} picked up | {_fmt_queue(s)}", flush=True)
 
-        # Use same videos_dir as API (settings.videos_dir) so paths match
         videos_dir = Path(settings.videos_dir).resolve()
         raw_dir = videos_dir / "raw"
         path_str = (job.raw_video_path or "").strip().replace("\\", "/")
         raw_path = (videos_dir / path_str).resolve()
-        # Fallback 1: raw dir + filename only
+
         if not raw_path.exists():
             base_name = Path(path_str).name
             fallback = raw_dir / base_name
             if fallback.resolve().exists():
                 raw_path = fallback.resolve()
-        # Fallback 2: path may be truncated in DB; find file whose name starts with same prefix
+
         if not raw_path.exists() and raw_dir.exists():
             base_name = Path(path_str).name
             prefix = base_name.rsplit(".", 1)[0] if "." in base_name else base_name
@@ -96,11 +128,12 @@ def process_one_job() -> bool:
                         raw_path = p.resolve()
                         print(f"[Job {job.id}] Resolved raw video by prefix: {p.name}", flush=True)
                         break
+
         if not raw_path.exists():
             err = (
                 f"Raw video not found at {raw_path}. "
                 f"Videos dir: {videos_dir}. "
-                f"Ensure API and worker use the same VIDEOS_DIR (or run from backend dir)."
+                f"Ensure API and worker use the same VIDEOS_DIR."
             )
             job_repo.update(job.id, status="failed", error_message=err)
             return True
@@ -111,99 +144,90 @@ def process_one_job() -> bool:
             return True
 
         cfg = db.query(AppConfig).first()
-        use_violation = cfg.use_violation_pipeline if cfg is not None else getattr(settings, 'use_violation_pipeline', True)
         use_fast = getattr(settings, 'use_fast_hsv_pipeline', True)
-        # Always apply blur for privacy (default 15 when settings have 0 or None)
         blur_size = 15
         if cfg and getattr(cfg, 'blur_kernel_size', None) is not None and cfg.blur_kernel_size > 0:
             blur_size = max(3, cfg.blur_kernel_size)
         if blur_size % 2 == 0:
             blur_size += 1
         blur_kw = {'blur_strength': blur_size}
-        plate_reason = None
+
+        # --- Step 1: process video (blur) ---
+        t0 = time.monotonic()
         if use_fast:
-            # Fast path: HSV yellow plates only, no YOLO. Black-on-yellow OCR.
             blurred_bytes, ticket_jpeg = process_video_fast_hsv(video_bytes, **blur_kw)
-            license_plate = job.license_plate or "11111"
-            if license_plate == "11111":
-                license_plate, plate_reason = extract_license_plate(
-                    frame_jpeg=ticket_jpeg, video_bytes=video_bytes, use_fast_hsv=True
-                )
-                if license_plate != "11111":
-                    print(f"[Job {job.id}] Fast HSV OCR detected plate: {license_plate}", flush=True)
-                else:
-                    print(f"[Job {job.id}] Plate not extracted: {plate_reason or 'Unknown'}", flush=True)
-        elif use_violation:
-            try:
-                blur_size = (cfg.blur_kernel_size if cfg and getattr(cfg, "blur_kernel_size", None) is not None else None) or 15
-                if blur_size <= 0:
-                    blur_size = 15
-                blurred_bytes, ticket_jpeg, license_plate = process_video_with_violation_pipeline(
-                    video_bytes,
-                    output_dir=str(videos_dir / "evidence"),
-                    extract_frame_at=0.5,
-                    blur_kernel_size=blur_size,
-                )
-                if license_plate and license_plate != "11111":
-                    print(f"[Job {job.id}] Violation pipeline detected plate: {license_plate}", flush=True)
-                elif license_plate == "11111":
-                    detected_plate, plate_reason = extract_license_plate(frame_jpeg=ticket_jpeg)
-                    if detected_plate != "11111":
-                        license_plate = detected_plate
-                        print(f"[Job {job.id}] OCR detected plate: {license_plate}", flush=True)
-                    else:
-                        plate_reason = plate_reason or "Violation pipeline did not detect plate in any frame."
-                        print(f"[Job {job.id}] Plate not extracted: {plate_reason}", flush=True)
-            except Exception as e:
-                print(f"[Job {job.id}] Violation pipeline failed, falling back: {e}", flush=True)
-                blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
-                license_plate = job.license_plate or "11111"
-                plate_reason = None
-                if license_plate == "11111":
-                    from app.violation.services.registry import VehicleRegistryService
-                    _registry = VehicleRegistryService()
-                    detected_plate, plate_reason = extract_license_plate(
-                        video_bytes=video_bytes, registry_lookup=_registry
-                    )
-                    if detected_plate != "11111":
-                        license_plate = detected_plate
-                        print(f"[Job {job.id}] OCR (fallback) detected plate: {license_plate}", flush=True)
-                    else:
-                        print(f"[Job {job.id}] Plate not extracted: {plate_reason or 'Unknown'}", flush=True)
         else:
-            # Ref algorithm: HSV plate detection + blur pipeline. OCR plate from processed frame.
             blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
-            license_plate = job.license_plate or "11111"
-            plate_reason = None
-            if license_plate == "11111":
-                license_plate, plate_reason = extract_license_plate(frame_jpeg=ticket_jpeg)
-                if license_plate != "11111":
-                    print(f"[Job {job.id}] OCR detected plate: {license_plate}", flush=True)
-                else:
-                    print(f"[Job {job.id}] Plate not extracted: {plate_reason or 'Unknown'}", flush=True)
+        print(f"[Job {job.id}] Video processed in {time.monotonic()-t0:.1f}s", flush=True)
 
-        # Validate plate against Ministry of Transport registry (data.gov.il) when enabled
-        validate_registry = getattr(settings, 'validate_plate_in_registry', False)
-        if validate_registry and license_plate and license_plate != "11111":
+        # --- Step 2: OCR + violation analysis in parallel ---
+        plate_from_job = job.license_plate
+        skip_ocr = bool(plate_from_job and plate_from_job != "11111")
+
+        t1 = time.monotonic()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = {}
+            if not skip_ocr:
+                futures["ocr"] = pool.submit(_run_ocr, video_bytes, job.id)
+            futures["violation"] = pool.submit(
+                _run_violation_analysis, video_bytes, job.violation_zone, job.id
+            )
+
+            ocr_result = (plate_from_job or "11111", None)
+            violation_data: dict = {}
+            for key, future in futures.items():
+                try:
+                    result = future.result()
+                    if key == "ocr":
+                        ocr_result = result
+                    else:
+                        violation_data = result
+                except Exception as e:
+                    print(f"[Job {job.id}] {key} future error: {e}", flush=True)
+
+        license_plate, plate_reason = ocr_result
+        print(f"[Job {job.id}] Parallel OCR+violation in {time.monotonic()-t1:.1f}s", flush=True)
+
+        # Registry validation (optional)
+        if getattr(settings, 'validate_plate_in_registry', False) and license_plate and license_plate != "11111":
             from app.violation.services.registry import VehicleRegistryService
-            registry = VehicleRegistryService()
-            if not registry.plate_exists(license_plate):
-                print(f"[Job {job.id}] Plate {license_plate} not found in MoT registry (keeping detected value)", flush=True)
-                plate_reason = f"Detected plate {license_plate} — not found in Ministry of Transport registry (data.gov.il); may be OCR error or unregistered vehicle"
+            if not VehicleRegistryService().plate_exists(license_plate):
+                print(f"[Job {job.id}] Plate {license_plate} not in MoT registry", flush=True)
+                plate_reason = f"Detected {license_plate} — not in Ministry of Transport registry"
 
-        # Store "" for "not identified" in DB (UI shows Hebrew "לא זוהה")
         display_plate = "" if (not license_plate or license_plate == "11111") else license_plate
 
-        # Save to filesystem: videos/processed/job_{id}.mp4, videos/frames/job_{id}.jpg
+        # --- Step 3: save files ---
         proc_path = videos_dir / "processed" / f"job_{job.id}.mp4"
         frame_path = videos_dir / "frames" / f"job_{job.id}.jpg"
         proc_path.write_bytes(blurred_bytes)
         frame_path.write_bytes(ticket_jpeg)
 
-        rel_video = f"processed/job_{job.id}.mp4"
-        rel_frame = f"frames/job_{job.id}.jpg"
+        # Delete raw file to free disk space
+        try:
+            raw_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
-        video_params = extract_video_params(str(raw_path))
+        video_params = extract_video_params(str(proc_path))
+
+        # Plate format detection
+        plate_format = None
+        try:
+            import cv2
+            import numpy as np
+            from app.plate_pipeline.plate_format import classify_plate_format
+            frame = cv2.imdecode(np.frombuffer(ticket_jpeg, np.uint8), cv2.IMREAD_COLOR)
+            if frame is not None:
+                from app.services.video_processor import detect_plate_box
+                box = detect_plate_box(frame)
+                if box:
+                    _, _, w, h = box
+                    fmt = classify_plate_format(w, h)
+                    if fmt:
+                        plate_format = fmt.get("name")
+        except Exception:
+            pass
 
         location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
         ticket_kw = dict(
@@ -213,8 +237,8 @@ def process_one_job() -> bool:
             violation_zone=job.violation_zone or "red_white",
             description=job.description or f"Mobile upload at {location_str}",
             status="pending_review",
-            video_path=rel_video,
-            ticket_image_path=rel_frame,
+            video_path=f"processed/job_{job.id}.mp4",
+            ticket_image_path=f"frames/job_{job.id}.jpg",
             latitude=job.latitude,
             longitude=job.longitude,
             captured_at=job.captured_at,
@@ -222,51 +246,21 @@ def process_one_job() -> bool:
         )
         if plate_reason:
             ticket_kw["plate_detection_reason"] = plate_reason
-        # Ref: plate format classification from ticket frame
-        try:
-            import cv2
-            import numpy as np
-            from app.services.video_processor import detect_plate_box, classify_plate_format
-            frame = cv2.imdecode(np.frombuffer(ticket_jpeg, np.uint8), cv2.IMREAD_COLOR)
-            if frame is not None:
-                box = detect_plate_box(frame)
-                if box:
-                    _, _, w, h = box
-                    fmt = classify_plate_format(w, h)
-                    if fmt:
-                        ticket_kw["plate_format"] = fmt.get("name")
-        except Exception:
-            pass
+        if plate_format:
+            ticket_kw["plate_format"] = plate_format
 
         ticket = ticket_repo.create(**ticket_kw)
 
-        # Run violation analysis on the original (unblurred) video
-        try:
-            from app.violation.services.violation_analyzer import ViolationAnalyzer
-            analyzer = ViolationAnalyzer()
-            v_result = analyzer.analyze(video_bytes, violation_zone=job.violation_zone)
-            v_update = {
-                "violation_rule_id":        v_result.rule_id or None,
-                "violation_decision":       v_result.decision_state,
-                "violation_confidence":     v_result.confidence,
-                "violation_description_he": v_result.description_he or None,
-                "violation_description_en": v_result.description_en or None,
-            }
+        # Apply violation analysis result
+        if violation_data:
             try:
-                ticket_repo.update(ticket.id, **v_update)
+                ticket_repo.update(ticket.id, **violation_data)
             except Exception:
-                for k, v in v_update.items():
+                for k, v in violation_data.items():
                     setattr(ticket, k, v)
                 db.commit()
-            print(
-                f"[Job {job.id}] Violation: rule={v_result.rule_id} "
-                f"state={v_result.decision_state} conf={v_result.confidence:.2f}",
-                flush=True,
-            )
-        except Exception as va_err:
-            print(f"[Job {job.id}] Violation analysis failed (non-fatal): {va_err}", flush=True)
 
-        # Extract 5 evenly-spaced screenshots from the blurred video and save them
+        # --- Step 4: extract screenshots (non-blocking) ---
         try:
             frames = extract_frames(blurred_bytes, count=5)
             screenshots_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
@@ -275,8 +269,7 @@ def process_one_job() -> bool:
             now_utc = datetime.now(timezone.utc)
             for jpeg_bytes, frame_sec in frames:
                 fname = f"shot_{int(frame_sec * 1000):08d}ms.jpg"
-                fpath = screenshots_dir / fname
-                fpath.write_bytes(jpeg_bytes)
+                (screenshots_dir / fname).write_bytes(jpeg_bytes)
                 rel = f"screenshots/ticket_{ticket.id}/{fname}"
                 try:
                     db.execute(
@@ -307,6 +300,7 @@ def process_one_job() -> bool:
         s = job_repo.get_queue_status()
         print(f"[{datetime.now().isoformat()}] Job {job.id} completed -> ticket {ticket.id} | {_fmt_queue(s)}", flush=True)
         return True
+
     except Exception as e:
         if job and job_repo:
             job_repo.update(job.id, status="failed", error_message=str(e))
@@ -316,16 +310,16 @@ def process_one_job() -> bool:
             print(f"[{datetime.now().isoformat()}] Job {job.id if job else '?'} failed: {e} | {_fmt_queue(s)}", flush=True)
         else:
             print(f"[{datetime.now().isoformat()}] Job {job.id if job else '?'} failed: {e}", flush=True)
-        return True  # job was handled (failed)
+        return True
     finally:
         db.close()
 
 
 def main():
-    poll_interval = 2.0
+    idle_interval = 2.0   # seconds to wait when queue is empty
     videos_path = Path(settings.videos_dir).resolve()
-    print(f"Upload worker started. Videos dir: {videos_path} Polling every {poll_interval}s.", flush=True)
-    # Check Tesseract (plate OCR) at startup; set path on Windows if not in PATH
+    print(f"Upload worker started. Videos dir: {videos_path}", flush=True)
+
     try:
         import pytesseract
         for _p in [
@@ -338,20 +332,23 @@ def main():
         pytesseract.get_tesseract_version()
         print("Tesseract OCR: OK", flush=True)
     except Exception as e:
-        print(f"WARNING: Tesseract not available for plate OCR: {e}", flush=True)
-        print("Install: winget install UB-Mannheim.TesseractOCR", flush=True)
+        print(f"WARNING: Tesseract not available: {e}", flush=True)
+
     while True:
         try:
-            process_one_job()
+            did_work = process_one_job()
+            if not did_work:
+                # Idle: wait before next poll
+                time.sleep(idle_interval)
+            # If we processed a job, immediately check for the next one (no sleep)
         except KeyboardInterrupt:
             print("Worker stopped.")
             break
         except Exception as e:
             traceback.print_exc()
             print(f"Worker error: {e}")
-        time.sleep(poll_interval)
+            time.sleep(idle_interval)
 
 
 if __name__ == "__main__":
     main()
-
