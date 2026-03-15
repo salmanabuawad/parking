@@ -1,8 +1,13 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+import { AgGridReact } from 'ag-grid-react'
+import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community'
+import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import api from '../api'
 import { uploadApi, settingsApi } from '../api'
 import { t } from '../i18n'
+
+ModuleRegistry.registerModules([AllCommunityModule])
 
 interface UploadJob {
   job_id: number
@@ -18,11 +23,44 @@ interface Settings {
   use_violation_pipeline?: boolean
 }
 
-const statusColors: Record<string, string> = {
-  queued: '#6b7280',
-  processing: '#2563eb',
-  completed: '#22c55e',
-  failed: '#dc2626',
+const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
+  queued:     { color: '#92400e', bg: '#fef3c7' },
+  processing: { color: '#1e40af', bg: '#dbeafe' },
+  completed:  { color: '#065f46', bg: '#d1fae5' },
+  failed:     { color: '#991b1b', bg: '#fee2e2' },
+}
+
+function StatusCell({ value }: { value: string }) {
+  const s = STATUS_COLOR[value] ?? { color: '#374151', bg: '#f3f4f6' }
+  const labels: Record<string, string> = {
+    queued: t('statusQueued'),
+    processing: t('statusProcessing'),
+    completed: t('statusCompleted'),
+    failed: t('statusFailed'),
+  }
+  return (
+    <span style={{
+      display: 'inline-block',
+      padding: '3px 10px',
+      borderRadius: 999,
+      background: s.bg,
+      color: s.color,
+      fontWeight: 600,
+      fontSize: '0.82rem',
+    }}>
+      {labels[value] ?? value}
+    </span>
+  )
+}
+
+function ErrorCell({ value }: { value: string | null }) {
+  if (!value) return <span style={{ color: '#94a3b8' }}>—</span>
+  const short = value.length > 70 ? `${value.slice(0, 70)}…` : value
+  return (
+    <span title={value} style={{ color: '#dc2626', fontSize: '0.82rem' }}>
+      {short}
+    </span>
+  )
 }
 
 export default function QueueMaintenance() {
@@ -32,41 +70,32 @@ export default function QueueMaintenance() {
   const [rerunning, setRerunning] = useState<number | null>(null)
   const [resettingStuck, setResettingStuck] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [quickFilter, setQuickFilter] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       const { data } = await uploadApi.listJobs(50)
       setJobs(data)
     } catch (err) {
       console.error('Failed to fetch jobs', err)
     }
-  }
-
-  const fetchSettings = async () => {
-    try {
-      const { data } = await settingsApi.get()
-      setSettings(data)
-    } catch (err) {
-      console.error('Failed to fetch settings', err)
-    }
-  }
+  }, [])
 
   const load = async () => {
     setLoading(true)
-    await Promise.all([fetchJobs(), fetchSettings()])
+    await Promise.all([
+      fetchJobs(),
+      settingsApi.get().then(({ data }) => setSettings(data)).catch(() => {}),
+    ])
     setLoading(false)
   }
 
+  useEffect(() => { load() }, [])
   useEffect(() => {
-    load()
-  }, [])
-
-  // Auto-refresh jobs every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(fetchJobs, 5000)
-    return () => clearInterval(interval)
-  }, [])
+    const id = setInterval(fetchJobs, 5000)
+    return () => clearInterval(id)
+  }, [fetchJobs])
 
   const handleResetStuck = async () => {
     setResettingStuck(true)
@@ -118,127 +147,135 @@ export default function QueueMaintenance() {
     }
   }
 
-  const styles: Record<string, React.CSSProperties> = {
-    page: { padding: '1rem 2rem', fontFamily: 'system-ui', maxWidth: 1200 },
-    title: { fontSize: '1.5rem', marginBottom: '0.5rem' },
-    subtitle: { color: '#666', marginBottom: '1rem', fontSize: '0.95rem' },
-    table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' },
-    th: { padding: '0.75rem 1rem', textAlign: 'left', background: '#1a1a2e', color: 'white', fontWeight: 600 },
-    td: { padding: '0.6rem 1rem', borderBottom: '1px solid #e2e8f0' },
-    btn: { padding: '0.35rem 0.75rem', fontSize: '0.85rem', background: '#374151', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' },
-    link: { color: '#2563eb', textDecoration: 'underline' },
-    blurBadge: { display: 'inline-block', padding: '0.2rem 0.5rem', background: '#e0e7ff', color: '#4338ca', borderRadius: 4, fontSize: '0.9rem' },
-  }
+  const colDefs: ColDef<UploadJob>[] = [
+    { field: 'job_id', headerName: t('jobNum'), width: 90, sort: 'desc' },
+    {
+      field: 'source',
+      headerName: t('source'),
+      flex: 1.5,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) =>
+        p.value ? <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>{p.value}</code> : <span style={{ color: '#94a3b8' }}>—</span>,
+    },
+    {
+      field: 'status',
+      headerName: t('status'),
+      width: 130,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) => <StatusCell value={p.value} />,
+    },
+    {
+      field: 'license_plate',
+      headerName: t('plate'),
+      width: 130,
+      valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : t('plateNotIdentified')),
+    },
+    {
+      field: 'error_message',
+      headerName: t('failingReason'),
+      flex: 2,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) => <ErrorCell value={p.value} />,
+    },
+    {
+      headerName: t('rerun'),
+      width: 110,
+      sortable: false,
+      filter: false,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) => {
+        if (!p.data) return null
+        const jid = p.data.job_id
+        return (
+          <button
+            onClick={() => handleRerun(jid)}
+            disabled={rerunning === jid}
+            style={{
+              padding: '4px 12px',
+              background: rerunning === jid ? '#94a3b8' : '#1e40af',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 6,
+              cursor: rerunning === jid ? 'not-allowed' : 'pointer',
+              fontSize: '0.82rem',
+              fontFamily: 'inherit',
+            }}
+          >
+            {rerunning === jid ? t('rerunning') : t('rerun')}
+          </button>
+        )
+      },
+    },
+  ]
 
   return (
-    <div style={styles.page}>
-      <h1 style={styles.title}>{t('queueMaintenance')}</h1>
-      <p style={styles.subtitle}>
-        {t('queueSubtitle')}
-        <Link to="/settings" style={{ ...styles.link, marginLeft: '0.5rem' }}>{t('editBlurSettings')}</Link>
-      </p>
+    <div style={{ padding: '1.5rem 2rem', maxWidth: 1200, margin: '0 auto' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: '1rem' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: '1.4rem', color: '#0f172a' }}>{t('queueMaintenance')}</h1>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '0.92rem' }}>
+            {t('queueSubtitle')}{' '}
+            <Link to="/settings" style={{ color: '#2563eb' }}>{t('editBlurSettings')}</Link>
+          </p>
+        </div>
 
-      <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#f8fafc', borderRadius: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="video/*"
+            onChange={handleFileChange}
+            disabled={uploading}
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            style={{ padding: '8px 16px', background: '#1e40af', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            {uploading ? t('uploading') : t('uploadVideo')}
+          </button>
+          <button
+            onClick={handleResetStuck}
+            disabled={resettingStuck}
+            style={{ padding: '8px 16px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            {resettingStuck ? '...' : 'איפוס תקועים'}
+          </button>
+        </div>
+      </div>
+
+      {settings && (
+        <div style={{ marginBottom: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: '#f1f5f9', borderRadius: 8 }}>
+          <strong style={{ fontSize: '0.88rem' }}>{t('blurKernelSize')}:</strong>
+          <span style={{ background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: 4, fontSize: '0.88rem', fontWeight: 600 }}>
+            {settings.blur_kernel_size}
+          </span>
+        </div>
+      )}
+
+      <div style={{ marginBottom: '0.75rem' }}>
         <input
-          ref={fileInputRef}
-          type="file"
-          accept="video/*"
-          onChange={handleFileChange}
-          disabled={uploading}
-          style={{ display: 'none' }}
+          type="search"
+          placeholder="חיפוש..."
+          value={quickFilter}
+          onChange={(e) => setQuickFilter(e.target.value)}
+          style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid #d7dfeb', fontSize: '0.9rem', width: 220, direction: 'rtl' }}
         />
-        <button
-          type="button"
-          style={styles.btn}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-        >
-          {uploading ? t('uploading') : t('uploadVideo')}
-        </button>
       </div>
 
       {loading ? (
-        <p>{t('loading')}</p>
+        <p style={{ color: '#64748b' }}>{t('loading')}</p>
       ) : (
-        <>
-          {settings && (
-            <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#f8fafc', borderRadius: 8, display: 'inline-block' }}>
-              <strong>{t('blurKernelSize')}:</strong>{' '}
-              <span style={styles.blurBadge}>{settings.blur_kernel_size}</span>
-              <span style={{ color: '#64748b', marginLeft: 8, fontSize: '0.9rem' }}>
-                {t('blurKernelHint')}
-              </span>
-            </div>
-          )}
-
-          <div style={{ overflowX: 'auto' }}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>{t('jobNum')}</th>
-                  <th style={styles.th}>{t('source')}</th>
-                  <th style={styles.th}>{t('target')}</th>
-                  <th style={styles.th}>{t('status')}</th>
-                  <th style={styles.th}>{t('plate')}</th>
-                  <th style={styles.th}>{t('failingReason')}</th>
-                  <th style={styles.th}>{t('blurRatio')}</th>
-                  <th style={styles.th}>{t('rerun')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {jobs.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} style={{ ...styles.td, textAlign: 'center', color: '#64748b' }}>
-                      {t('noJobsYet')}
-                    </td>
-                  </tr>
-                ) : (
-                  jobs.map((j) => (
-                    <tr key={j.job_id}>
-                      <td style={styles.td}>{j.job_id}</td>
-                      <td style={styles.td}>
-                        <code style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>{j.source || '—'}</code>
-                      </td>
-                      <td style={styles.td}>
-                        <code style={{ fontSize: '0.85rem', wordBreak: 'break-all' }}>{j.target || '—'}</code>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ color: statusColors[j.status] || '#374151', fontWeight: 500 }}>
-                          {j.status === 'queued' ? t('statusQueued') : j.status === 'processing' ? t('statusProcessing') : j.status === 'completed' ? t('statusCompleted') : j.status === 'failed' ? t('statusFailed') : j.status}
-                        </span>
-                      </td>
-                      <td style={styles.td}>
-                        <span style={{ fontWeight: 500 }}>{j.license_plate && j.license_plate !== '11111' ? j.license_plate : t('plateNotIdentified')}</span>
-                      </td>
-                      <td style={styles.td}>
-                        {j.error_message ? (
-                          <span style={{ color: '#dc2626', fontSize: '0.85rem', maxWidth: 200, display: 'inline-block' }} title={j.error_message}>
-                            {j.error_message.length > 80 ? `${j.error_message.slice(0, 80)}…` : j.error_message}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td style={styles.td}>
-                        <span style={styles.blurBadge}>{settings?.blur_kernel_size ?? '—'}</span>
-                      </td>
-                      <td style={styles.td}>
-                        <button
-                          type="button"
-                          style={styles.btn}
-                          onClick={() => handleRerun(j.job_id)}
-                          disabled={rerunning === j.job_id}
-                        >
-                          {rerunning === j.job_id ? t('rerunning') : t('rerun')}
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+        <div style={{ height: 520, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+          <AgGridReact<UploadJob>
+            theme={themeQuartz}
+            rowData={jobs}
+            columnDefs={colDefs}
+            quickFilterText={quickFilter}
+            enableRtl={true}
+            pagination={true}
+            paginationPageSize={20}
+            rowHeight={48}
+            defaultColDef={{ sortable: true, filter: true, resizable: true }}
+          />
+        </div>
       )}
     </div>
   )
