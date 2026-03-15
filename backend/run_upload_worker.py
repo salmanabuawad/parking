@@ -262,7 +262,7 @@ def process_one_job() -> bool:
 
         # --- Step 4: extract screenshots (non-blocking) ---
         try:
-            frames = extract_frames(blurred_bytes, count=5)
+            frames = extract_frames(blurred_bytes, count=5, base_time=job.captured_at)
             screenshots_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
             screenshots_dir.mkdir(parents=True, exist_ok=True)
             from sqlalchemy import text as _text
