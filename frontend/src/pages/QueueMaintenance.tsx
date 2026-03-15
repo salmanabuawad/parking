@@ -16,6 +16,8 @@ interface UploadJob {
   target?: string
   license_plate?: string | null
   error_message?: string | null
+  ticket_id?: number | null
+  created_at?: string | null
 }
 
 interface Settings {
@@ -136,6 +138,12 @@ export default function QueueMaintenance() {
   const colDefs: ColDef<UploadJob>[] = [
     { field: 'job_id', headerName: t('jobNum'), width: 90, sort: 'desc' },
     {
+      field: 'created_at',
+      headerName: t('uploadDate'),
+      width: 160,
+      valueFormatter: (p) => p.value ? new Date(p.value).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—',
+    },
+    {
       field: 'source',
       headerName: t('source'),
       flex: 1.5,
@@ -153,6 +161,22 @@ export default function QueueMaintenance() {
       headerName: t('plate'),
       width: 130,
       valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : t('plateNotIdentified')),
+    },
+    {
+      field: 'ticket_id',
+      headerName: t('ticket'),
+      width: 110,
+      cellRenderer: (p: ICellRendererParams<UploadJob>) =>
+        p.value ? (
+          <Link
+            to={`/tickets/${p.value}`}
+            style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none', fontSize: '0.88rem' }}
+          >
+            #{p.value}
+          </Link>
+        ) : (
+          <span style={{ color: '#94a3b8' }}>—</span>
+        ),
     },
     {
       field: 'error_message',
