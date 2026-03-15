@@ -39,6 +39,11 @@ def _ticket_dict(t) -> dict:
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "reviewed_at": t.reviewed_at.isoformat() if t.reviewed_at else None,
         "plate_detection_reason": t.plate_detection_reason,
+        "violation_rule_id": getattr(t, "violation_rule_id", None),
+        "violation_decision": getattr(t, "violation_decision", None),
+        "violation_confidence": getattr(t, "violation_confidence", None),
+        "violation_description_he": getattr(t, "violation_description_he", None),
+        "violation_description_en": getattr(t, "violation_description_en", None),
     }
 
 
