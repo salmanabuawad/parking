@@ -102,33 +102,29 @@ def save_ticket_screenshot(
         now = datetime.now(timezone.utc)
         frame_ms = int(frame_time_sec * 1000)
 
+        # Schema (from DB): NOT NULL = image_path, frame_timestamp_ms, video_timestamp_text, is_blurred_source(default true)
         params = {
             "ticket_id": ticket_id,
             "storage_path": stored_rel,
-            "video_timestamp": captured_at,
-            "created_by": username,
-            "created_at": now,
-            "frame_time_sec": frame_time_sec,
-            "captured_at": captured_at,
             "image_path": stored_rel,
             "frame_timestamp_ms": frame_ms,
             "video_timestamp_text": video_ts_text or " ",
-            "captured_by_val": username,
+            "frame_time_sec": frame_time_sec,
+            "captured_at": captured_at,
+            "created_by": username,
         }
         try:
             row = db.execute(
                 text(
                     """
                     INSERT INTO ticket_screenshots (
-                        ticket_id, storage_path,
-                        video_timestamp, created_by, created_at,
-                        frame_time_sec, captured_at, image_path, frame_timestamp_ms,
-                        video_timestamp_text, captured_by, is_blurred_source
+                        ticket_id, storage_path, image_path,
+                        frame_timestamp_ms, video_timestamp_text,
+                        frame_time_sec, captured_at, created_by, is_blurred_source
                     ) VALUES (
-                        :ticket_id, :storage_path,
-                        :video_timestamp, :created_by, :created_at,
-                        :frame_time_sec, :captured_at, :image_path, :frame_timestamp_ms,
-                        :video_timestamp_text, :captured_by_val, true
+                        :ticket_id, :storage_path, :image_path,
+                        :frame_timestamp_ms, :video_timestamp_text,
+                        :frame_time_sec, :captured_at, :created_by, true
                     )
                     RETURNING id, created_at
                     """
@@ -136,29 +132,12 @@ def save_ticket_screenshot(
                 params,
             ).fetchone()
         except Exception as insert_err:
+            logger.exception("Screenshot INSERT failed for ticket_id=%s", ticket_id)
             db.rollback()
-            err_msg = str(insert_err).lower()
-            if "column" in err_msg and "does not exist" in err_msg:
-                row = db.execute(
-                    text(
-                        """
-                        INSERT INTO ticket_screenshots (ticket_id, storage_path, frame_time_sec)
-                        VALUES (:ticket_id, :storage_path, :frame_time_sec)
-                        RETURNING id, created_at
-                        """
-                    ),
-                    {
-                        "ticket_id": ticket_id,
-                        "storage_path": stored_rel,
-                        "frame_time_sec": frame_time_sec,
-                    },
-                ).fetchone()
-            else:
-                logger.exception("Screenshot INSERT failed for ticket_id=%s", ticket_id)
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Screenshot save failed: {type(insert_err).__name__}: {str(insert_err)}",
-                ) from insert_err
+            raise HTTPException(
+                status_code=500,
+                detail=f"Screenshot save failed: {type(insert_err).__name__}: {str(insert_err)}",
+            ) from insert_err
 
         db.commit()
 
