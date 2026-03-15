@@ -103,15 +103,32 @@ export default function Upload() {
 
       {/* Video capture */}
       <label style={s.label} htmlFor="video-upload">בחר / צלם וידאו</label>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => { if (inputRef.current) { (inputRef.current as any).capture = 'environment'; inputRef.current.click() } }}
+          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid #2563eb', background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
+        >
+          📷 צלם וידאו
+        </button>
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => { if (inputRef.current) { (inputRef.current as any).removeAttribute?.('capture'); inputRef.current.removeAttribute('capture'); inputRef.current.click() } }}
+          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid #d1d5db', background: '#f9fafb', color: '#374151', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
+        >
+          🖼 בחר מהגלריה
+        </button>
+      </div>
       <input
         ref={inputRef}
         id="video-upload"
         type="file"
         accept="video/*"
-        capture="environment"
         onChange={onFileChange}
         disabled={submitting}
-        style={{ ...s.input, padding: '0.5rem' }}
+        style={{ display: 'none' }}
       />
       {selectedFile && (
         <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>

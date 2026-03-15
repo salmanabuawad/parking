@@ -1,5 +1,5 @@
 import { Component, type ReactNode, useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 
 const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
 import { useAuth } from './context/AuthContext'
@@ -48,11 +48,48 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasEr
 function MobileShell() {
   return (
     <div dir="rtl" style={{ minHeight: '100vh', background: '#f9fafb' }}>
-      <header style={{ padding: '12px 16px', background: '#1e3a8a', color: '#fff', textAlign: 'center' }}>
-        <strong style={{ fontSize: '1.1rem' }}>דיווח חנייה אסורה</strong>
+      <header style={{
+        padding: '14px 16px',
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
+        color: '#fff',
+        textAlign: 'center',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+      }}>
+        <strong style={{ fontSize: '1.1rem', letterSpacing: '0.02em' }}>דיווח חנייה אסורה</strong>
       </header>
       <Upload />
     </div>
+  )
+}
+
+const NAV_LINKS = [
+  { to: '/', label: he.app.home },
+  { to: '/upload', label: he.app.upload },
+  { to: '/tickets', label: he.app.tickets },
+  { to: '/cameras', label: he.app.cameras },
+  { to: '/queue', label: he.app.queue },
+  { to: '/settings', label: he.app.settings },
+]
+
+function NavLink({ to, label }: { to: string; label: string }) {
+  const loc = useLocation()
+  const active = to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to)
+  return (
+    <Link
+      to={to}
+      style={{
+        padding: '6px 14px',
+        borderRadius: 8,
+        textDecoration: 'none',
+        fontWeight: active ? 700 : 400,
+        color: active ? '#fff' : '#cbd5e1',
+        background: active ? 'rgba(255,255,255,0.18)' : 'transparent',
+        fontSize: '0.92rem',
+        transition: 'all 0.15s',
+      }}
+    >
+      {label}
+    </Link>
   )
 }
 
@@ -62,7 +99,6 @@ function AppShell() {
 
   if (loading) return <div dir="rtl" style={{ padding: 24 }}>{he.app.loading}</div>
 
-  // Mobile: only show the upload page, no login required
   if (isMobile) {
     return <MobileShell />
   }
@@ -77,33 +113,59 @@ function AppShell() {
   }
 
   return (
-    <div dir="rtl">
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid #e5e7eb', background: '#fff' }}>
-        <nav style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <strong>{he.app.title}</strong>
-          <Link to="/">{he.app.home}</Link>
-          <Link to="/upload">{he.app.upload}</Link>
-          <Link to="/tickets">{he.app.tickets}</Link>
-          <Link to="/cameras">{he.app.cameras}</Link>
-          <Link to="/queue">{he.app.queue}</Link>
-          <Link to="/settings">{he.app.settings}</Link>
+    <div dir="rtl" style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      <header style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '0 20px',
+        height: 56,
+        background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+      }}>
+        <nav style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ color: '#fff', fontWeight: 800, fontSize: '1rem', marginLeft: 12, letterSpacing: '0.03em' }}>
+            {he.app.title}
+          </span>
+          {NAV_LINKS.map((l) => (
+            <NavLink key={l.to} to={l.to} label={l.label} />
+          ))}
         </nav>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-          <span>{user?.username}</span>
-          <button onClick={logout}>{he.app.logout}</button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ color: '#bfdbfe', fontSize: '0.88rem' }}>{user?.username}</span>
+          <button
+            onClick={logout}
+            style={{
+              padding: '5px 14px',
+              background: 'rgba(255,255,255,0.15)',
+              color: '#fff',
+              border: '1px solid rgba(255,255,255,0.3)',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: '0.88rem',
+              fontFamily: 'inherit',
+            }}
+          >
+            {he.app.logout}
+          </button>
         </div>
       </header>
 
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/upload" element={<Upload />} />
-        <Route path="/tickets" element={<Tickets />} />
-        <Route path="/tickets/:id" element={<TicketReview />} />
-        <Route path="/cameras" element={<Cameras />} />
-        <Route path="/queue" element={<QueueMaintenance />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <main style={{ padding: '0' }}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/upload" element={<Upload />} />
+          <Route path="/tickets" element={<Tickets />} />
+          <Route path="/tickets/:id" element={<TicketReview />} />
+          <Route path="/cameras" element={<Cameras />} />
+          <Route path="/queue" element={<QueueMaintenance />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
     </div>
   )
 }
