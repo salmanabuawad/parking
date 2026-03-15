@@ -44,6 +44,15 @@ def _ticket_dict(t) -> dict:
         "violation_confidence": getattr(t, "violation_confidence", None),
         "violation_description_he": getattr(t, "violation_description_he", None),
         "violation_description_en": getattr(t, "violation_description_en", None),
+        # Digital signing
+        "video_signature_key": getattr(t, "video_signature_key", None),
+        "video_signed_at": t.video_signed_at.isoformat() if getattr(t, "video_signed_at", None) else None,
+        # Vehicle data from registry
+        "vehicle_type":  getattr(t, "vehicle_type", None),
+        "vehicle_color": getattr(t, "vehicle_color", None),
+        "vehicle_year":  getattr(t, "vehicle_year", None),
+        "vehicle_make":  getattr(t, "vehicle_make", None),
+        "vehicle_model": getattr(t, "vehicle_model", None),
     }
 
 

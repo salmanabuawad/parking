@@ -1,9 +1,19 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, LargeBinary, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, JSON, LargeBinary, Float, ForeignKey, Table
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from .database import Base
 
 import enum
+
+
+# Junction table: camera ↔ parking zones (many-to-many)
+camera_zones = Table(
+    "camera_zones",
+    Base.metadata,
+    Column("camera_id", Integer, ForeignKey("cameras.id", ondelete="CASCADE"), primary_key=True),
+    Column("zone_id", Integer, ForeignKey("parking_zones.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class ConnectionType(str, enum.Enum):
@@ -38,8 +48,14 @@ class Camera(Base):
     manufacturer = Column(String(100), nullable=True)
     model = Column(String(100), nullable=True)
     is_active = Column(Boolean, default=True)
+    # Violation rules this camera should check (list of rule IDs, e.g. ["IL-STATIC-001", "IL-STATIC-005"])
+    violation_rules = Column(JSON, nullable=True)
+    # Legacy single zone hint (kept for upload jobs / backward compat)
+    violation_zone = Column(String(20), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    # Parking zones visible from this camera (many-to-many)
+    zones = relationship("ParkingZone", secondary="camera_zones", back_populates="cameras")
 
 
 class CameraVideo(Base):
@@ -107,6 +123,16 @@ class Ticket(Base):
     longitude = Column(Float, nullable=True)
     captured_at = Column(DateTime(timezone=True), nullable=True)
     video_params = Column(JSON, nullable=True)
+    # Digital signature of the processed (blurred) video
+    video_signature = Column(Text, nullable=True)         # RSA-PSS signature hex
+    video_signature_key = Column(String(50), nullable=True)  # public key fingerprint (first 16 hex chars)
+    video_signed_at = Column(DateTime(timezone=True), nullable=True)
+    # Vehicle data fetched from Ministry of Transport registry by plate number
+    vehicle_type = Column(String(100), nullable=True)
+    vehicle_color = Column(String(100), nullable=True)
+    vehicle_year = Column(Integer, nullable=True)
+    vehicle_make = Column(String(100), nullable=True)
+    vehicle_model = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
@@ -153,6 +179,42 @@ class AppConfig(Base):
     temporal_blur_max_misses = Column(Integer, default=6, nullable=False)
     use_violation_pipeline = Column(Boolean, default=True, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class ViolationRule(Base):
+    """Israeli traffic violation rule definitions (editable from admin UI)."""
+
+    __tablename__ = "violation_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rule_id = Column(String(30), unique=True, nullable=False, index=True)   # e.g. IL-STATIC-001
+    title_he = Column(String(200), nullable=False)
+    title_en = Column(String(200), nullable=False)
+    description_he = Column(Text, nullable=True)
+    description_en = Column(Text, nullable=True)
+    legal_basis_he = Column(Text, nullable=True)
+    legal_basis_en = Column(Text, nullable=True)
+    fine_ils = Column(Integer, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class ParkingZone(Base):
+    """Parking zone type visible from a camera (e.g. red-white curb, blue-white curb)."""
+
+    __tablename__ = "parking_zones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_code = Column(String(40), unique=True, nullable=False, index=True)  # e.g. "red_white"
+    name_he = Column(String(100), nullable=False)
+    name_en = Column(String(100), nullable=False)
+    description_he = Column(Text, nullable=True)
+    description_en = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    cameras = relationship("Camera", secondary="camera_zones", back_populates="zones")
 
 
 class UploadJob(Base):

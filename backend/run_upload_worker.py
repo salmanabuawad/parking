@@ -60,12 +60,12 @@ def _run_ocr(video_bytes: bytes, job_id: int) -> tuple[str, str | None]:
         return "11111", str(e)
 
 
-def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_id: int) -> dict:
+def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_id: int, allowed_rules: list | None = None, captured_at=None) -> dict:
     """Violation analysis worker: runs in thread pool."""
     try:
         from app.violation.services.violation_analyzer import ViolationAnalyzer
         analyzer = ViolationAnalyzer()
-        v = analyzer.analyze(video_bytes, violation_zone=violation_zone)
+        v = analyzer.analyze(video_bytes, violation_zone=violation_zone, allowed_rules=allowed_rules, captured_at=captured_at)
         print(
             f"[Job {job_id}] Violation: rule={v.rule_id} state={v.decision_state} conf={v.confidence:.2f}",
             flush=True,
@@ -80,6 +80,38 @@ def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_
     except Exception as e:
         print(f"[Job {job_id}] Violation analysis failed (non-fatal): {e}", flush=True)
         return {}
+
+
+def _lookup_vehicle(plate: str, job_id: int) -> dict:
+    """Look up vehicle details from local registry then data.gov.il. Non-fatal."""
+    if not plate or plate == "11111":
+        return {}
+    try:
+        from app.violation.services.registry import VehicleRegistryService
+        svc = VehicleRegistryService()
+        rec = svc.lookup(plate)
+        if rec:
+            return {
+                "vehicle_make":  rec.manufacturer,
+                "vehicle_model": rec.model_name,
+                "vehicle_year":  rec.production_year,
+            }
+    except Exception as e:
+        print(f"[Job {job_id}] Local registry lookup failed: {e}", flush=True)
+    try:
+        from app.violation.services.data_gov_il import data_gov_il_lookup
+        gov = data_gov_il_lookup(plate)
+        if gov:
+            return {
+                "vehicle_make":  gov.get("manufacturer"),
+                "vehicle_model": gov.get("model_name"),
+                "vehicle_year":  gov.get("year"),
+                "vehicle_color": gov.get("color"),
+                "vehicle_type":  gov.get("vehicle_type"),
+            }
+    except Exception as e:
+        print(f"[Job {job_id}] data.gov.il lookup failed: {e}", flush=True)
+    return {}
 
 
 def process_one_job() -> bool:
@@ -164,13 +196,38 @@ def process_one_job() -> bool:
         plate_from_job = job.license_plate
         skip_ocr = bool(plate_from_job and plate_from_job != "11111")
 
+        # Look up camera-specific rules and parking zones before dispatching parallel tasks
+        camera_allowed_rules: list | None = None
+        camera_violation_zone: str | None = job.violation_zone
+        if job.camera_id and job.camera_id not in ("", "mobile"):
+            try:
+                from app.models import Camera as CameraModel, ParkingZone as ParkingZoneModel
+                cam_id = int(job.camera_id)
+                cam = db.query(CameraModel).filter(CameraModel.id == cam_id).first()
+                if cam:
+                    if cam.violation_rules:
+                        camera_allowed_rules = cam.violation_rules
+                    if cam.violation_zone and not camera_violation_zone:
+                        camera_violation_zone = cam.violation_zone
+                    # Use parking zones assigned to this camera (multi-zone support)
+                    if cam.zones:
+                        zone_codes = [z.zone_code for z in cam.zones if z.is_active]
+                        if zone_codes and not camera_violation_zone:
+                            # Pass the first zone as the primary hint; analyzer sees all via allowed_rules
+                            camera_violation_zone = zone_codes[0]
+                        elif zone_codes:
+                            # If job already had a zone hint, prefer camera zones
+                            camera_violation_zone = zone_codes[0]
+            except (ValueError, TypeError, Exception) as cam_err:
+                print(f"[Job {job.id}] Camera lookup skipped: {cam_err}", flush=True)
+
         t1 = time.monotonic()
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = {}
             if not skip_ocr:
                 futures["ocr"] = pool.submit(_run_ocr, video_bytes, job.id)
             futures["violation"] = pool.submit(
-                _run_violation_analysis, video_bytes, job.violation_zone, job.id
+                _run_violation_analysis, video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at
             )
 
             ocr_result = (plate_from_job or "11111", None)
@@ -197,6 +254,18 @@ def process_one_job() -> bool:
 
         display_plate = "" if (not license_plate or license_plate == "11111") else license_plate
 
+        # --- Vehicle data lookup (non-blocking) ---
+        vehicle_data: dict = {}
+        if display_plate:
+            t_veh = time.monotonic()
+            vehicle_data = _lookup_vehicle(display_plate, job.id)
+            if vehicle_data:
+                print(
+                    f"[Job {job.id}] Vehicle: {vehicle_data.get('vehicle_make')} {vehicle_data.get('vehicle_model')} "
+                    f"{vehicle_data.get('vehicle_year')} in {time.monotonic()-t_veh:.1f}s",
+                    flush=True,
+                )
+
         # --- Step 3: save files ---
         proc_path = videos_dir / "processed" / f"job_{job.id}.mp4"
         frame_path = videos_dir / "frames" / f"job_{job.id}.jpg"
@@ -208,6 +277,22 @@ def process_one_job() -> bool:
             raw_path.unlink(missing_ok=True)
         except Exception:
             pass
+
+        # --- Digital signing ---
+        sig_hex: str | None = None
+        sig_key_fp: str | None = None
+        try:
+            from app.services.video_signing import sign_processed_video
+            sig_hex, _pubkey_pem, sig_key_fp = sign_processed_video(
+                blurred_bytes, job_id=job.id, ticket_id=0,  # ticket not yet created; 0 placeholder
+                captured_at=job.captured_at, keys_dir=videos_dir,
+            )
+            # Save sidecar signature file
+            sig_path = proc_path.with_suffix(".mp4.sig")
+            sig_path.write_text(sig_hex)
+            print(f"[Job {job.id}] Video signed (key:{sig_key_fp})", flush=True)
+        except Exception as sign_err:
+            print(f"[Job {job.id}] Video signing failed (non-fatal): {sign_err}", flush=True)
 
         video_params = extract_video_params(str(proc_path))
 
@@ -248,6 +333,12 @@ def process_one_job() -> bool:
             ticket_kw["plate_detection_reason"] = plate_reason
         if plate_format:
             ticket_kw["plate_format"] = plate_format
+        if sig_hex:
+            ticket_kw["video_signature"] = sig_hex
+            ticket_kw["video_signature_key"] = sig_key_fp
+            ticket_kw["video_signed_at"] = datetime.now(timezone.utc)
+        if vehicle_data:
+            ticket_kw.update(vehicle_data)
 
         ticket = ticket_repo.create(**ticket_kw)
 

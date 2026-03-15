@@ -10,6 +10,7 @@ import Upload from './pages/Upload'
 import Tickets from './pages/Tickets'
 import TicketReview from './pages/TicketReview'
 import QueueMaintenance from './pages/QueueMaintenance'
+import ViolationRules from './pages/ViolationRules'
 import Login from './pages/Login'
 import { he } from './i18n/he'
 
@@ -66,8 +67,9 @@ const NAV_LINKS = [
   { to: '/', label: he.app.home },
   { to: '/tickets', label: he.app.tickets },
   { to: '/queue', label: he.app.queue },
+  { to: '/cameras', label: he.app.cameras },
+  { to: '/violation-rules', label: 'כללי עבירה' },
   { to: '/settings', label: he.app.settings },
-  { to: '/cameras', label: he.app.cameras, disabled: true },
 ]
 
 function NavLink({ to, label, disabled }: { to: string; label: string; disabled?: boolean }) {
@@ -182,6 +184,7 @@ function AppShell() {
           <Route path="/tickets" element={<Tickets />} />
           <Route path="/tickets/:id" element={<TicketReview />} />
           <Route path="/cameras" element={<Cameras />} />
+          <Route path="/violation-rules" element={<ViolationRules />} />
           <Route path="/queue" element={<QueueMaintenance />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
