@@ -162,14 +162,8 @@ def extract_video_params(input_path: str) -> dict:
         return {}
 
 
-def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
-    """Detect yellow license plate in frame; returns best bounding box or None."""
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    mask = cv2.inRange(
-        hsv,
-        np.array(HSV_LOWER_YELLOW, dtype=np.uint8),
-        np.array(HSV_UPPER_YELLOW, dtype=np.uint8),
-    )
+def _best_plate_from_mask(mask: np.ndarray, frame_shape: tuple) -> Optional[BBox]:
+    """Find the best plate bounding box from a binary mask."""
     kernel_open  = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel_open)
@@ -177,7 +171,7 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     best: Optional[BBox] = None
     best_score = 0.0
-    h_frame = frame.shape[0]
+    h_frame = frame_shape[0]
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         if w < 40 or h < 12:
@@ -192,6 +186,32 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
             best_score = score
             best = (x, y, w, h)
     return best
+
+
+def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
+    """Detect license plate in frame.
+    Tries yellow plates (standard Israeli) first, then white plates (commercial/diplomatic).
+    Returns best bounding box or None.
+    """
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+
+    # --- Yellow plates (standard Israeli) ---
+    yellow_mask = cv2.inRange(
+        hsv,
+        np.array(HSV_LOWER_YELLOW, dtype=np.uint8),
+        np.array(HSV_UPPER_YELLOW, dtype=np.uint8),
+    )
+    best = _best_plate_from_mask(yellow_mask, frame.shape)
+    if best is not None:
+        return best
+
+    # --- White plates (commercial, diplomatic, electric vehicles) ---
+    white_mask = cv2.inRange(
+        hsv,
+        np.array([0, 0, 160], dtype=np.uint8),
+        np.array([180, 50, 255], dtype=np.uint8),
+    )
+    return _best_plate_from_mask(white_mask, frame.shape)
 
 
 def detect_redwhite_curb(frame: np.ndarray) -> Optional[BBox]:
@@ -313,11 +333,38 @@ def _find_best_plate_box(
     return best_box
 
 
-def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox) -> Optional[np.ndarray]:
-    """Crop exactly to the plate region, upscale to minimum readable size,
-    and apply OTSU thresholding. Returns grayscale image ready for Tesseract."""
+def _deskew_plate(crop: np.ndarray) -> np.ndarray:
+    """Apply perspective correction: find the minimum-area bounding rect of
+    the plate content and warp it to a canonical upright rectangle.
+    Falls back to the original crop if the angle is small (<5°) or detection fails.
+    """
+    try:
+        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop.copy()
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return crop
+        all_pts = np.vstack(contours)
+        rect = cv2.minAreaRect(all_pts)
+        angle = rect[2]
+        # minAreaRect returns angle in (-90, 0]; adjust to (-45, 45]
+        if angle < -45:
+            angle += 90
+        if abs(angle) < 1.0:
+            return crop  # no meaningful skew
+        h, w = crop.shape[:2]
+        M = cv2.getRotationMatrix2D((w / 2, h / 2), angle, 1.0)
+        rotated = cv2.warpAffine(crop, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        return rotated
+    except Exception:
+        return crop
+
+
+def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox, target_width: int = 400) -> Optional[np.ndarray]:
+    """Crop to plate region, deskew, pad, upscale, apply CLAHE + OTSU.
+    Returns grayscale binary image ready for Tesseract, or None on failure.
+    """
     x, y, w, h = plate_box
-    # Clamp to frame bounds
     x1 = max(0, x)
     y1 = max(0, y)
     x2 = min(frame.shape[1], x + w)
@@ -325,29 +372,60 @@ def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox) -> Optional[np.ndarr
     crop = frame[y1:y2, x1:x2]
     if crop.size == 0 or crop.shape[0] < 4 or crop.shape[1] < 10:
         return None
-    # Upscale so the crop is at least 200px wide for reliable OCR
-    scale = max(1.0, 200.0 / crop.shape[1])
+
+    # Perspective deskew
+    crop = _deskew_plate(crop)
+
+    # Add padding so characters at plate edges aren't clipped
+    pad = max(4, crop.shape[0] // 8)
+    crop = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+
+    # Upscale to at least target_width (INTER_CUBIC for subpixel quality)
+    scale = max(1.0, target_width / crop.shape[1])
     if scale > 1.0:
         new_w = int(crop.shape[1] * scale)
         new_h = int(crop.shape[0] * scale)
         crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    # OTSU thresholding — optimal threshold auto-selected per image
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+
+    # CLAHE: adaptive contrast enhancement
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    gray = clahe.apply(gray)
+
+    # Gentle blur to suppress noise before binarization
+    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # OTSU thresholding
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     return binary
 
 
-def _run_tesseract(img: np.ndarray) -> str:
-    """Run Tesseract on a prepared grayscale/binary image, return digits only."""
+def _run_tesseract(img: np.ndarray, psm: int = 7) -> str:
+    """Run Tesseract with the given PSM mode; return digits-only string."""
     text = pytesseract.image_to_string(
         img,
-        config="--psm 7 -c tessedit_char_whitelist=0123456789",
+        config=f"--psm {psm} -c tessedit_char_whitelist=0123456789",
     )
     return re.sub(r"[^0-9]", "", text or "")
 
 
+def _ocr_plate_image(binary: np.ndarray) -> str:
+    """Try multiple PSM modes and both polarities; return best digit string."""
+    best = ""
+    # PSM 7 = single line, PSM 8 = single word, PSM 6 = uniform block, PSM 13 = raw line
+    for psm in (7, 8, 6, 13):
+        for img in (binary, cv2.bitwise_not(binary)):
+            digits = _run_tesseract(img, psm=psm)
+            if 7 <= len(digits) <= 8:
+                return digits          # first confident hit
+            if len(digits) > len(best):
+                best = digits
+    return best
+
+
 def _ocr_frame(frame: np.ndarray) -> Tuple[str, Optional[str]]:
-    """Detect plate region, crop to exact bounds, upscale, threshold, then OCR."""
+    """Detect plate region, crop, preprocess, then OCR with multi-PSM voting."""
     plate_box = detect_plate_box(frame)
     if plate_box is None:
         return ("11111", "Plate not detected in frame")
@@ -356,11 +434,9 @@ def _ocr_frame(frame: np.ndarray) -> Tuple[str, Optional[str]]:
     if binary is None:
         return ("11111", "Empty plate crop")
 
-    # Try normal image first, then inverted (handles dark-on-light plates)
-    for img in (binary, cv2.bitwise_not(binary)):
-        digits = _run_tesseract(img)
-        if 7 <= len(digits) <= 8:
-            return (digits, None)
+    digits = _ocr_plate_image(binary)
+    if 7 <= len(digits) <= 8:
+        return (digits, None)
 
     return ("11111", "OCR could not read valid 7-8 digit plate")
 
@@ -371,8 +447,10 @@ def extract_license_plate(
     use_fast_hsv: bool = False,
     registry_lookup=None,
 ) -> Tuple[str, Optional[str]]:
-    """OCR on original (unblurred) frames. Scans multiple frames to find plate.
-    frame_jpeg is ignored — always use original video_bytes to avoid OCR on blurred output.
+    """OCR on original (unblurred) frames.
+    Scans up to 30 evenly-spaced frames, collects all valid 7-8 digit reads,
+    and returns the most frequently seen plate (majority vote).
+    frame_jpeg is ignored — always use original video_bytes to avoid blurred output.
     """
     if pytesseract is None:
         return ("11111", "Tesseract is not installed")
@@ -388,9 +466,12 @@ def extract_license_plate(
             return ("11111", "Could not open video for OCR")
 
         total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
-        sample_count = 20
+        sample_count = 30
         step = max(1, total // sample_count) if total > 0 else 1
         last_reason = "No frames decoded"
+
+        from collections import Counter
+        votes: Counter = Counter()
 
         for i in range(0, max(total, 1), step):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
@@ -399,11 +480,18 @@ def extract_license_plate(
                 continue
             plate, reason = _ocr_frame(frame)
             if plate != "11111":
-                cap.release()
-                return (plate, None)
-            last_reason = reason or last_reason
+                votes[plate] += 1
+            else:
+                last_reason = reason or last_reason
 
         cap.release()
+
+        if votes:
+            best_plate, count = votes.most_common(1)[0]
+            total_votes = sum(votes.values())
+            print(f"[OCR] Plate votes: {dict(votes.most_common(5))} — winner: {best_plate} ({count}/{total_votes})")
+            return (best_plate, None)
+
         return ("11111", last_reason)
     finally:
         Path(input_path).unlink(missing_ok=True)
