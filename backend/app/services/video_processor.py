@@ -313,24 +313,55 @@ def _find_best_plate_box(
     return best_box
 
 
+def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox) -> Optional[np.ndarray]:
+    """Crop exactly to the plate region, upscale to minimum readable size,
+    and apply OTSU thresholding. Returns grayscale image ready for Tesseract."""
+    x, y, w, h = plate_box
+    # Clamp to frame bounds
+    x1 = max(0, x)
+    y1 = max(0, y)
+    x2 = min(frame.shape[1], x + w)
+    y2 = min(frame.shape[0], y + h)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0 or crop.shape[0] < 4 or crop.shape[1] < 10:
+        return None
+    # Upscale so the crop is at least 200px wide for reliable OCR
+    scale = max(1.0, 200.0 / crop.shape[1])
+    if scale > 1.0:
+        new_w = int(crop.shape[1] * scale)
+        new_h = int(crop.shape[0] * scale)
+        crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    # OTSU thresholding — optimal threshold auto-selected per image
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return binary
+
+
+def _run_tesseract(img: np.ndarray) -> str:
+    """Run Tesseract on a prepared grayscale/binary image, return digits only."""
+    text = pytesseract.image_to_string(
+        img,
+        config="--psm 7 -c tessedit_char_whitelist=0123456789",
+    )
+    return re.sub(r"[^0-9]", "", text or "")
+
+
 def _ocr_frame(frame: np.ndarray) -> Tuple[str, Optional[str]]:
-    """Run OCR on a single unblurred frame. Returns (plate, reason)."""
+    """Detect plate region, crop to exact bounds, upscale, threshold, then OCR."""
     plate_box = detect_plate_box(frame)
     if plate_box is None:
         return ("11111", "Plate not detected in frame")
-    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=0.2)
-    crop = frame[y:y + h, x:x + w]
-    if crop.size == 0:
+
+    binary = _prepare_plate_crop(frame, plate_box)
+    if binary is None:
         return ("11111", "Empty plate crop")
-    crop = _safe_denoise_and_sharpen(crop)
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-    text = pytesseract.image_to_string(
-        gray,
-        config="--psm 7 -c tessedit_char_whitelist=0123456789",
-    )
-    digits = re.sub(r"[^0-9]", "", text or "")
-    if 7 <= len(digits) <= 8:
-        return (digits, None)
+
+    # Try normal image first, then inverted (handles dark-on-light plates)
+    for img in (binary, cv2.bitwise_not(binary)):
+        digits = _run_tesseract(img)
+        if 7 <= len(digits) <= 8:
+            return (digits, None)
+
     return ("11111", "OCR could not read valid 7-8 digit plate")
 
 
