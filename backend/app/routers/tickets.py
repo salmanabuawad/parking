@@ -22,6 +22,47 @@ except Exception:
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
+def _ticket_dict(t) -> dict:
+    return {
+        "id": t.id,
+        "license_plate": t.license_plate,
+        "status": t.status,
+        "location": t.location,
+        "violation_zone": t.violation_zone,
+        "description": t.description,
+        "admin_notes": t.admin_notes,
+        "fine_amount": t.fine_amount,
+        "latitude": t.latitude,
+        "longitude": t.longitude,
+        "captured_at": t.captured_at.isoformat() if t.captured_at else None,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "reviewed_at": t.reviewed_at.isoformat() if t.reviewed_at else None,
+        "plate_detection_reason": t.plate_detection_reason,
+    }
+
+
+@router.get("")
+def list_tickets(
+    status: Optional[str] = None,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+):
+    tickets = ticket_repo.list_all()
+    if status:
+        tickets = [t for t in tickets if t.status == status]
+    return [_ticket_dict(t) for t in tickets]
+
+
+@router.get("/{ticket_id}/detail")
+def get_ticket_detail(
+    ticket_id: int,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+):
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    return _ticket_dict(ticket)
+
+
 def _is_processed_path(video_path: Optional[str]) -> bool:
     if not video_path:
         return False

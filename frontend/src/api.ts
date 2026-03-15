@@ -92,6 +92,10 @@ export const ticketsApi = {
   reprocessVideo(ticketId: number | string) {
     return fetchJson(`/tickets/${ticketId}/reprocess-video`, { method: "POST" });
   },
+
+  getDetail(ticketId: number | string): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/detail`);
+  },
 };
 
 export const camerasApi = {
