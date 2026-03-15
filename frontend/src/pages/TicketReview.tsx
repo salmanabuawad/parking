@@ -288,8 +288,11 @@ export default function TicketReview() {
                         style={{ width: 140, height: 80, objectFit: "cover", display: "block" }}
                         loading="lazy"
                       />
-                      <div style={{ fontSize: 11, textAlign: "center", padding: "3px 0", color: "#6b7280" }}>
-                        {s.frame_time_seconds != null ? `⏱ ${s.frame_time_seconds.toFixed(1)}s` : "—"}
+                      <div style={{ fontSize: 11, textAlign: "center", padding: "3px 4px", color: "#6b7280", lineHeight: 1.3 }}>
+                        {s.frame_time_seconds != null && ticket?.captured_at
+                          ? new Date(new Date(ticket.captured_at).getTime() + s.frame_time_seconds * 1000)
+                              .toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                          : s.frame_time_seconds != null ? `+${s.frame_time_seconds.toFixed(1)}s` : "—"}
                       </div>
                     </div>
                   ))}
