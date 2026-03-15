@@ -22,8 +22,9 @@ BLUR_KERNEL = 35
 TRACK_MISSES = 10
 SMOOTH_ALPHA = 0.70
 
-HSV_LOWER_YELLOW = (10, 40, 40)
-HSV_UPPER_YELLOW = (50, 255, 255)
+# Israeli plates: bright yellow background (hue ~20-35), high saturation, high value
+HSV_LOWER_YELLOW = (15, 80, 100)
+HSV_UPPER_YELLOW = (38, 255, 255)
 
 # Red/white curb detection
 HSV_RED_LO1  = (0,   80,  80)
@@ -177,7 +178,8 @@ def _best_plate_from_mask(mask: np.ndarray, frame_shape: tuple) -> Optional[BBox
         if w < 40 or h < 12:
             continue
         ratio = w / float(h) if h > 0 else 0.0
-        if ratio < 2.0 or ratio > 7.0:
+        # Israeli plates are ~52×11.4 cm → ratio ≈ 4.6; allow 2.5–7 to cover partial views
+        if ratio < 2.5 or ratio > 7.0:
             continue
         area = w * h
         lower_half_bonus = 1.0 + (y / max(1, h_frame))
@@ -290,17 +292,44 @@ def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.5
 
 def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], kernel: int) -> np.ndarray:
     """Blur the entire frame; restore the plate region unblurred.
-    When no plate box is found, the entire frame stays blurred.
+    When no plate box is found, return the original frame unblurred so the
+    relevant plate is never accidentally hidden.
     Uses ratio=1.0 expansion to ensure the full plate is always clear.
     """
-    blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
     if plate_box is None:
-        return blurred
+        # Detection failed — show original so the relevant plate stays visible
+        return frame
+    blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
     x, y, w, h = _expand_box(plate_box, frame.shape, ratio=1.0)
     if w <= 0 or h <= 0:
-        return blurred
+        return frame
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
     return blurred
+
+
+def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int = 90) -> np.ndarray:
+    """Crop the plate region and paste a magnified version in the top-left corner."""
+    # Expand slightly to avoid clipping plate edges
+    px, py, pw, ph = _expand_box(plate_box, frame.shape, ratio=0.15)
+    if pw <= 0 or ph <= 0:
+        return frame
+    crop = frame[py:py + ph, px:px + pw]
+    if crop.size == 0:
+        return frame
+    scale = target_h / ph
+    new_w = max(1, int(pw * scale))
+    zoomed = cv2.resize(crop, (new_w, target_h), interpolation=cv2.INTER_CUBIC)
+    # Add a thin white border
+    border = 2
+    fh, fw = frame.shape[:2]
+    x0, y0 = 10, 10
+    x1, y1 = x0 + new_w + border * 2, y0 + target_h + border * 2
+    if x1 > fw or y1 > fh:
+        return frame
+    out = frame.copy()
+    out[y0:y1, x0:x1] = (255, 255, 255)
+    out[y0 + border:y1 - border, x0 + border:x1 - border] = zoomed
+    return out
 
 
 def _find_best_plate_box(
@@ -574,10 +603,15 @@ def process_video(
             break
         plate         = detect_plate_near_curb(frame, curb_box)
         tracked_plate = tracker.update(plate)
-        # If tracker lost the plate, fall back to the pre-scanned best box
-        # so the plate region is never accidentally blurred
+        # If tracker lost the plate, fall back to the pre-scanned best box;
+        # if that's also missing, try a generic full-frame plate search so the
+        # relevant plate is never accidentally blurred.
         effective_plate = tracked_plate if tracked_plate is not None else global_best
+        if effective_plate is None:
+            effective_plate = detect_plate_box(frame)
         output = _blur_everything_except_plate(frame, effective_plate, kernel)
+        if effective_plate is not None:
+            output = _overlay_plate_magnified(output, effective_plate)
         writer.write(output)
         if frame_index == preview_index:
             preview_frame = output.copy()
@@ -634,13 +668,34 @@ def process_video(
     return processed_video, preview_jpeg
 
 
+def _burn_timestamp(frame: np.ndarray, label: str) -> np.ndarray:
+    """Burn a timestamp string into the bottom-left of a frame."""
+    h, w = frame.shape[:2]
+    font       = cv2.FONT_HERSHEY_SIMPLEX
+    scale      = max(0.5, w / 1280)
+    thickness  = max(1, int(scale * 2))
+    (tw, th), baseline = cv2.getTextSize(label, font, scale, thickness)
+    x = 10
+    y = h - 10
+    # Dark semi-transparent background behind text
+    pad = 4
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x - pad, y - th - pad), (x + tw + pad, y + baseline + pad), (0, 0, 0), -1)
+    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+    cv2.putText(frame, label, (x, y), font, scale, (255, 255, 255), thickness, cv2.LINE_AA)
+    return frame
+
+
 def extract_frames(
     video_bytes: bytes,
     count: int = 5,
+    base_time=None,  # datetime object (captured_at); if provided, timestamps are burned in
 ) -> list:
     """Extract `count` evenly-spaced frames from a video (blurred or otherwise).
     Returns list of (jpeg_bytes: bytes, frame_time_sec: float).
+    If base_time is given, each frame gets the real-world timestamp burned in.
     """
+    from datetime import timedelta
     results = []
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         f.write(video_bytes)
@@ -662,9 +717,19 @@ def extract_frames(
             ok, frame = cap.read()
             if not ok:
                 continue
+            frame_sec = round(idx / fps, 2)
+            if base_time is not None:
+                try:
+                    ts = base_time + timedelta(seconds=frame_sec)
+                    label = ts.strftime("%d/%m/%Y %H:%M:%S")
+                except Exception:
+                    label = f"+{frame_sec:.1f}s"
+            else:
+                label = f"+{frame_sec:.1f}s"
+            frame = _burn_timestamp(frame, label)
             ok2, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ok2:
-                results.append((buf.tobytes(), round(idx / fps, 2)))
+                results.append((buf.tobytes(), frame_sec))
         cap.release()
     finally:
         Path(input_path).unlink(missing_ok=True)
