@@ -65,13 +65,36 @@ function MobileShell() {
 const NAV_LINKS = [
   { to: '/', label: he.app.home },
   { to: '/tickets', label: he.app.tickets },
+  { to: '/cameras', label: he.app.cameras, disabled: true },
   { to: '/queue', label: he.app.queue },
   { to: '/settings', label: he.app.settings },
 ]
 
-function NavLink({ to, label }: { to: string; label: string }) {
+function NavLink({ to, label, disabled }: { to: string; label: string; disabled?: boolean }) {
   const loc = useLocation()
-  const active = to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to)
+  const active = !disabled && (to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to))
+
+  if (disabled) {
+    return (
+      <span
+        title="בפיתוח 🚧"
+        style={{
+          padding: '6px 14px',
+          borderRadius: 8,
+          fontWeight: 400,
+          color: '#64748b',
+          fontSize: '1.05rem',
+          cursor: 'not-allowed',
+          userSelect: 'none',
+          opacity: 0.55,
+          position: 'relative',
+        }}
+      >
+        {label}
+      </span>
+    )
+  }
+
   return (
     <Link
       to={to}
@@ -129,7 +152,7 @@ function AppShell() {
             {he.app.title}
           </span>
           {NAV_LINKS.map((l) => (
-            <NavLink key={l.to} to={l.to} label={l.label} />
+            <NavLink key={l.to} to={l.to} label={l.label} disabled={l.disabled} />
           ))}
         </nav>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
