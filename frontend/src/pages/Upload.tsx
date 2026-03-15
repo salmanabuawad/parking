@@ -26,9 +26,7 @@ export default function Upload() {
       fd.append('captured_at', capturedAt)
       fd.append('license_plate', licensePlate.trim())
       fd.append('violation_zone', zone)
-      const { data } = await api.post('/upload/violation', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      const { data } = await api.post('/upload/violation', fd)
       setResult(data)
       if (inputRef.current) inputRef.current.value = ''
     } catch (err) {
