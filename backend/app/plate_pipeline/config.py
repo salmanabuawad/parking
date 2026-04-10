@@ -26,7 +26,9 @@ OCR_DENOISE_ENABLED = True
 OCR_SHARPEN_ENABLED = True
 OCR_PSM = 7
 OCR_PSM_FALLBACKS = (8, 6, 13)
-OCR_EVERY_N_FRAMES = 2
+OCR_EVERY_N_FRAMES = 5
+YOLO_EVERY_N_FRAMES = 3      # run YOLO vehicle detection every N frames
+MAX_FRAMES = 150              # cap video at ~5 s @ 30 fps; enough for plate read
 OCR_MIN_PLATE_WIDTH = 36
 OCR_MIN_PLATE_HEIGHT = 10
 OCR_MIN_SHARPNESS = 10.0
@@ -88,6 +90,8 @@ class PipelineConfig:
     plate_yolo_model_path: str = PLATE_YOLO_MODEL_PATH
     vehicle_model_path: str = VEHICLE_MODEL_PATH
     vehicle_imgsz: int = VEHICLE_IMGSZ
+    yolo_every_n_frames: int = YOLO_EVERY_N_FRAMES
+    max_frames: int | None = MAX_FRAMES
 
     # Thresholds / tuning
     plate_crop_margin_px: int = OCR_CROP_MARGIN_PX

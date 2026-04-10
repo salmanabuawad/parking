@@ -84,13 +84,20 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     info = get_video_info(cfg.input_path)
     fps = (info or {}).get("fps", 25)
 
+    # Cache last YOLO vehicle result — reuse across skipped frames
+    last_vehicles: list = []
+    yolo_every = max(1, getattr(cfg, "yolo_every_n_frames", 3))
+
     for frame_idx, frame in read_frames(cfg.input_path, cfg.max_frames):
-        vehicles = vehicle_det.detect_and_track(frame)
-        vehicles = [v for v in vehicles if v.confidence >= VEHICLE_MIN_CONFIDENCE]
+
+        # ── YOLO vehicle detection: only every N frames ──────────────────────
+        if frame_idx % yolo_every == 0:
+            last_vehicles = vehicle_det.detect_and_track(frame)
+            last_vehicles = [v for v in last_vehicles if v.confidence >= VEHICLE_MIN_CONFIDENCE]
 
         plate_detections: list[PlateDetection] = []
-        if vehicles:
-            for vehicle in vehicles:
+        if last_vehicles:
+            for vehicle in last_vehicles:
                 x1, y1, x2, y2 = vehicle.bbox
                 h_car = y2 - y1
                 roi = (x1, y1 + int(h_car * 0.40), x2, y2)
@@ -158,6 +165,9 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
                 digits, _ = read_plate_crop(preprocessed)
                 if digits:
                     ocr_vote.add(digits)
+                    # Early exit: once we have a confident majority, stop OCR
+                    if ocr_vote.counter and ocr_vote.counter.most_common(1)[0][1] >= 3:
+                        selected_ocr = ocr_vote.best_valid(registry.exists) or ocr_vote.best_any()
 
         preview_text = selected_ocr or validated_plate
         render_boxes = current_boxes[:]
@@ -176,28 +186,10 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             preview_zoom=cfg.preview_zoom,
         )
 
-        if cfg.debug and debug_dir:
-            curb_candidates = curb_det.detect(frame)
-            curb_overlay = None
-            if curb_candidates:
-                curb_overlay = frame.copy()
-                for c in curb_candidates[:2]:
-                    x, y, w, hh = c.bbox
-                    cv2.rectangle(curb_overlay, (x, y), (x + w, y + hh), (0, 0, 255), 2)
-
-            overlay = draw_plate_box(frame, tracked_plate_box, (0, 255, 0)) if tracked_plate_box else frame
-            save_debug_frame(
-                debug_dir,
-                frame_idx,
-                plate_crop=crop if tracked_plate_box is not None else None,
-                preprocessed_crop=preprocess_for_ocr(crop, resize_factor=2) if tracked_plate_box is not None and crop is not None else None,
-                overlay=overlay,
-                curb_overlay=curb_overlay,
-            )
-
         frames_out.append(out_frame)
         frames_processed += 1
 
+    # ── Finalise OCR vote (single pass — no second video read) ──────────────
     if not cfg.disable_ocr and ocr_vote.counter:
         selected_ocr = ocr_vote.best_valid(registry.exists) or ocr_vote.best_any()
         if selected_ocr and registry.exists(selected_ocr):
@@ -205,24 +197,22 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         elif selected_ocr:
             validated_plate = selected_ocr
 
+    # Patch plate text into already-rendered frames (no re-decode needed)
     if selected_ocr and frames_out:
-        refreshed_frames: list = []
-        for (_, frame), boxes in zip(read_frames(cfg.input_path, cfg.max_frames), all_plate_boxes_per_frame):
-            preview_crop = last_preview_crop
-            refreshed_frames.append(
-                render_privacy_frame(
-                    frame,
-                    boxes,
-                    kernel_size=cfg.blur_kernel_size,
-                    preview_crop=preview_crop if cfg.preview_enabled else None,
-                    plate_text=selected_ocr,
-                    preview_max_w_ratio=cfg.preview_max_w_ratio,
-                    preview_max_h_ratio=cfg.preview_max_h_ratio,
-                    preview_margin_px=cfg.preview_margin_px,
-                    preview_zoom=cfg.preview_zoom,
-                )
+        frames_out = [
+            render_privacy_frame(
+                f,
+                boxes,
+                kernel_size=cfg.blur_kernel_size,
+                preview_crop=last_preview_crop if cfg.preview_enabled else None,
+                plate_text=selected_ocr,
+                preview_max_w_ratio=cfg.preview_max_w_ratio,
+                preview_max_h_ratio=cfg.preview_max_h_ratio,
+                preview_margin_px=cfg.preview_margin_px,
+                preview_zoom=cfg.preview_zoom,
             )
-        frames_out = refreshed_frames
+            for f, boxes in zip(frames_out, all_plate_boxes_per_frame)
+        ]
 
     write_video(frames_out, cfg.output_path, fps=fps)
 

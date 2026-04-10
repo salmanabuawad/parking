@@ -70,19 +70,11 @@ def read_plate_crop(crop, psm_primary: int = 7, psm_fallbacks: tuple[int, ...] =
 
 
 def _ocr_variants(img) -> list[np.ndarray]:
+    """Return 3 fast variants: gray, OTSU, inverted OTSU. Enough for most plates."""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if getattr(img, "ndim", 2) == 3 else img
     gray = gray.astype(np.uint8)
     gray = cv2.resize(gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
     gray = cv2.bilateralFilter(gray, 9, 50, 50)
     gray = cv2.equalizeHist(gray)
-
-    variants: list[np.ndarray] = [gray]
     _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    variants.append(otsu)
-    variants.append(255 - otsu)
-    adaptive = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 11)
-    variants.append(adaptive)
-    variants.append(255 - adaptive)
-    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]], dtype=np.int16)
-    variants.append(cv2.filter2D(gray, -1, kernel))
-    return variants
+    return [gray, otsu, 255 - otsu]
