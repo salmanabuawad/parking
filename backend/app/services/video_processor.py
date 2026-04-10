@@ -18,11 +18,12 @@ except Exception:
     pytesseract = None
 
 
-BLUR_KERNEL = 35
+BLUR_KERNEL = 21
 TRACK_MISSES = 10
 SMOOTH_ALPHA = 0.70
 
 # Israeli plates: bright yellow background (hue ~20-35), high saturation, high value
+# Israeli plates: bright yellow, H 15-38, S>=80, V>=100 — strict to avoid ground/sand false positives
 HSV_LOWER_YELLOW = (15, 80, 100)
 HSV_UPPER_YELLOW = (38, 255, 255)
 
@@ -178,7 +179,7 @@ def _best_plate_from_mask(mask: np.ndarray, frame_shape: tuple) -> Optional[BBox
         if w < 40 or h < 12:
             continue
         ratio = w / float(h) if h > 0 else 0.0
-        # Israeli plates are ~52×11.4 cm → ratio ≈ 4.6; allow 2.5–7 to cover partial views
+        # Israeli plates ~52×11.4 cm → ratio ≈ 4.6; allow 2.5–7.0
         if ratio < 2.5 or ratio > 7.0:
             continue
         area = w * h
@@ -210,8 +211,8 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
     # --- White plates (commercial, diplomatic, electric vehicles) ---
     white_mask = cv2.inRange(
         hsv,
-        np.array([0, 0, 160], dtype=np.uint8),
-        np.array([180, 50, 255], dtype=np.uint8),
+        np.array([0, 0, 140], dtype=np.uint8),
+        np.array([180, 60, 255], dtype=np.uint8),
     )
     return _best_plate_from_mask(white_mask, frame.shape)
 
@@ -294,26 +295,29 @@ def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], 
     """Blur the entire frame; restore the plate region unblurred.
     When no plate box is found, return the original frame unblurred so the
     relevant plate is never accidentally hidden.
-    Uses ratio=1.0 expansion to ensure the full plate is always clear.
+    Uses ratio=2.0 expansion to keep a generous clear zone around the plate.
     """
     if plate_box is None:
         # Detection failed — show original so the relevant plate stays visible
         return frame
     blurred = cv2.GaussianBlur(frame, (kernel, kernel), 0)
-    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=1.0)
+    x, y, w, h = _expand_box(plate_box, frame.shape, ratio=1.2)
     if w <= 0 or h <= 0:
         return frame
     blurred[y:y + h, x:x + w] = frame[y:y + h, x:x + w].copy()
     return blurred
 
 
-def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int = 90) -> np.ndarray:
-    """Crop the plate region and paste a magnified version in the top-left corner."""
+def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int = 120, original_frame: Optional[np.ndarray] = None) -> np.ndarray:
+    """Crop the plate region and paste a magnified version in the top-left corner.
+    If original_frame is provided, the crop is taken from it (unblurred source).
+    """
     # Expand slightly to avoid clipping plate edges
-    px, py, pw, ph = _expand_box(plate_box, frame.shape, ratio=0.15)
+    px, py, pw, ph = _expand_box(plate_box, frame.shape, ratio=0.20)
     if pw <= 0 or ph <= 0:
         return frame
-    crop = frame[py:py + ph, px:px + pw]
+    src = original_frame if original_frame is not None else frame
+    crop = src[py:py + ph, px:px + pw]
     if crop.size == 0:
         return frame
     scale = target_h / ph
@@ -450,21 +454,56 @@ def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox, target_width: int = 
     return binary
 
 
+def _prepare_plate_crop_adaptive(frame: np.ndarray, plate_box: BBox, target_width: int = 400) -> Optional[np.ndarray]:
+    """Same as _prepare_plate_crop but uses adaptive thresholding instead of OTSU.
+    Better for plates with uneven lighting or shadows.
+    """
+    x, y, w, h = plate_box
+    x1 = max(0, x)
+    y1 = max(0, y)
+    x2 = min(frame.shape[1], x + w)
+    y2 = min(frame.shape[0], y + h)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0 or crop.shape[0] < 4 or crop.shape[1] < 10:
+        return None
+
+    crop = _deskew_plate(crop)
+    pad = max(4, crop.shape[0] // 8)
+    crop = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
+    scale = max(1.0, target_width / crop.shape[1])
+    if scale > 1.0:
+        new_w = int(crop.shape[1] * scale)
+        new_h = int(crop.shape[0] * scale)
+        crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    gray = clahe.apply(gray)
+    # Bilateral filter preserves edges better than Gaussian for text
+    gray = cv2.bilateralFilter(gray, 5, 75, 75)
+    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 8)
+    return binary
+
+
 def _run_tesseract(img: np.ndarray, psm: int = 7) -> str:
     """Run Tesseract with the given PSM mode; return digits-only string."""
+    # oem 1 = LSTM only (more accurate on small/blurry text than oem 3)
     text = pytesseract.image_to_string(
         img,
-        config=f"--psm {psm} -c tessedit_char_whitelist=0123456789",
+        config=f"--oem 1 --psm {psm} -c tessedit_char_whitelist=0123456789",
     )
     return re.sub(r"[^0-9]", "", text or "")
 
 
-def _ocr_plate_image(binary: np.ndarray) -> str:
-    """Try multiple PSM modes and both polarities; return best digit string."""
+def _ocr_plate_image(binary: np.ndarray, adaptive: Optional[np.ndarray] = None) -> str:
+    """Try multiple PSM modes, both polarities, and both preprocessing variants; return best digit string."""
     best = ""
+    images = [binary, cv2.bitwise_not(binary)]
+    if adaptive is not None:
+        images += [adaptive, cv2.bitwise_not(adaptive)]
     # PSM 7 = single line, PSM 8 = single word, PSM 6 = uniform block, PSM 13 = raw line
     for psm in (7, 8, 6, 13):
-        for img in (binary, cv2.bitwise_not(binary)):
+        for img in images:
             digits = _run_tesseract(img, psm=psm)
             if 7 <= len(digits) <= 8:
                 return digits          # first confident hit
@@ -479,11 +518,12 @@ def _ocr_frame(frame: np.ndarray) -> Tuple[str, Optional[str]]:
     if plate_box is None:
         return ("11111", "Plate not detected in frame")
 
-    binary = _prepare_plate_crop(frame, plate_box)
+    binary = _prepare_plate_crop(frame, plate_box, target_width=600)
     if binary is None:
         return ("11111", "Empty plate crop")
 
-    digits = _ocr_plate_image(binary)
+    adaptive = _prepare_plate_crop_adaptive(frame, plate_box, target_width=600)
+    digits = _ocr_plate_image(binary, adaptive)
     if 7 <= len(digits) <= 8:
         return (digits, None)
 
@@ -497,10 +537,23 @@ def extract_license_plate(
     registry_lookup=None,
 ) -> Tuple[str, Optional[str]]:
     """OCR on original (unblurred) frames.
-    Scans up to 30 evenly-spaced frames, collects all valid 7-8 digit reads,
-    and returns the most frequently seen plate (majority vote).
+    Tries PaddleOCR + YOLO pipeline first; falls back to Tesseract.
     frame_jpeg is ignored — always use original video_bytes to avoid blurred output.
     """
+    if not video_bytes:
+        return ("11111", "No video provided for OCR")
+
+    # ── Try PaddleOCR + YOLO pipeline ──────────────────────────────────────
+    try:
+        from app.services.anpr_pipeline import extract_plate_from_bytes, is_paddle_available
+        if is_paddle_available():
+            plate, reason = extract_plate_from_bytes(video_bytes)
+            if plate != "11111":
+                return plate, reason
+            # paddle ran but found nothing — fall through to Tesseract
+    except Exception as _paddle_err:
+        print(f"[OCR] ANPR pipeline error (non-fatal): {_paddle_err}", flush=True)
+
     if pytesseract is None:
         return ("11111", "Tesseract is not installed")
     if not video_bytes:
@@ -538,6 +591,21 @@ def extract_license_plate(
         if votes:
             best_plate, count = votes.most_common(1)[0]
             total_votes = sum(votes.values())
+            # If no clear winner (all tied at 1 vote), use digit-position consensus
+            if count == 1 and total_votes >= 3:
+                from collections import Counter as _C
+                candidates = [p for p in votes if len(p) in (7, 8)]
+                if candidates:
+                    # Find most common length
+                    common_len = _C(len(p) for p in candidates).most_common(1)[0][0]
+                    same_len = [p for p in candidates if len(p) == common_len]
+                    if same_len:
+                        consensus = "".join(
+                            _C(p[i] for p in same_len).most_common(1)[0][0]
+                            for i in range(common_len)
+                        )
+                        best_plate = consensus
+                        print(f"[OCR] No majority — using position consensus: {consensus}")
             print(f"[OCR] Plate votes: {dict(votes.most_common(5))} — winner: {best_plate} ({count}/{total_votes})")
             return (best_plate, None)
 
@@ -615,22 +683,27 @@ def process_video(
     frame_index   = 0
     preview_frame = None
     preview_index = int(total_frames * extract_frame_at)
+    last_effective_plate: Optional[BBox] = global_best
 
     while True:
         ret, frame = cap.read()
         if not ret:
             break
-        plate         = detect_plate_near_curb(frame, curb_box)
-        tracked_plate = tracker.update(plate)
-        # If tracker lost the plate, fall back to the pre-scanned best box;
-        # if that's also missing, try a generic full-frame plate search so the
-        # relevant plate is never accidentally blurred.
-        effective_plate = tracked_plate if tracked_plate is not None else global_best
-        if effective_plate is None:
-            effective_plate = detect_plate_box(frame)
-        output = _blur_everything_except_plate(frame, effective_plate, kernel)
-        if effective_plate is not None:
-            output = _overlay_plate_magnified(output, effective_plate)
+        # Run detection every 3rd frame; reuse last known plate for intermediate frames
+        if frame_index % 3 == 0:
+            plate = detect_plate_near_curb(frame, curb_box)
+            tracked_plate = tracker.update(plate)
+            effective_plate = tracked_plate if tracked_plate is not None else global_best
+            if effective_plate is None:
+                effective_plate = detect_plate_box(frame)
+            last_effective_plate = effective_plate
+        else:
+            last_effective_plate = tracker.update(None)
+            if last_effective_plate is None:
+                last_effective_plate = global_best
+        output = _blur_everything_except_plate(frame, last_effective_plate, kernel)
+        if last_effective_plate is not None:
+            output = _overlay_plate_magnified(output, last_effective_plate, original_frame=frame)
         output = _apply_watermark(output)
         writer.write(output)
         if frame_index == preview_index:
@@ -660,12 +733,12 @@ def process_video(
                 "-i", temp_out,
                 "-c:v", "libx264",
                 "-preset", "fast",
-                "-crf", "32",
-                # Cap at 854×480 (480p) to reduce file size; two-step ensures even dimensions
-                "-vf", "scale=min(854\\,iw):min(480\\,ih):force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-crf", "26",
+                # Cap at 1280×720 (720p) to preserve plate detail; two-step ensures even dimensions
+                "-vf", "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart",
-                "-threads", "2",
+                "-threads", "4",
                 "-an",
                 final_out,
             ],
@@ -763,11 +836,184 @@ def process_video_fast_hsv(
     blur_strength: int = 0,
     extract_frame_at: float = 0.5,
 ):
-    return process_video(
+    """Process video: detect plate (YOLO vehicle + HSV/YOLO plate), blur everything except plate."""
+    return _process_video_with_yolo(
         video_bytes=video_bytes,
         blur_strength=blur_strength,
         extract_frame_at=extract_frame_at,
     )
+
+
+def _process_video_with_yolo(
+    video_bytes: bytes,
+    blur_strength: int = 0,
+    extract_frame_at: float = 0.5,
+) -> Tuple[bytes, bytes]:
+    """process_video variant that uses YOLO vehicle tracking to narrow down plate ROI.
+    Falls back to full-frame HSV detection when YOLO is unavailable.
+    """
+    kernel = _normalize_kernel(blur_strength or BLUR_KERNEL)
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(video_bytes)
+        input_path = f.name
+
+    cap = cv2.VideoCapture(input_path)
+    if not cap.isOpened():
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError("OpenCV could not open video; refusing unsafe fallback")
+
+    fps          = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    width        = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)  or 0)
+    height       = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)  or 1)
+
+    if width <= 0 or height <= 0:
+        cap.release()
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError("Could not read video dimensions")
+
+    temp_out = tempfile.mktemp(suffix=".mp4")
+    writer = cv2.VideoWriter(
+        temp_out,
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (width, height),
+    )
+    if not writer.isOpened():
+        temp_out = tempfile.mktemp(suffix=".avi")
+        writer = cv2.VideoWriter(
+            temp_out,
+            cv2.VideoWriter_fourcc(*"XVID"),
+            fps,
+            (width, height),
+        )
+    if not writer.isOpened():
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError("cv2.VideoWriter failed to open with mp4v and XVID codecs")
+
+    try:
+        from app.services.anpr_pipeline import detect_and_track_vehicles, detect_plate_in_frame as _anpr_detect
+        _use_yolo = True
+    except Exception:
+        _use_yolo = False
+        _anpr_detect = None
+
+    # Pre-scan: find best plate box using YOLO-guided or full-frame HSV
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    curb_box: Optional[BBox] = None
+    for _probe in range(min(10, total_frames)):
+        ret_p, probe_frame = cap.read()
+        if ret_p:
+            curb_box = detect_redwhite_curb(probe_frame)
+            if curb_box is not None:
+                break
+
+    global_best = _find_best_plate_box(cap, sample_count=30, curb_box=curb_box)
+    tracker = PlateTracker()
+    if global_best is not None:
+        tracker.last_box = global_best
+
+    frame_index   = 0
+    preview_frame = None
+    preview_index = int(total_frames * extract_frame_at)
+    last_effective_plate: Optional[BBox] = global_best
+    last_vehicle_roi: Optional[tuple] = None  # x1,y1,x2,y2
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if frame_index % 3 == 0:
+            # Get vehicle ROI from YOLO (when available)
+            vehicle_roi_xyxy = None
+            if _use_yolo:
+                vehicles = detect_and_track_vehicles(frame)
+                if vehicles:
+                    # Use the largest vehicle
+                    best_v = max(vehicles, key=lambda v: (v["bbox"][2]-v["bbox"][0])*(v["bbox"][3]-v["bbox"][1]))
+                    vx1, vy1, vx2, vy2 = best_v["bbox"]
+                    h_car = vy2 - vy1
+                    # Plates are in lower 60% of vehicle
+                    vehicle_roi_xyxy = (vx1, vy1 + int(h_car * 0.40), vx2, vy2)
+                    last_vehicle_roi = vehicle_roi_xyxy
+
+            # Plate detection: YOLO/HSV within vehicle ROI, then curb-guided, then full-frame
+            if vehicle_roi_xyxy and _anpr_detect:
+                plate = _anpr_detect(frame, vehicle_roi_xyxy)
+            else:
+                plate = detect_plate_near_curb(frame, curb_box)
+
+            tracked_plate = tracker.update(plate)
+            effective_plate = tracked_plate if tracked_plate is not None else global_best
+            if effective_plate is None:
+                effective_plate = detect_plate_box(frame)
+            last_effective_plate = effective_plate
+        else:
+            last_effective_plate = tracker.update(None)
+            if last_effective_plate is None:
+                last_effective_plate = global_best
+
+        output = _blur_everything_except_plate(frame, last_effective_plate, kernel)
+        if last_effective_plate is not None:
+            output = _overlay_plate_magnified(output, last_effective_plate, original_frame=frame)
+        output = _apply_watermark(output)
+        writer.write(output)
+        if frame_index == preview_index:
+            preview_frame = output.copy()
+        frame_index += 1
+
+    cap.release()
+    writer.release()
+
+    if frame_index == 0:
+        Path(temp_out).unlink(missing_ok=True)
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError("No frames decoded; refusing unsafe fallback")
+
+    temp_size = Path(temp_out).stat().st_size if Path(temp_out).exists() else 0
+    if temp_size < 1024:
+        Path(temp_out).unlink(missing_ok=True)
+        Path(input_path).unlink(missing_ok=True)
+        raise RuntimeError(f"Intermediate video file too small ({temp_size} bytes)")
+
+    ffmpeg    = get_ffmpeg()
+    final_out = tempfile.mktemp(suffix=".mp4")
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg, "-y",
+                "-i", temp_out,
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "26",
+                "-vf", "scale=min(1280\\,iw):min(720\\,ih):force_original_aspect_ratio=decrease,scale=trunc(iw/2)*2:trunc(ih/2)*2",
+                "-pix_fmt", "yuv420p",
+                "-movflags", "+faststart",
+                "-threads", "4",
+                "-an",
+                final_out,
+            ],
+            capture_output=True,
+        )
+        if result.returncode != 0:
+            err_msg = result.stderr.decode(errors="replace")[-800:]
+            raise RuntimeError(f"ffmpeg failed (code {result.returncode}): {err_msg}")
+        processed_video = Path(final_out).read_bytes()
+    finally:
+        Path(temp_out).unlink(missing_ok=True)
+        Path(final_out).unlink(missing_ok=True)
+        Path(input_path).unlink(missing_ok=True)
+
+    preview_jpeg = b""
+    if preview_frame is not None:
+        ok, buf = cv2.imencode(".jpg", preview_frame)
+        if ok:
+            preview_jpeg = buf.tobytes()
+
+    return processed_video, preview_jpeg
 
 
 def process_video_with_violation_pipeline(
