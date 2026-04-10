@@ -22,10 +22,10 @@ BLUR_KERNEL = 21
 TRACK_MISSES = 10
 SMOOTH_ALPHA = 0.70
 
-# Israeli plates: bright yellow background (hue ~20-35), high saturation, high value
-# Israeli plates: bright yellow, H 15-38, S>=80, V>=100 — strict to avoid ground/sand false positives
-HSV_LOWER_YELLOW = (15, 80, 100)
-HSV_UPPER_YELLOW = (38, 255, 255)
+# Israeli plates: yellow background — wider HSV range to catch plates at distance/varied lighting.
+# Edge-density scoring (from test engine) compensates: sand/ground has low edge density.
+HSV_LOWER_YELLOW = (10, 70, 70)
+HSV_UPPER_YELLOW = (45, 255, 255)
 
 # Red/white curb detection
 HSV_RED_LO1  = (0,   80,  80)
@@ -46,6 +46,22 @@ class PlateTracker:
     def __post_init__(self) -> None:
         self.last_box: Optional[BBox] = None
         self.miss_count = 0
+
+    # ── IoU helper (from test engine) ──────────────────────────────────────
+    @staticmethod
+    def _iou(a: BBox, b: BBox) -> float:
+        """IoU between two xywh boxes."""
+        ax1, ay1 = a[0], a[1]
+        ax2, ay2 = a[0] + a[2], a[1] + a[3]
+        bx1, by1 = b[0], b[1]
+        bx2, by2 = b[0] + b[2], b[1] + b[3]
+        ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+        ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+        inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+        area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+        area_b = max(0, bx2 - bx1) * max(0, by2 - by1)
+        union = area_a + area_b - inter
+        return inter / union if union > 0 else 0.0
 
     def update(self, box: Optional[BBox]) -> Optional[BBox]:
         if box is not None:
@@ -164,39 +180,91 @@ def extract_video_params(input_path: str) -> dict:
         return {}
 
 
-def _best_plate_from_mask(mask: np.ndarray, frame_shape: tuple) -> Optional[BBox]:
-    """Find the best plate bounding box from a binary mask."""
-    kernel_open  = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+def _best_plate_from_mask(
+    mask: np.ndarray,
+    frame_shape: tuple,
+    frame_gray: Optional[np.ndarray] = None,
+    prev_box: Optional[BBox] = None,
+) -> Optional[BBox]:
+    """Find the best plate bounding box from a binary mask.
+
+    Scoring (adapted from test engine):
+      score = area×0.01 + edge_density×40 + pos_score×10 + iou_bonus×35
+    - edge_density rejects large flat regions (sand, sky, road)
+    - pos_score rewards candidates near image centre-lower area
+    - iou_bonus rewards temporal continuity with the previous known box
+    """
+    # Smaller kernels than before: 3×3 OPEN + 7×7 CLOSE.
+    # Smaller OPEN avoids erasing small distant plates.
+    kernel_open  = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    kernel_close = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel_open)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_close)
+
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    h_frame, w_frame = frame_shape[:2]
+
+    # Prepare grayscale for edge density if not supplied
     best: Optional[BBox] = None
-    best_score = 0.0
-    h_frame = frame_shape[0]
+    best_score = -1e9
+
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
-        if w < 40 or h < 12:
+        area = w * h
+        if area < 140:          # ~12×12 minimum
             continue
         ratio = w / float(h) if h > 0 else 0.0
-        # Israeli plates ~52×11.4 cm → ratio ≈ 4.6; allow 2.5–7.0
-        if ratio < 2.5 or ratio > 7.0:
+        # Wider aspect ratio: 1.8–6.5 (test engine values)
+        if ratio < 1.8 or ratio > 6.5:
             continue
-        area = w * h
-        lower_half_bonus = 1.0 + (y / max(1, h_frame))
-        score = area * lower_half_bonus
+
+        # Edge density — plates have lots of edges (characters); sky/sand/ground do not
+        edge_density = 0.0
+        if frame_gray is not None:
+            roi_edge = cv2.Canny(frame_gray[y:y + h, x:x + w], 80, 200)
+            edge_density = float(roi_edge.mean() / 255.0)
+
+        # Position score: reward candidates near horizontal centre, vertical 60% down
+        cx = (x + w / 2.0)
+        cy = (y + h / 2.0)
+        pos_score = (
+            (1.0 - abs(cx - w_frame * 0.5) / max(w_frame * 0.5, 1)) * 0.6
+            + (1.0 - abs(cy - h_frame * 0.6) / max(h_frame * 0.6, 1)) * 0.4
+        )
+
+        # IoU bonus: reward continuity with the previous detected box
+        iou_bonus = 0.0
+        if prev_box is not None:
+            px, py, pw, ph = prev_box
+            prev_xyxy = (px, py, px + pw, py + ph)
+            cur_xyxy  = (x,  y,  x + w,  y + h)
+            ix1, iy1 = max(prev_xyxy[0], cur_xyxy[0]), max(prev_xyxy[1], cur_xyxy[1])
+            ix2, iy2 = min(prev_xyxy[2], cur_xyxy[2]), min(prev_xyxy[3], cur_xyxy[3])
+            inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+            area_p = pw * ph
+            area_c = w * h
+            union = area_p + area_c - inter
+            iou_bonus = (inter / union if union > 0 else 0.0) * 35.0
+
+        score = area * 0.01 + edge_density * 40.0 + pos_score * 10.0 + iou_bonus
         if score > best_score:
             best_score = score
             best = (x, y, w, h)
+
     return best
 
 
-def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
+def detect_plate_box(
+    frame: np.ndarray,
+    prev_box: Optional[BBox] = None,
+) -> Optional[BBox]:
     """Detect license plate in frame.
     Tries yellow plates (standard Israeli) first, then white plates (commercial/diplomatic).
+    Uses edge-density + position scoring; prev_box adds IoU continuity bonus.
     Returns best bounding box or None.
     """
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    hsv  = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
     # --- Yellow plates (standard Israeli) ---
     yellow_mask = cv2.inRange(
@@ -204,7 +272,7 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
         np.array(HSV_LOWER_YELLOW, dtype=np.uint8),
         np.array(HSV_UPPER_YELLOW, dtype=np.uint8),
     )
-    best = _best_plate_from_mask(yellow_mask, frame.shape)
+    best = _best_plate_from_mask(yellow_mask, frame.shape, frame_gray=gray, prev_box=prev_box)
     if best is not None:
         return best
 
@@ -214,7 +282,7 @@ def detect_plate_box(frame: np.ndarray) -> Optional[BBox]:
         np.array([0, 0, 140], dtype=np.uint8),
         np.array([180, 60, 255], dtype=np.uint8),
     )
-    return _best_plate_from_mask(white_mask, frame.shape)
+    return _best_plate_from_mask(white_mask, frame.shape, frame_gray=gray, prev_box=prev_box)
 
 
 def detect_redwhite_curb(frame: np.ndarray) -> Optional[BBox]:
@@ -259,11 +327,16 @@ def detect_redwhite_curb(frame: np.ndarray) -> Optional[BBox]:
     return best
 
 
-def detect_plate_near_curb(frame: np.ndarray, curb_box: Optional[BBox]) -> Optional[BBox]:
+def detect_plate_near_curb(
+    frame: np.ndarray,
+    curb_box: Optional[BBox],
+    prev_box: Optional[BBox] = None,
+) -> Optional[BBox]:
     """Find yellow plate on the car parked next to the curb.
 
     Searches the region above/around the curb first; falls back to
     full-frame search when nothing is found there.
+    prev_box is passed to the scorer for IoU continuity bonus.
     """
     h_frame, w_frame = frame.shape[:2]
     if curb_box is not None:
@@ -273,11 +346,17 @@ def detect_plate_near_curb(frame: np.ndarray, curb_box: Optional[BBox]) -> Optio
         sx1 = max(0, cx - int(cw * 0.20))
         sx2 = min(w_frame, cx + cw + int(cw * 0.20))
         region = frame[sy1:sy2, sx1:sx2]
-        box = detect_plate_box(region)
+        # Translate prev_box into region coordinates for IoU bonus
+        region_prev = None
+        if prev_box is not None:
+            rpx = prev_box[0] - sx1
+            rpy = prev_box[1] - sy1
+            region_prev = (rpx, rpy, prev_box[2], prev_box[3])
+        box = detect_plate_box(region, prev_box=region_prev)
         if box is not None:
             bx, by, bw, bh = box
             return (sx1 + bx, sy1 + by, bw, bh)
-    return detect_plate_box(frame)
+    return detect_plate_box(frame, prev_box=prev_box)
 
 
 def _expand_box(box: BBox, frame_shape: Tuple[int, int, int], ratio: float = 0.5) -> BBox:
@@ -414,7 +493,8 @@ def _deskew_plate(crop: np.ndarray) -> np.ndarray:
 
 
 def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox, target_width: int = 400) -> Optional[np.ndarray]:
-    """Crop to plate region, deskew, pad, upscale, apply CLAHE + OTSU.
+    """Crop to plate region, deskew, pad, 6× upscale (test-engine approach),
+    apply bilateral filter + equalizeHist + OTSU.
     Returns grayscale binary image ready for Tesseract, or None on failure.
     """
     x, y, w, h = plate_box
@@ -433,21 +513,16 @@ def _prepare_plate_crop(frame: np.ndarray, plate_box: BBox, target_width: int = 
     pad = max(4, crop.shape[0] // 8)
     crop = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
 
-    # Upscale to at least target_width (INTER_CUBIC for subpixel quality)
-    scale = max(1.0, target_width / crop.shape[1])
-    if scale > 1.0:
-        new_w = int(crop.shape[1] * scale)
-        new_h = int(crop.shape[0] * scale)
-        crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
-
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
 
-    # CLAHE: adaptive contrast enhancement
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    gray = clahe.apply(gray)
+    # 6× upscale (test engine value) — better than targeting a fixed width for small plates
+    gray = cv2.resize(gray, None, fx=6.0, fy=6.0, interpolation=cv2.INTER_CUBIC)
 
-    # Gentle blur to suppress noise before binarization
-    gray = cv2.GaussianBlur(gray, (3, 3), 0)
+    # Bilateral filter: preserves character edges while smoothing noise
+    gray = cv2.bilateralFilter(gray, 9, 50, 50)
+
+    # Histogram equalisation for contrast normalisation
+    gray = cv2.equalizeHist(gray)
 
     # OTSU thresholding
     _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
@@ -470,19 +545,28 @@ def _prepare_plate_crop_adaptive(frame: np.ndarray, plate_box: BBox, target_widt
     crop = _deskew_plate(crop)
     pad = max(4, crop.shape[0] // 8)
     crop = cv2.copyMakeBorder(crop, pad, pad, pad, pad, cv2.BORDER_REPLICATE)
-    scale = max(1.0, target_width / crop.shape[1])
-    if scale > 1.0:
-        new_w = int(crop.shape[1] * scale)
-        new_h = int(crop.shape[0] * scale)
-        crop = cv2.resize(crop, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
 
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
-    gray = clahe.apply(gray)
-    # Bilateral filter preserves edges better than Gaussian for text
-    gray = cv2.bilateralFilter(gray, 5, 75, 75)
-    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 8)
+    gray = cv2.resize(gray, None, fx=6.0, fy=6.0, interpolation=cv2.INTER_CUBIC)
+    gray = cv2.bilateralFilter(gray, 9, 50, 50)
+    gray = cv2.equalizeHist(gray)
+    binary = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 11)
     return binary
+
+
+# Character substitutions for OCR (from test engine)
+_OCR_CHAR_SUBS = str.maketrans({"O": "0", "Q": "0", "D": "0",
+                                 "I": "1", "L": "1",
+                                 "Z": "2",
+                                 "S": "5",
+                                 "B": "8"})
+
+
+def _clean_ocr_text(text: str) -> str:
+    """Apply character substitutions then keep digits only.
+    O→0, Q→0, D→0, I→1, L→1, Z→2, S→5, B→8 (from test engine).
+    """
+    return re.sub(r"[^0-9]", "", text.upper().translate(_OCR_CHAR_SUBS))
 
 
 def _run_tesseract(img: np.ndarray, psm: int = 7) -> str:
@@ -492,7 +576,7 @@ def _run_tesseract(img: np.ndarray, psm: int = 7) -> str:
         img,
         config=f"--oem 1 --psm {psm} -c tessedit_char_whitelist=0123456789",
     )
-    return re.sub(r"[^0-9]", "", text or "")
+    return _clean_ocr_text(text or "")
 
 
 def _ocr_plate_image(binary: np.ndarray, adaptive: Optional[np.ndarray] = None) -> str:
@@ -556,8 +640,6 @@ def extract_license_plate(
 
     if pytesseract is None:
         return ("11111", "Tesseract is not installed")
-    if not video_bytes:
-        return ("11111", "No video provided for OCR")
 
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         f.write(video_bytes)
@@ -572,41 +654,61 @@ def extract_license_plate(
         step = max(1, total // sample_count) if total > 0 else 1
         last_reason = "No frames decoded"
 
-        from collections import Counter
-        votes: Counter = Counter()
+        from collections import Counter, deque
+        # Rolling window of 20 readings (test engine approach)
+        vote_window: deque = deque(maxlen=20)
+        prev_box: Optional[BBox] = None  # for IoU continuity bonus
 
         for i in range(0, max(total, 1), step):
             cap.set(cv2.CAP_PROP_POS_FRAMES, i)
             ok, frame = cap.read()
             if not ok:
                 continue
-            plate, reason = _ocr_frame(frame)
-            if plate != "11111":
-                votes[plate] += 1
+
+            # Sharpness gate — skip blurry frames (test engine: threshold=10)
+            gray_f = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            if float(cv2.Laplacian(gray_f, cv2.CV_64F).var()) < 10:
+                continue
+
+            plate_box = detect_plate_box(frame, prev_box=prev_box)
+            if plate_box is None:
+                last_reason = "Plate not detected in frame"
+                continue
+            prev_box = plate_box
+
+            binary = _prepare_plate_crop(frame, plate_box)
+            if binary is None:
+                last_reason = "Empty plate crop"
+                continue
+            adaptive = _prepare_plate_crop_adaptive(frame, plate_box)
+            digits = _ocr_plate_image(binary, adaptive)
+            if 7 <= len(digits) <= 8:
+                vote_window.append(digits)
             else:
-                last_reason = reason or last_reason
+                last_reason = "OCR could not read valid 7-8 digit plate"
 
         cap.release()
 
-        if votes:
+        if vote_window:
+            votes = Counter(vote_window)
             best_plate, count = votes.most_common(1)[0]
             total_votes = sum(votes.values())
-            # If no clear winner (all tied at 1 vote), use digit-position consensus
+
+            # Position-consensus when all tied at 1 vote
             if count == 1 and total_votes >= 3:
-                from collections import Counter as _C
                 candidates = [p for p in votes if len(p) in (7, 8)]
                 if candidates:
-                    # Find most common length
-                    common_len = _C(len(p) for p in candidates).most_common(1)[0][0]
+                    common_len = Counter(len(p) for p in candidates).most_common(1)[0][0]
                     same_len = [p for p in candidates if len(p) == common_len]
                     if same_len:
                         consensus = "".join(
-                            _C(p[i] for p in same_len).most_common(1)[0][0]
+                            Counter(p[i] for p in same_len).most_common(1)[0][0]
                             for i in range(common_len)
                         )
                         best_plate = consensus
-                        print(f"[OCR] No majority — using position consensus: {consensus}")
-            print(f"[OCR] Plate votes: {dict(votes.most_common(5))} — winner: {best_plate} ({count}/{total_votes})")
+                        print(f"[OCR] No majority — position consensus: {consensus}")
+
+            print(f"[OCR] Votes: {dict(votes.most_common(5))} → {best_plate} ({count}/{total_votes})")
             return (best_plate, None)
 
         return ("11111", last_reason)

@@ -239,27 +239,39 @@ def _detect_plate_hsv(frame: np.ndarray, roi_xyxy: Optional[tuple] = None) -> Op
         return None
 
     hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-    yellow = cv2.inRange(hsv, np.array([15, 80, 100], np.uint8), np.array([38, 255, 255], np.uint8))
+    yellow = cv2.inRange(hsv, np.array([10, 70, 70], np.uint8), np.array([45, 255, 255], np.uint8))
     white = cv2.inRange(hsv, np.array([0, 0, 140], np.uint8), np.array([180, 60, 255], np.uint8))
     mask = cv2.bitwise_or(yellow, white)
 
-    k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
-    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 9))
+    # Smaller kernels: 3×3 OPEN, 7×7 CLOSE (test engine values)
+    k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, k1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, k2)
 
+    gray_r = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    h_reg = region.shape[0]
+    h_reg, w_reg = region.shape[:2]
     best = None
-    best_score = 0.0
+    best_score = -1e9
     for c in contours:
         x, y, bw, bh = cv2.boundingRect(c)
-        if bw < 40 or bh < 12:
+        area = bw * bh
+        if area < 140:
             continue
         ratio = bw / float(bh) if bh > 0 else 0
-        if not (2.5 <= ratio <= 7.0):
+        if not (1.8 <= ratio <= 6.5):
             continue
-        score = bw * bh * (1.0 + y / max(1, h_reg))
+        # Edge density (filter out sand/flat regions)
+        roi_e = cv2.Canny(gray_r[y:y+bh, x:x+bw], 80, 200)
+        edge_density = float(roi_e.mean() / 255.0)
+        cx = x + bw / 2.0
+        cy = y + bh / 2.0
+        pos_score = (
+            (1.0 - abs(cx - w_reg * 0.5) / max(w_reg * 0.5, 1)) * 0.6
+            + (1.0 - abs(cy - h_reg * 0.6) / max(h_reg * 0.6, 1)) * 0.4
+        )
+        score = area * 0.01 + edge_density * 40.0 + pos_score * 10.0
         if score > best_score:
             best_score = score
             best = (ox + x, oy + y, bw, bh)
