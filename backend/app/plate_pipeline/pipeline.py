@@ -1,4 +1,4 @@
-"""Main pipeline: vehicle-first, plate detection, tracking, OCR vote, registry validation, blur."""
+"""Main enterprise plate pipeline with multi-vehicle candidate support and privacy rendering."""
 
 from __future__ import annotations
 
@@ -6,9 +6,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import cv2
-import numpy as np
 
-from .blur_pipeline import blur_except_plate
+from .blur_pipeline import render_privacy_frame
 from .config import PipelineConfig, VEHICLE_MIN_CONFIDENCE
 from .curb_detector import CurbDetector
 from .debug import draw_plate_box, save_debug_frame
@@ -16,7 +15,7 @@ from .ocr_preprocess import preprocess_for_ocr
 from .ocr_reader import read_plate_crop
 from .ocr_vote import OCRVote
 from .plate_cropper import crop_plate, is_crop_ocr_ready
-from .plate_detector import PlateDetector
+from .plate_detector import PlateDetection, PlateDetector
 from .plate_format import classify_plate_format
 from .registry_lookup import RegistryLookup
 from .result_writer import write_result_json, write_video
@@ -25,26 +24,58 @@ from .tracker import PlateTracker
 from .vehicle_detector import VehicleDetector
 from .video_io import get_video_info, read_frames
 
+BBox = tuple[int, int, int, int]
+
+
+def _dedupe_boxes(detections: list[PlateDetection], max_count: int) -> list[PlateDetection]:
+    picked: list[PlateDetection] = []
+    for det in sorted(detections, key=lambda d: d.confidence, reverse=True):
+        x, y, w, h = det.bbox
+        keep = True
+        for prev in picked:
+            px, py, pw, ph = prev.bbox
+            if _iou_xywh((x, y, w, h), (px, py, pw, ph)) > 0.45:
+                keep = False
+                break
+        if keep:
+            picked.append(det)
+        if len(picked) >= max_count:
+            break
+    return picked
+
+
+def _iou_xywh(a: BBox, b: BBox) -> float:
+    ax1, ay1, aw, ah = a
+    bx1, by1, bw, bh = b
+    ax2, ay2 = ax1 + aw, ay1 + ah
+    bx2, by2 = bx1 + bw, by1 + bh
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
+    inter = iw * ih
+    union = aw * ah + bw * bh - inter
+    return inter / union if union > 0 else 0.0
+
 
 def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     registry = RegistryLookup(cfg.registry_csv)
     vehicle_det = VehicleDetector(model_path=cfg.vehicle_model_path, imgsz=cfg.vehicle_imgsz)
     plate_det = PlateDetector(backend=cfg.detector_backend, yolo_path=cfg.plate_yolo_model_path)
     tracker = PlateTracker(max_misses=cfg.track_max_misses, alpha=cfg.track_smoothing_alpha)
-    blur_tracker = TemporalBlurTracker(
-        max_misses=cfg.temporal_blur_max_misses,
-        expand_ratio=cfg.blur_expand_ratio,
-    )
+    blur_tracker = TemporalBlurTracker(max_misses=cfg.temporal_blur_max_misses, expand_ratio=cfg.blur_expand_ratio)
     curb_det = CurbDetector()
     ocr_vote = OCRVote()
 
-    frames_out: list[np.ndarray] = []
+    frames_out: list = []
     frames_processed = 0
     validated_plate: Optional[str] = None
     selected_ocr: Optional[str] = None
     plate_format_info: Optional[dict] = None
     detector_used = cfg.detector_backend
     debug_dir: Optional[Path] = None
+    last_preview_crop = None
+    primary_plate_boxes_per_frame: list[Optional[BBox]] = []
+    all_plate_boxes_per_frame: list[list[BBox]] = []
 
     if cfg.debug:
         debug_dir = cfg.output_path.parent / (cfg.output_path.stem + "_debug")
@@ -52,31 +83,28 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
 
     info = get_video_info(cfg.input_path)
     fps = (info or {}).get("fps", 25)
-    plate_boxes_per_frame: list[Optional[tuple[int, int, int, int]]] = []
 
     for frame_idx, frame in read_frames(cfg.input_path, cfg.max_frames):
         vehicles = vehicle_det.detect_and_track(frame)
         vehicles = [v for v in vehicles if v.confidence >= VEHICLE_MIN_CONFIDENCE]
 
-        primary_vehicle = max(
-            vehicles,
-            key=lambda v: (v.bbox[2] - v.bbox[0]) * (v.bbox[3] - v.bbox[1]),
-            default=None,
-        )
-
-        roi: Optional[tuple[int, int, int, int]] = None
-        if primary_vehicle:
-            x1, y1, x2, y2 = primary_vehicle.bbox
-            h_car = y2 - y1
-            roi = (x1, y1 + int(h_car * 0.40), x2, y2)
-
-        plate_detections = plate_det.detect(frame, vehicle_roi=roi)
-        if not plate_detections and primary_vehicle is None:
+        plate_detections: list[PlateDetection] = []
+        if vehicles:
+            for vehicle in vehicles:
+                x1, y1, x2, y2 = vehicle.bbox
+                h_car = y2 - y1
+                roi = (x1, y1 + int(h_car * 0.40), x2, y2)
+                plate_detections.extend(plate_det.detect(frame, vehicle_roi=roi))
+        if not plate_detections:
             plate_detections = plate_det.detect(frame, vehicle_roi=None)
 
-        detected_box: Optional[tuple[int, int, int, int]] = None
-        tracked_plate_box: Optional[tuple[int, int, int, int]] = None
-        blur_box: Optional[tuple[int, int, int, int]] = None
+        plate_detections = _dedupe_boxes(plate_detections, cfg.multi_plate_max_per_frame)
+        current_boxes = [d.bbox for d in plate_detections]
+        all_plate_boxes_per_frame.append(current_boxes)
+
+        detected_box: Optional[BBox] = None
+        tracked_plate_box: Optional[BBox] = None
+        blur_box: Optional[BBox] = None
         crop = None
 
         if plate_detections:
@@ -91,39 +119,62 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             blur_box = blur_tracker.update(detected_box)
         else:
             blur_box = tracked_plate_box
+        primary_plate_boxes_per_frame.append(blur_box)
 
+        ocr_boxes = []
         if tracked_plate_box is not None:
-            crop = crop_plate(frame, tracked_plate_box, cfg.plate_crop_margin_px)
-            if crop is not None:
-                x, y, w, h = tracked_plate_box
-                plate_format_info = classify_plate_format(w, h)
-                should_run_ocr = (
-                    not cfg.disable_ocr
-                    and tracker.is_stable
-                    and frame_idx % max(1, cfg.ocr_every_n_frames) == 0
-                    and is_crop_ocr_ready(
-                        crop,
-                        min_width=cfg.ocr_min_plate_width,
-                        min_height=cfg.ocr_min_plate_height,
-                        min_sharpness=cfg.ocr_min_sharpness,
-                        min_brightness=cfg.ocr_min_brightness,
-                        max_brightness=cfg.ocr_max_brightness,
-                    )
+            ocr_boxes.append(tracked_plate_box)
+        for box in current_boxes:
+            if tracked_plate_box is None or _iou_xywh(box, tracked_plate_box) < 0.45:
+                ocr_boxes.append(box)
+
+        for box in ocr_boxes:
+            crop = crop_plate(frame, box, cfg.plate_crop_margin_px)
+            if crop is None:
+                continue
+            x, y, w, h = box
+            plate_format_info = classify_plate_format(w, h)
+            if last_preview_crop is None or (crop.size > 0 and crop.shape[1] * crop.shape[0] >= last_preview_crop.shape[1] * last_preview_crop.shape[0]):
+                last_preview_crop = crop.copy()
+            should_run_ocr = (
+                not cfg.disable_ocr
+                and frame_idx % max(1, cfg.ocr_every_n_frames) == 0
+                and is_crop_ocr_ready(
+                    crop,
+                    min_width=cfg.ocr_min_plate_width,
+                    min_height=cfg.ocr_min_plate_height,
+                    min_sharpness=cfg.ocr_min_sharpness,
+                    min_brightness=cfg.ocr_min_brightness,
+                    max_brightness=cfg.ocr_max_brightness,
                 )
-                if should_run_ocr:
-                    preprocessed = preprocess_for_ocr(
-                        crop,
-                        resize_factor=cfg.ocr_resize_factor,
-                        denoise=cfg.ocr_denoise,
-                        sharpen=cfg.ocr_sharpen,
-                    )
-                    digits, _ = read_plate_crop(preprocessed)
-                    if digits:
-                        ocr_vote.add(digits)
+            )
+            if should_run_ocr:
+                preprocessed = preprocess_for_ocr(
+                    crop,
+                    resize_factor=cfg.ocr_resize_factor,
+                    denoise=cfg.ocr_denoise,
+                    sharpen=cfg.ocr_sharpen,
+                )
+                digits, _ = read_plate_crop(preprocessed)
+                if digits:
+                    ocr_vote.add(digits)
 
-        plate_boxes_per_frame.append(blur_box)
+        preview_text = selected_ocr or validated_plate
+        render_boxes = current_boxes[:]
+        if blur_box is not None and all(_iou_xywh(blur_box, b) < 0.45 for b in render_boxes):
+            render_boxes.append(blur_box)
 
-        out_frame = blur_except_plate(frame, None, cfg.blur_kernel_size)
+        out_frame = render_privacy_frame(
+            frame,
+            render_boxes,
+            kernel_size=cfg.blur_kernel_size,
+            preview_crop=last_preview_crop if cfg.preview_enabled else None,
+            plate_text=preview_text,
+            preview_max_w_ratio=cfg.preview_max_w_ratio,
+            preview_max_h_ratio=cfg.preview_max_h_ratio,
+            preview_margin_px=cfg.preview_margin_px,
+            preview_zoom=cfg.preview_zoom,
+        )
 
         if cfg.debug and debug_dir:
             curb_candidates = curb_det.detect(frame)
@@ -151,11 +202,27 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         selected_ocr = ocr_vote.best_valid(registry.exists) or ocr_vote.best_any()
         if selected_ocr and registry.exists(selected_ocr):
             validated_plate = selected_ocr
+        elif selected_ocr:
+            validated_plate = selected_ocr
 
-    if validated_plate and plate_boxes_per_frame:
-        frames_out = []
-        for (_, frame), plate_box in zip(read_frames(cfg.input_path, cfg.max_frames), plate_boxes_per_frame):
-            frames_out.append(blur_except_plate(frame, plate_box, cfg.blur_kernel_size))
+    if selected_ocr and frames_out:
+        refreshed_frames: list = []
+        for (_, frame), boxes in zip(read_frames(cfg.input_path, cfg.max_frames), all_plate_boxes_per_frame):
+            preview_crop = last_preview_crop
+            refreshed_frames.append(
+                render_privacy_frame(
+                    frame,
+                    boxes,
+                    kernel_size=cfg.blur_kernel_size,
+                    preview_crop=preview_crop if cfg.preview_enabled else None,
+                    plate_text=selected_ocr,
+                    preview_max_w_ratio=cfg.preview_max_w_ratio,
+                    preview_max_h_ratio=cfg.preview_max_h_ratio,
+                    preview_margin_px=cfg.preview_margin_px,
+                    preview_zoom=cfg.preview_zoom,
+                )
+            )
+        frames_out = refreshed_frames
 
     write_video(frames_out, cfg.output_path, fps=fps)
 
@@ -178,6 +245,8 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             blur_expand_ratio=cfg.blur_expand_ratio,
             blur_kernel_size=cfg.blur_kernel_size,
             debug_path=str(debug_dir) if debug_dir else None,
+            engine_version="enterprise_v2",
+            multi_plate_support=True,
         )
 
     return {
@@ -192,4 +261,6 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
         "blur_expand_ratio": cfg.blur_expand_ratio,
         "blur_kernel_size": cfg.blur_kernel_size,
+        "engine_version": "enterprise_v2",
+        "multi_plate_support": True,
     }

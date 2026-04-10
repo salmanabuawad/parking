@@ -66,35 +66,40 @@ def _enhance_plate(crop: np.ndarray, scale: int = 4) -> np.ndarray:
 
 
 def _normalize_text(text: str) -> str:
+    text = text.upper().strip()
+    replacements = {
+        "O": "0", "Q": "0", "D": "0", "I": "1", "L": "1", "Z": "2", "S": "5", "B": "8"
+    }
+    text = "".join(replacements.get(ch, ch) for ch in text)
     return re.sub(r"[^0-9]", "", text)
 
 
 def read_plate_crop(crop: np.ndarray) -> tuple[str, float]:
-    """Run EasyOCR on a plate crop.
-
-    Tries multiple preprocessing variants; returns the reading with the most
-    digits (7-8 preferred) and highest confidence.
-    Returns (digits_only, confidence).
-    """
+    """Run EasyOCR on a plate crop with several enhanced variants."""
     reader = _get_ocr()
     if reader is None or crop.size == 0:
         return "", 0.0
     try:
         enhanced = _enhance_plate(crop)
-        # Also try inverted (black on white) for some plate styles
         inverted = cv2.bitwise_not(enhanced)
+        adaptive = cv2.adaptiveThreshold(
+            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, 11
+        )
+        variants = (enhanced, inverted, adaptive, cv2.bitwise_not(adaptive))
 
         best_text = ""
         best_conf = 0.0
 
-        for variant in (enhanced, inverted):
+        for variant in variants:
             results = reader.readtext(variant, detail=1)
-            # Collect all digit sequences from all bounding boxes
             all_digits = "".join(_normalize_text(txt) for _, txt, _ in results)
             confs = [float(c) for _, _, c in results if c > 0]
             avg_conf = sum(confs) / len(confs) if confs else 0.0
 
-            if all_digits and (
+            if 7 <= len(all_digits) <= 8 and avg_conf >= best_conf:
+                best_text = all_digits
+                best_conf = avg_conf
+            elif all_digits and (
                 len(all_digits) > len(best_text)
                 or (len(all_digits) == len(best_text) and avg_conf > best_conf)
             ):

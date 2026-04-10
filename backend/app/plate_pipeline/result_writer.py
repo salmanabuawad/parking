@@ -19,7 +19,13 @@ def write_result_json(
     plate_format: dict | None,
     frames_processed: int,
     detector_backend: str,
+    temporal_blur_enabled: bool | None = None,
+    temporal_blur_max_misses: int | None = None,
+    blur_expand_ratio: float | None = None,
+    blur_kernel_size: int | None = None,
     debug_path: str | None = None,
+    engine_version: str = "enterprise_v2",
+    multi_plate_support: bool = True,
 ) -> None:
     out: dict[str, Any] = {
         "validated_plate": validated_plate,
@@ -29,7 +35,17 @@ def write_result_json(
         "plate_format": plate_format,
         "frames_processed": frames_processed,
         "detector_backend": detector_backend,
+        "engine_version": engine_version,
+        "multi_plate_support": multi_plate_support,
     }
+    if temporal_blur_enabled is not None:
+        out["temporal_blur_enabled"] = temporal_blur_enabled
+    if temporal_blur_max_misses is not None:
+        out["temporal_blur_max_misses"] = temporal_blur_max_misses
+    if blur_expand_ratio is not None:
+        out["blur_expand_ratio"] = blur_expand_ratio
+    if blur_kernel_size is not None:
+        out["blur_kernel_size"] = blur_kernel_size
     if debug_path:
         out["debug_output_path"] = debug_path
     path.write_text(json.dumps(out, indent=2), encoding="utf-8")
