@@ -1,20 +1,32 @@
-"""Main enterprise plate pipeline with multi-vehicle candidate support and privacy rendering."""
+"""Main enterprise plate pipeline with multi-vehicle candidate support and privacy rendering.
+
+Design notes
+------------
+* OCR runs on RAW BGR crops from the original (unblurred) frame.
+  `preprocess_for_ocr` is NOT called here — all preprocessing is inside
+  `read_plate_crop` / `_ocr_variants` so there is no double-processing.
+* Best crop (by Laplacian sharpness) is tracked across all frames and an
+  additional OCR pass is run on it at the end if we still have no result.
+* EasyOCR is tried as fallback inside `read_plate_crop` automatically.
+* Comprehensive logging at every decision point.
+"""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Optional
 
 import cv2
+import numpy as np
 
 from .blur_pipeline import render_privacy_frame
 from .config import PipelineConfig, VEHICLE_MIN_CONFIDENCE
 from .curb_detector import CurbDetector
 from .debug import draw_plate_box, save_debug_frame
-from .ocr_preprocess import preprocess_for_ocr
-from .ocr_reader import read_plate_crop
+from .ocr_reader import read_plate_crop, clean_plate_text
 from .ocr_vote import OCRVote
-from .plate_cropper import crop_plate, is_crop_ocr_ready
+from .plate_cropper import crop_plate, is_crop_ocr_ready, estimate_crop_quality
 from .plate_detector import PlateDetection, PlateDetector
 from .plate_format import classify_plate_format
 from .registry_lookup import RegistryLookup
@@ -26,6 +38,8 @@ from .video_io import get_video_info, read_frames
 
 BBox = tuple[int, int, int, int]
 
+
+# ── helpers ────────────────────────────────────────────────────────────────
 
 def _dedupe_boxes(detections: list[PlateDetection], max_count: int) -> list[PlateDetection]:
     picked: list[PlateDetection] = []
@@ -57,7 +71,22 @@ def _iou_xywh(a: BBox, b: BBox) -> float:
     return inter / union if union > 0 else 0.0
 
 
+def _sharpness(crop: np.ndarray) -> float:
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+# ── main pipeline ──────────────────────────────────────────────────────────
+
 def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
+    print(
+        f"[pipeline] START  detector={cfg.detector_backend}  "
+        f"ocr={'disabled' if cfg.disable_ocr else 'enabled'}  "
+        f"max_frames={cfg.max_frames}  ocr_every={cfg.ocr_every_n_frames}  "
+        f"yolo_every={cfg.yolo_every_n_frames}",
+        flush=True,
+    )
+
     registry = RegistryLookup(cfg.registry_csv)
     vehicle_det = VehicleDetector(model_path=cfg.vehicle_model_path, imgsz=cfg.vehicle_imgsz)
     plate_det = PlateDetector(backend=cfg.detector_backend, yolo_path=cfg.plate_yolo_model_path)
@@ -77,12 +106,22 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     primary_plate_boxes_per_frame: list[Optional[BBox]] = []
     all_plate_boxes_per_frame: list[list[BBox]] = []
 
+    # Best-crop tracking (by sharpness)
+    best_crop: Optional[np.ndarray] = None
+    best_crop_sharpness: float = -1.0
+    best_crop_frame: int = -1
+
+    # Debug log accumulator
+    debug_log: list[dict] = []
+
     if cfg.debug:
         debug_dir = cfg.output_path.parent / (cfg.output_path.stem + "_debug")
         debug_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[pipeline] debug dir: {debug_dir}", flush=True)
 
     info = get_video_info(cfg.input_path)
     fps = (info or {}).get("fps", 25)
+    print(f"[pipeline] video info: {info}", flush=True)
 
     # Cache last YOLO vehicle result — reuse across skipped frames
     last_vehicles: list = []
@@ -90,7 +129,7 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
 
     for frame_idx, frame in read_frames(cfg.input_path, cfg.max_frames):
 
-        # ── YOLO vehicle detection: only every N frames ──────────────────────
+        # ── YOLO vehicle detection: only every N frames ────────────────────
         if frame_idx % yolo_every == 0:
             last_vehicles = vehicle_det.detect_and_track(frame)
             last_vehicles = [v for v in last_vehicles if v.confidence >= VEHICLE_MIN_CONFIDENCE]
@@ -108,6 +147,13 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         plate_detections = _dedupe_boxes(plate_detections, cfg.multi_plate_max_per_frame)
         current_boxes = [d.bbox for d in plate_detections]
         all_plate_boxes_per_frame.append(current_boxes)
+
+        if plate_detections:
+            print(
+                f"[pipeline] frame {frame_idx:04d}: {len(plate_detections)} plate(s)  "
+                + "  ".join(f"bbox={d.bbox} conf={d.confidence:.2f}" for d in plate_detections[:2]),
+                flush=True,
+            )
 
         detected_box: Optional[BBox] = None
         tracked_plate_box: Optional[BBox] = None
@@ -128,6 +174,7 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             blur_box = tracked_plate_box
         primary_plate_boxes_per_frame.append(blur_box)
 
+        # ── OCR region candidates ──────────────────────────────────────────
         ocr_boxes = []
         if tracked_plate_box is not None:
             ocr_boxes.append(tracked_plate_box)
@@ -136,13 +183,28 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
                 ocr_boxes.append(box)
 
         for box in ocr_boxes:
+            # ── Crop from ORIGINAL (unblurred) frame ──────────────────────
             crop = crop_plate(frame, box, cfg.plate_crop_margin_px)
             if crop is None:
                 continue
+
             x, y, w, h = box
             plate_format_info = classify_plate_format(w, h)
-            if last_preview_crop is None or (crop.size > 0 and crop.shape[1] * crop.shape[0] >= last_preview_crop.shape[1] * last_preview_crop.shape[0]):
+
+            # Track best crop by sharpness
+            sharp = _sharpness(crop)
+            if sharp > best_crop_sharpness:
+                best_crop_sharpness = sharp
+                best_crop = crop.copy()
+                best_crop_frame = frame_idx
+
+            # Update preview crop (largest area wins)
+            if last_preview_crop is None or (
+                crop.shape[1] * crop.shape[0] >= last_preview_crop.shape[1] * last_preview_crop.shape[0]
+            ):
                 last_preview_crop = crop.copy()
+
+            # ── OCR quality gate (relaxed thresholds) ─────────────────────
             should_run_ocr = (
                 not cfg.disable_ocr
                 and frame_idx % max(1, cfg.ocr_every_n_frames) == 0
@@ -155,19 +217,39 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
                     max_brightness=cfg.ocr_max_brightness,
                 )
             )
+
             if should_run_ocr:
-                preprocessed = preprocess_for_ocr(
-                    crop,
-                    resize_factor=cfg.ocr_resize_factor,
-                    denoise=cfg.ocr_denoise,
-                    sharpen=cfg.ocr_sharpen,
+                # ── PASS RAW BGR CROP — no double-preprocessing ───────────
+                digits, ocr_err = read_plate_crop(crop)
+
+                print(
+                    f"[pipeline] frame {frame_idx:04d} OCR box={box}  "
+                    f"sharp={sharp:.1f}  raw={digits!r}  err={ocr_err}",
+                    flush=True,
                 )
-                digits, _ = read_plate_crop(preprocessed)
+
+                # Debug: save crop + log entry
+                if debug_dir is not None:
+                    crop_path = debug_dir / f"crop_frame_{frame_idx:04d}.jpg"
+                    cv2.imwrite(str(crop_path), crop)
+                    debug_log.append({
+                        "frame_index": frame_idx,
+                        "bbox": list(box),
+                        "sharpness": round(sharp, 2),
+                        "raw_ocr": digits,
+                        "valid": 7 <= len(digits) <= 8,
+                        "rejection_reason": ocr_err,
+                    })
+
                 if digits:
                     ocr_vote.add(digits)
-                    # Early exit: once we have a confident majority, stop OCR
-                    if ocr_vote.counter and ocr_vote.counter.most_common(1)[0][1] >= 3:
+                    top = ocr_vote.counter.most_common(1)
+                    if top and top[0][1] >= 3:
                         selected_ocr = ocr_vote.best_valid(registry.exists) or ocr_vote.best_any()
+                        print(
+                            f"[pipeline] early exit — confident OCR result: {selected_ocr}",
+                            flush=True,
+                        )
 
         preview_text = selected_ocr or validated_plate
         render_boxes = current_boxes[:]
@@ -189,15 +271,43 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         frames_out.append(out_frame)
         frames_processed += 1
 
-    # ── Finalise OCR vote (single pass — no second video read) ──────────────
+    # ── Extra OCR pass on best crop if still no result ─────────────────────
+    if not cfg.disable_ocr and best_crop is not None and not selected_ocr:
+        print(
+            f"[pipeline] running extra OCR on best crop  "
+            f"frame={best_crop_frame}  sharpness={best_crop_sharpness:.1f}",
+            flush=True,
+        )
+        digits, _ = read_plate_crop(best_crop)
+        print(f"[pipeline] best-crop OCR result: {digits!r}", flush=True)
+        if digits:
+            ocr_vote.add(digits)
+
+        if debug_dir is not None and best_crop is not None:
+            cv2.imwrite(str(debug_dir / "best_crop.jpg"), best_crop)
+
+    # ── Finalise OCR vote ──────────────────────────────────────────────────
     if not cfg.disable_ocr and ocr_vote.counter:
         selected_ocr = ocr_vote.best_valid(registry.exists) or ocr_vote.best_any()
-        if selected_ocr and registry.exists(selected_ocr):
-            validated_plate = selected_ocr
-        elif selected_ocr:
-            validated_plate = selected_ocr
+        validated_plate = selected_ocr  # accept even without registry match
 
-    # Patch plate text into already-rendered frames (no re-decode needed)
+    print(
+        f"[pipeline] RESULT  frames={frames_processed}  "
+        f"candidates={ocr_vote.all_candidates()}  selected={selected_ocr}",
+        flush=True,
+    )
+
+    # Save debug log JSON
+    if debug_dir is not None and debug_log:
+        log_path = debug_dir / "ocr_log.json"
+        log_path.write_text(json.dumps(debug_log, indent=2, ensure_ascii=False))
+        print(f"[pipeline] debug log: {log_path}", flush=True)
+
+    # Save best crop when debug enabled
+    if debug_dir is not None and best_crop is not None:
+        cv2.imwrite(str(debug_dir / "best_crop.jpg"), best_crop)
+
+    # ── Patch plate text into already-rendered frames (no re-decode) ───────
     if selected_ocr and frames_out:
         frames_out = [
             render_privacy_frame(
@@ -235,7 +345,7 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             blur_expand_ratio=cfg.blur_expand_ratio,
             blur_kernel_size=cfg.blur_kernel_size,
             debug_path=str(debug_dir) if debug_dir else None,
-            engine_version="enterprise_v2",
+            engine_version="enterprise_v3",
             multi_plate_support=True,
         )
 
@@ -251,6 +361,6 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
         "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
         "blur_expand_ratio": cfg.blur_expand_ratio,
         "blur_kernel_size": cfg.blur_kernel_size,
-        "engine_version": "enterprise_v2",
+        "engine_version": "enterprise_v3",
         "multi_plate_support": True,
     }

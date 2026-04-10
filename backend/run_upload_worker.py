@@ -195,6 +195,8 @@ def process_one_job() -> bool:
             from app.plate_pipeline.pipeline import run_pipeline
             from app.plate_pipeline.config import PipelineConfig
 
+            print(f"[Job {job.id}] ENGINE: enterprise plate_pipeline  ocr={'skip' if skip_ocr else 'enabled'}  detector=hsv", flush=True)
+
             with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _tmp_in:
                 _tmp_in.write(video_bytes)
                 _in_path = Path(_tmp_in.name)
