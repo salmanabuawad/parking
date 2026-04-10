@@ -1,5 +1,24 @@
 node_modules/
 
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+
+# Frontend build output
+frontend/dist/
+
+# Vite dev cache
+frontend/node_modules/.vite/
+
+# Claude Code local settings
+.claude/settings.local.json
+
 # Video and image files (uploads, generated)
 *.mp4
 *.webm
