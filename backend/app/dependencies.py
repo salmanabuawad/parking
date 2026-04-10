@@ -24,3 +24,5 @@ def get_ticket_repo(db: Session = Depends(get_db)) -> TicketRepository:
 
 def get_upload_job_repo(db: Session = Depends(get_db)) -> UploadJobRepository:
     return UploadJobRepository(db)
+
+

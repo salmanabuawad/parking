@@ -1,15 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-
-// Global base font size increase
-const style = document.createElement('style')
-style.textContent = `
-  *, *::before, *::after { box-sizing: border-box; }
-  html { font-size: 24px; }
-  body { margin: 0; font-family: system-ui, -apple-system, sans-serif; }
-`
-document.head.appendChild(style)
+import './index.css'
 import { AuthProvider } from './context/AuthContext'
+import { ThemeProvider } from './context/ThemeContext'
 import App, { AppErrorBoundary } from './App'
 
 const rootEl = document.getElementById('root')
@@ -19,9 +12,11 @@ if (!rootEl) {
   ReactDOM.createRoot(rootEl).render(
     <React.StrictMode>
       <AppErrorBoundary>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <App />
+          </AuthProvider>
+        </ThemeProvider>
       </AppErrorBoundary>
     </React.StrictMode>
   )

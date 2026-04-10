@@ -44,3 +44,33 @@ class CameraResponse(CameraBase):
 
     class Config:
         from_attributes = True
+
+
+# Field configuration schemas
+class FieldConfigurationBase(BaseModel):
+    grid_name: str
+    field_name: str
+    width_chars: int = 10
+    padding: int = 8
+    hebrew_name: Optional[str] = None
+    pinned: bool = False
+    pin_side: Optional[str] = None
+    visible: bool = True
+    column_order: Optional[int] = None
+
+
+class FieldConfigurationUpsert(FieldConfigurationBase):
+    pass
+
+
+class FieldConfigurationResponse(FieldConfigurationBase):
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FieldConfigurationBulkUpsert(BaseModel):
+    items: list[FieldConfigurationUpsert]

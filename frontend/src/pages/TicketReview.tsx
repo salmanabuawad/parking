@@ -21,6 +21,7 @@ interface TicketDetail {
   violation_confidence?: number;
   violation_description_he?: string;
   violation_description_en?: string;
+  has_original_video?: boolean;
 }
 
 interface Screenshot {
@@ -35,7 +36,7 @@ const PLATE_UNKNOWN = "11111";
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: 10, color: "#888", marginBottom: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 10, color: "var(--app-text-muted)", marginBottom: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
       <div>{children}</div>
     </div>
   );
@@ -196,18 +197,20 @@ export default function TicketReview() {
   const plateOk = ticket && ticket.license_plate && ticket.license_plate !== PLATE_UNKNOWN && ticket.license_plate !== "";
 
   return (
-    <div dir="rtl" style={{ padding: 24, maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif" }}>
+    <div className="page-fill">
+    <div className="page-body-scroll">
+    <div dir="rtl" style={{ padding: 24, width: '100%', boxSizing: 'border-box', fontFamily: "Arial, sans-serif", color: "var(--app-text)" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <h1 style={{ margin: 0, fontSize: 22 }}>בדיקת דוח #{ticketId}</h1>
-          <Link to="/queue" style={{ fontSize: 13, color: "#2563eb" }}>← תור עיבוד</Link>
-          <Link to="/tickets" style={{ fontSize: 13, color: "#2563eb" }}>← כל הדוחות</Link>
+          <Link to="/queue" style={{ fontSize: 13, color: "var(--app-accent)" }}>← תור עיבוד</Link>
+          <Link to="/tickets" style={{ fontSize: 13, color: "var(--app-accent)" }}>← כל הדוחות</Link>
         </div>
       </div>
 
       {state === "error" && (
-        <div style={{ color: "crimson", marginBottom: 12, padding: "8px 12px", background: "#fef2f2", borderRadius: 6 }}>
+        <div style={{ color: "var(--app-danger)", marginBottom: 12, padding: "8px 12px", background: "var(--app-warning-bg)", border: "1px solid var(--app-border)", borderRadius: 6 }}>
           שגיאה: {error}
         </div>
       )}
@@ -220,7 +223,7 @@ export default function TicketReview() {
 
         {/* Video panel */}
         <div>
-          <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden", background: "#000" }}>
+          <div style={{ border: "1px solid var(--app-border)", borderRadius: 10, overflow: "hidden", background: "#000" }}>
             {videoUrl ? (
               <video
                 ref={videoRef}
@@ -231,19 +234,19 @@ export default function TicketReview() {
                 style={{ width: "100%", maxHeight: 320, display: "block" }}
               />
             ) : (
-              <div style={{ padding: 32, textAlign: "center", color: "#9ca3af", background: "#111" }}>
+              <div style={{ padding: 32, textAlign: "center", color: "var(--app-text-muted)", background: "#111" }}>
                 {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
               </div>
             )}
           <canvas ref={canvasRef} style={{ display: "none" }} />
           {videoUrl && (
-            <div style={{ padding: "10px 12px", background: "#0f172a", display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ padding: "10px 12px", background: "var(--app-header-start)", display: "flex", alignItems: "center", gap: 10 }}>
               <button
                 onClick={captureScreenshot}
                 disabled={capturing || state !== "ready"}
                 style={{
                   padding: "7px 16px",
-                  background: capturing ? "#475569" : "#2563eb",
+                  background: capturing ? "var(--app-text-muted)" : "var(--app-accent)",
                   color: "#fff",
                   border: "none",
                   borderRadius: 6,
@@ -260,6 +263,37 @@ export default function TicketReview() {
                   {captureMsg}
                 </span>
               )}
+              {ticket?.has_original_video && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const blob = await ticketsApi.getOriginalVideo(ticketId);
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `original_ticket_${ticketId}.mp4`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (e: any) {
+                      alert("שגיאה בהורדת הוידאו המקורי: " + (e?.message || e));
+                    }
+                  }}
+                  style={{
+                    padding: "7px 16px",
+                    background: "#374151",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    fontSize: "0.9rem",
+                    fontWeight: 600,
+                    marginRight: "auto",
+                  }}
+                >
+                  ⬇️ הורד מקורי
+                </button>
+              )}
             </div>
           )}
           </div>
@@ -267,12 +301,12 @@ export default function TicketReview() {
 
         {/* Screenshot gallery — under video */}
         {(screenshots.length > 0 || videoUrl) && (
-          <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+          <div style={{ background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 10, padding: "18px 22px" }}>
             <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>
               צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
             </h3>
             {screenshots.length === 0 ? (
-              <p style={{ color: "#94a3b8", fontSize: 13, margin: 0 }}>עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
+              <p style={{ color: "var(--app-text-muted)", fontSize: 13, margin: 0 }}>עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
             ) : (
               <>
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -280,7 +314,7 @@ export default function TicketReview() {
                     <div
                       key={s.id}
                       onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-                      style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: expanded === s.id ? "2px solid #2563eb" : "2px solid transparent", background: "#f1f5f9" }}
+                      style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: expanded === s.id ? "2px solid var(--app-accent)" : "2px solid transparent", background: "var(--app-surface-muted)" }}
                     >
                       <img
                         src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
@@ -288,7 +322,7 @@ export default function TicketReview() {
                         style={{ width: 140, height: 80, objectFit: "cover", display: "block" }}
                         loading="lazy"
                       />
-                      <div style={{ fontSize: 11, textAlign: "center", padding: "3px 4px", color: "#6b7280", lineHeight: 1.3 }}>
+                      <div style={{ fontSize: 11, textAlign: "center", padding: "3px 4px", color: "var(--app-text-muted)", lineHeight: 1.3 }}>
                         {s.frame_time_seconds != null && ticket?.captured_at
                           ? new Date(new Date(ticket.captured_at).getTime() + s.frame_time_seconds * 1000)
                               .toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -298,7 +332,7 @@ export default function TicketReview() {
                   ))}
                 </div>
                 {expanded !== null && (
-                  <div style={{ marginTop: 12, borderRadius: 8, overflow: "hidden", border: "1px solid #e2e8f0" }}>
+                  <div style={{ marginTop: 12, borderRadius: 8, overflow: "hidden", border: "1px solid var(--app-border)" }}>
                     <img
                       src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
                       alt="Expanded screenshot"
@@ -317,7 +351,7 @@ export default function TicketReview() {
         <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "row", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
 
         {ticket && (
-          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "12px 16px" }}>
+          <div style={{ flex: "1 1 240px", background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 10, padding: "12px 16px", position: "sticky", top: 88 }}>
 
             {/* Plate */}
             <Field label="מספר לוחית">
@@ -325,7 +359,7 @@ export default function TicketReview() {
                 <input
                   value={editPlate}
                   onChange={e => setEditPlate(e.target.value)}
-                  style={{ fontFamily: "monospace", fontSize: 18, padding: "4px 8px", border: "1px solid #d1d5db", borderRadius: 4, width: "100%" }}
+                  style={{ fontFamily: "monospace", fontSize: 18, padding: "4px 8px", border: "1px solid var(--app-border)", borderRadius: 4, width: "100%", background: "var(--app-surface)", color: "var(--app-text)" }}
                 />
               ) : plateOk ? (
                 <div>
@@ -333,7 +367,7 @@ export default function TicketReview() {
                     {ticket.license_plate}
                   </span>
                   {ticket.plate_detection_reason && (
-                    <div style={{ fontSize: 12, color: "#b45309", marginTop: 4, background: "#fffbeb", padding: "4px 8px", borderRadius: 4 }}>
+                    <div style={{ fontSize: 12, color: "var(--app-warning-text)", marginTop: 4, background: "var(--app-warning-bg)", padding: "4px 8px", borderRadius: 4 }}>
                       ⚠ {ticket.plate_detection_reason}
                     </div>
                   )}
@@ -342,20 +376,20 @@ export default function TicketReview() {
                 <div>
                   <span style={{ fontWeight: 600, color: "#dc2626" }}>לא זוהה</span>
                   {ticket.plate_detection_reason && (
-                    <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>{ticket.plate_detection_reason}</div>
+                    <div style={{ fontSize: 12, color: "var(--app-text-muted)", marginTop: 4 }}>{ticket.plate_detection_reason}</div>
                   )}
                 </div>
               )}
             </Field>
 
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
+            <div style={{ borderTop: "1px solid var(--app-border)", margin: "6px 0" }} />
 
             {/* Status */}
             <Field label="סטטוס">
               <span style={{
                 fontWeight: 600,
                 color: STATUS_COLORS[ticket.status] || "#374151",
-                background: "#f8fafc",
+                background: "var(--app-surface-muted)",
                 padding: "2px 10px",
                 borderRadius: 12,
                 fontSize: 14,
@@ -379,21 +413,21 @@ export default function TicketReview() {
                   value={editFine}
                   onChange={e => setEditFine(e.target.value)}
                   placeholder="סכום ₪"
-                  style={{ padding: "4px 8px", border: "1px solid #d1d5db", borderRadius: 4, width: 120 }}
+                  style={{ padding: "4px 8px", border: "1px solid var(--app-border)", borderRadius: 4, width: 120, background: "var(--app-surface)", color: "var(--app-text)" }}
                 />
               ) : ticket.fine_amount != null ? (
                 <span style={{ fontWeight: 600, color: "#dc2626" }}>₪{ticket.fine_amount}</span>
               ) : (
-                <span style={{ color: "#9ca3af", fontSize: 13 }}>לא נקבע</span>
+                <span style={{ color: "var(--app-text-muted)", fontSize: 13 }}>לא נקבע</span>
               )}
             </Field>
 
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
+            <div style={{ borderTop: "1px solid var(--app-border)", margin: "6px 0" }} />
 
             {/* Location */}
             {ticket.location && (
               <Field label="מיקום">
-                <span style={{ fontSize: 13, color: "#374151" }}>{ticket.location}</span>
+                <span style={{ fontSize: 13, color: "var(--app-text)" }}>{ticket.location}</span>
               </Field>
             )}
 
@@ -414,42 +448,42 @@ export default function TicketReview() {
             {/* Description */}
             {ticket.description && (
               <Field label="תיאור">
-                <span style={{ fontSize: 13, color: "#4b5563" }}>{ticket.description}</span>
+                <span style={{ fontSize: 13, color: "var(--app-text)" }}>{ticket.description}</span>
               </Field>
             )}
 
             {/* Admin notes */}
-            <div style={{ borderTop: "1px solid #f1f5f9", margin: "6px 0" }} />
+            <div style={{ borderTop: "1px solid var(--app-border)", margin: "6px 0" }} />
             <Field label="הערות מנהל">
               {editMode ? (
                 <textarea
                   value={editNotes}
                   onChange={e => setEditNotes(e.target.value)}
                   rows={3}
-                  style={{ width: "100%", padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 4, fontSize: 13, resize: "vertical" }}
+                  style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--app-border)", borderRadius: 4, fontSize: 13, resize: "vertical", background: "var(--app-surface)", color: "var(--app-text)" }}
                 />
               ) : ticket.admin_notes ? (
                 <span style={{ fontSize: 13 }}>{ticket.admin_notes}</span>
               ) : (
-                <span style={{ color: "#9ca3af", fontSize: 13 }}>אין הערות</span>
+                <span style={{ color: "var(--app-text-muted)", fontSize: 13 }}>אין הערות</span>
               )}
             </Field>
 
             {/* Admin action buttons */}
-            <div style={{ borderTop: "1px solid #f1f5f9", marginTop: 8, paddingTop: 8 }}>
+            <div style={{ borderTop: "1px solid var(--app-border)", marginTop: 8, paddingTop: 8 }}>
               {editMode ? (
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
                     onClick={handleSaveEdit}
                     disabled={saving}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", background: "var(--app-accent)", color: "#fff", fontWeight: 600, cursor: "pointer" }}
                   >
                     {saving ? "שומר…" : "שמור"}
                   </button>
                   <button
                     onClick={() => { setEditMode(false); setEditNotes(ticket.admin_notes || ""); setEditFine(ticket.fine_amount != null ? String(ticket.fine_amount) : ""); setEditPlate(ticket.license_plate || ""); }}
                     disabled={saving}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb", cursor: "pointer" }}
+                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid var(--app-border)", background: "var(--app-surface-muted)", color: "var(--app-text)", cursor: "pointer" }}
                   >
                     ביטול
                   </button>
@@ -460,7 +494,7 @@ export default function TicketReview() {
                     <button
                       onClick={() => handleStatusChange("approved")}
                       disabled={saving}
-                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "#16a34a", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "var(--app-success)", color: "#fff", fontWeight: 600, cursor: "pointer" }}
                     >
                       ✓ אשר
                     </button>
@@ -469,7 +503,7 @@ export default function TicketReview() {
                     <button
                       onClick={() => handleStatusChange("rejected")}
                       disabled={saving}
-                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "#dc2626", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "var(--app-danger)", color: "#fff", fontWeight: 600, cursor: "pointer" }}
                     >
                       ✗ דחה
                     </button>
@@ -477,7 +511,7 @@ export default function TicketReview() {
                   <button
                     onClick={() => setEditMode(true)}
                     disabled={saving}
-                    style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "1px solid #d1d5db", background: "#f9fafb", cursor: "pointer" }}
+                    style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "1px solid var(--app-border)", background: "var(--app-surface-muted)", color: "var(--app-text)", cursor: "pointer" }}
                   >
                     ✎ ערוך
                   </button>
@@ -489,15 +523,22 @@ export default function TicketReview() {
 
         {/* Violation analysis */}
         {ticket && ticket.violation_decision && (
-          <div style={{ flex: "1 1 240px", background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "18px 22px" }}>
+          <div style={{ flex: "1 1 240px", background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 10, padding: "18px 22px" }}>
             <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
             {(() => {
               const dec = ticket.violation_decision!;
               const conf = ticket.violation_confidence ?? 0;
-              const color = dec === "confirmed_violation" ? "#dc2626"
+              const color = dec === "confirmed_violation" ? "var(--app-danger)"
                 : dec === "suspected_violation" ? "#d97706"
-                : dec === "no_violation" ? "#16a34a"
-                : "#6b7280";
+                : dec === "no_violation" ? "var(--app-success)"
+                : "var(--app-text-muted)";
+              const badgeBg = dec === "confirmed_violation"
+                ? "rgba(185, 28, 28, 0.15)"
+                : dec === "suspected_violation"
+                  ? "rgba(217, 119, 6, 0.15)"
+                  : dec === "no_violation"
+                    ? "rgba(21, 128, 61, 0.15)"
+                    : "var(--app-surface-muted)";
               const labelHe = dec === "confirmed_violation" ? "הפרה מאושרת"
                 : dec === "suspected_violation" ? "הפרה חשודה"
                 : dec === "no_violation" ? "ללא הפרה"
@@ -505,28 +546,28 @@ export default function TicketReview() {
               return (
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color, background: color + "18", padding: "3px 12px", borderRadius: 12 }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color, background: badgeBg, padding: "3px 12px", borderRadius: 12 }}>
                       {labelHe}
                     </span>
                     {ticket.violation_rule_id && (
-                      <span style={{ fontSize: 12, color: "#6b7280", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
+                      <span style={{ fontSize: 12, color: "var(--app-text-muted)", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
                     )}
-                    <span style={{ fontSize: 12, color: "#6b7280" }}>ביטחון: {Math.round(conf * 100)}%</span>
+                    <span style={{ fontSize: 12, color: "var(--app-text-muted)" }}>ביטחון: {Math.round(conf * 100)}%</span>
                   </div>
-                  <div style={{ height: 6, background: "#f1f5f9", borderRadius: 3, marginBottom: 10 }}>
+                  <div style={{ height: 6, background: "var(--app-surface-muted)", borderRadius: 3, marginBottom: 10 }}>
                     <div style={{ height: "100%", width: `${Math.round(conf * 100)}%`, background: color, borderRadius: 3 }} />
                   </div>
                   {ticket.violation_description_he && (
-                    <div style={{ fontSize: 13, color: "#374151", marginBottom: 6, lineHeight: 1.5 }}>
+                    <div style={{ fontSize: 13, color: "var(--app-text)", marginBottom: 6, lineHeight: 1.5 }}>
                       {ticket.violation_description_he}
                     </div>
                   )}
                   {ticket.violation_description_en && (
-                    <div style={{ fontSize: 12, color: "#6b7280", fontStyle: "italic" }}>
+                    <div style={{ fontSize: 12, color: "var(--app-text-muted)", fontStyle: "italic" }}>
                       {ticket.violation_description_en}
                     </div>
                   )}
-                  <div style={{ marginTop: 10, fontSize: 11, color: "#9ca3af" }}>
+                  <div style={{ marginTop: 10, fontSize: 11, color: "var(--app-text-muted)" }}>
                     * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
                   </div>
                 </div>
@@ -537,6 +578,8 @@ export default function TicketReview() {
 
         </div>{/* end right column */}
       </div>
+    </div>
+    </div>
     </div>
   );
 }

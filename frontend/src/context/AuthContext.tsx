@@ -19,8 +19,25 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const TOKEN_KEY = 'parking_token'
 const USER_KEY = 'parking_user'
 
+function isTokenExpired(token: string): boolean {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    return payload.exp && payload.exp * 1000 < Date.now()
+  } catch {
+    return true // malformed token — treat as expired
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
+  const [token, setToken] = useState<string | null>(() => {
+    const t = localStorage.getItem(TOKEN_KEY)
+    if (t && isTokenExpired(t)) {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+      return null
+    }
+    return t
+  })
   const [user, setUser] = useState<User | null>(() => {
     try {
       const u = localStorage.getItem(USER_KEY)
@@ -33,12 +50,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(TOKEN_KEY)
-    setToken(stored)
-    try {
-      const u = localStorage.getItem(USER_KEY)
-      setUser(u ? JSON.parse(u) : null)
-    } catch {
+    if (stored && isTokenExpired(stored)) {
+      localStorage.removeItem(TOKEN_KEY)
+      localStorage.removeItem(USER_KEY)
+      setToken(null)
       setUser(null)
+    } else {
+      setToken(stored)
+      try {
+        const u = localStorage.getItem(USER_KEY)
+        setUser(u ? JSON.parse(u) : null)
+      } catch {
+        setUser(null)
+      }
     }
     setLoading(false)
   }, [])

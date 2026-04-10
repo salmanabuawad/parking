@@ -174,54 +174,54 @@ export default function Cameras() {
   }
 
   return (
-    <div style={{ padding: '1.5rem', fontFamily: 'system-ui', maxWidth: 900 }}>
+    <div style={{ padding: '1.5rem', fontFamily: 'system-ui', maxWidth: 900, color: 'var(--app-text)' }}>
       <h1>{t('cameras')}</h1>
-      <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+      <p style={{ color: 'var(--app-text-muted)', marginBottom: '1.5rem' }}>
         {t('camerasIntro')}
       </p>
 
-      <form onSubmit={save} style={{ background: '#f5f5f5', padding: '1.25rem', borderRadius: 8, marginBottom: '1.5rem' }}>
+      <form onSubmit={save} style={{ background: 'var(--app-surface-muted)', border: '1px solid var(--app-border)', padding: '1.25rem', borderRadius: 8, marginBottom: '1.5rem' }}>
         <h3>{editing ? t('editCamera') : t('addCamera')}</h3>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div>
             <label>{t('nameRequired')}</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required style={{ width: '100%', padding: 6 }} />
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} />
           </div>
           <div>
             <label>{t('location')}</label>
-            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: '100%', padding: 6 }} placeholder={t('locationPlaceholder')} />
+            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} placeholder={t('locationPlaceholder')} />
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div>
             <label>{t('connectionType')}</label>
-            <select value={form.connection_type} onChange={e => setForm({ ...form, connection_type: e.target.value })} style={{ width: '100%', padding: 6 }}>
+            <select value={form.connection_type} onChange={e => setForm({ ...form, connection_type: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }}>
               {CONNECTION_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
             </select>
           </div>
           <div>
             <label>{t('paramSource')}</label>
-            <select value={form.param_source} onChange={e => setForm({ ...form, param_source: e.target.value })} style={{ width: '100%', padding: 6 }}>
+            <select value={form.param_source} onChange={e => setForm({ ...form, param_source: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }}>
               {PARAM_SOURCES.map(p => <option key={p} value={p}>{p.replace('_', ' ')}</option>)}
             </select>
           </div>
         </div>
         <div style={{ marginBottom: '0.75rem' }}>
           <label>{t('connectionConfigJson')}</label>
-          <textarea value={typeof form.connection_config === 'string' ? form.connection_config : JSON.stringify(form.connection_config || {}, null, 2)} onChange={e => setForm({ ...form, connection_config: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace' }} placeholder='{"ip":"192.168.1.100","port":554}' />
+          <textarea value={typeof form.connection_config === 'string' ? form.connection_config : JSON.stringify(form.connection_config || {}, null, 2)} onChange={e => setForm({ ...form, connection_config: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace', border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} placeholder='{"ip":"192.168.1.100","port":554}' />
         </div>
         <div style={{ marginBottom: '0.75rem' }}>
           <label>{t('paramsJson')}</label>
-          <textarea value={typeof form.params === 'string' ? form.params : JSON.stringify(form.params || {}, null, 2)} onChange={e => setForm({ ...form, params: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace' }} placeholder='{"moving":true,"night_light":true,"resolution":"1080p","fps":30}' />
+          <textarea value={typeof form.params === 'string' ? form.params : JSON.stringify(form.params || {}, null, 2)} onChange={e => setForm({ ...form, params: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace', border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} placeholder='{"moving":true,"night_light":true,"resolution":"1080p","fps":30}' />
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
           <div>
             <label>{t('manufacturer')}</label>
-            <input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} style={{ width: '100%', padding: 6 }} />
+            <input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} />
           </div>
           <div>
             <label>{t('model')}</label>
-            <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} style={{ width: '100%', padding: 6 }} />
+            <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} />
           </div>
         </div>
 
@@ -229,20 +229,20 @@ export default function Cameras() {
         <div style={{ marginBottom: '0.75rem' }}>
           <label style={{ display: 'block', marginBottom: 4 }}>אזורי חניה באזור המצלמה (ניתן לבחור מספר)</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {availableZones.length === 0 && <span style={{ color: '#888', fontSize: '0.85rem' }}>טוען אזורים...</span>}
+            {availableZones.length === 0 && <span style={{ color: 'var(--app-text-muted)', fontSize: '0.85rem' }}>טוען אזורים...</span>}
             {availableZones.map(zone => (
-              <label key={zone.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', background: form.selected_zone_ids.includes(zone.id) ? '#d4edda' : '#fff', border: '1px solid #ccc', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
+              <label key={zone.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', background: form.selected_zone_ids.includes(zone.id) ? 'rgba(21,128,61,0.12)' : 'var(--app-surface)', border: '1px solid var(--app-border)', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
                   checked={form.selected_zone_ids.includes(zone.id)}
                   onChange={() => toggleZone(zone.id)}
                 />
                 {zone.name_he}
-                {zone.description_he && <span style={{ color: '#888', fontSize: '0.78rem' }}> — {zone.description_he}</span>}
+                {zone.description_he && <span style={{ color: 'var(--app-text-muted)', fontSize: '0.78rem' }}> — {zone.description_he}</span>}
               </label>
             ))}
           </div>
-          <p style={{ fontSize: '0.78rem', color: '#888', margin: '4px 0 0' }}>אם לא נבחר אזור — כל הכללים יבדקו (ברירת מחדל)</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--app-text-muted)', margin: '4px 0 0' }}>אם לא נבחר אזור — כל הכללים יבדקו (ברירת מחדל)</p>
         </div>
 
         {/* Violation rules (multi-select) */}
@@ -265,7 +265,7 @@ export default function Cameras() {
               </label>
             ))}
           </div>
-          <p style={{ fontSize: '0.78rem', color: '#888', margin: '4px 0 0' }}>אם לא נבחר כלום — כל הכללים יבדקו (ברירת מחדל)</p>
+          <p style={{ fontSize: '0.78rem', color: 'var(--app-text-muted)', margin: '4px 0 0' }}>אם לא נבחר כלום — כל הכללים יבדקו (ברירת מחדל)</p>
         </div>
 
         <div style={{ marginBottom: '1rem' }}>
@@ -289,18 +289,18 @@ export default function Cameras() {
             const zoneIds = cameraZoneMap[c.id] || []
             const zoneNames = availableZones.filter(z => zoneIds.includes(z.id)).map(z => z.name_he)
             return (
-              <li key={c.id} style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 8, padding: '1rem', marginBottom: 8 }}>
+              <li key={c.id} style={{ background: 'var(--app-surface)', border: '1px solid var(--app-border)', borderRadius: 8, padding: '1rem', marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                   <div>
                     <strong>{c.name}</strong> — {c.connection_type} {c.location && `@ ${c.location}`}
-                    {c.manufacturer && <span style={{ color: '#666', marginLeft: 8 }}>{c.manufacturer} {c.model}</span>}
+                    {c.manufacturer && <span style={{ color: 'var(--app-text-muted)', marginLeft: 8 }}>{c.manufacturer} {c.model}</span>}
                     {zoneNames.length > 0 && (
-                      <div style={{ fontSize: '0.8rem', color: '#1a6b3a', marginTop: 2 }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--app-success)', marginTop: 2 }}>
                         אזורים: {zoneNames.join(', ')}
                       </div>
                     )}
                     {c.violation_rules && c.violation_rules.length > 0 && (
-                      <div style={{ fontSize: '0.8rem', color: '#555', marginTop: 2 }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--app-text-muted)', marginTop: 2 }}>
                         כללים: {c.violation_rules.join(', ')}
                       </div>
                     )}
@@ -310,7 +310,7 @@ export default function Cameras() {
                       <a href={videoUrl} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>{t('watchSample')}</a>
                     )}
                     <button onClick={() => startEdit(c)} style={{ marginRight: 8 }}>{t('edit')}</button>
-                    <button onClick={() => remove(c.id)} style={{ background: '#dc3545', color: 'white' }}>{t('delete')}</button>
+                    <button onClick={() => remove(c.id)} style={{ background: 'var(--app-danger)', color: 'white' }}>{t('delete')}</button>
                   </div>
                 </div>
                 {hasSample && (
@@ -321,7 +321,7 @@ export default function Cameras() {
           })}
         </ul>
       )}
-      {!loading && cameras.length === 0 && <p style={{ color: '#666' }}>{t('noCameras')}</p>}
+      {!loading && cameras.length === 0 && <p style={{ color: 'var(--app-text-muted)' }}>{t('noCameras')}</p>}
     </div>
   )
 }

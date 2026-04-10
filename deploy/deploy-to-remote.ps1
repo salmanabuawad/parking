@@ -13,12 +13,14 @@ $repoRoot = Split-Path -Parent $scriptDir
 
 Write-Host "=== Deploying from $repoRoot to $REMOTE ===" -ForegroundColor Cyan
 
-# Copy app and deploy files to /tmp on server
-Write-Host "Copying backend, frontend, deploy..." -ForegroundColor Yellow
-scp -r "$repoRoot\backend" "$repoRoot\frontend" "$repoRoot\deploy" ${REMOTE}:/tmp/
+# Copy app and deploy files to /tmp on server (exclude node_modules, dist, .venv, __pycache__)
+Write-Host "Copying backend, frontend, deploy (excluding node_modules)..." -ForegroundColor Yellow
+$driveLetter = $repoRoot.Substring(0,1).ToLower()
+$repoRootUnix = '/' + $driveLetter + ($repoRoot.Substring(2) -replace '\\', '/')
+bash -c "tar -czf - --exclude='*/node_modules' --exclude='*/dist' --exclude='*/.venv' --exclude='*/__pycache__' -C '$repoRootUnix' backend frontend deploy | ssh $REMOTE 'tar -xzf - -C /tmp/'"
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "SCP failed. Check SSH access (e.g. ssh $REMOTE)" -ForegroundColor Red
+    Write-Host "Upload failed. Check SSH access (e.g. ssh $REMOTE)" -ForegroundColor Red
     exit 1
 }
 

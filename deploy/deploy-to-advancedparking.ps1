@@ -20,12 +20,14 @@ $repoRoot  = Split-Path -Parent $scriptDir
 Write-Host "=== Deploying to ${REMOTE}:${DEPLOY_ROOT} ===" -ForegroundColor Cyan
 Write-Host "    Existing /opt/parking deployment will NOT be touched." -ForegroundColor Yellow
 
-# 1. Copy files to server /tmp
-Write-Host "Copying backend, frontend, deploy..." -ForegroundColor Yellow
-scp -r "$repoRoot\backend" "$repoRoot\frontend" "$repoRoot\deploy" "${REMOTE}:/tmp/"
+# 1. Copy files to server /tmp (exclude node_modules, dist, .venv, __pycache__)
+Write-Host "Copying backend, frontend, deploy (excluding node_modules)..." -ForegroundColor Yellow
+$driveLetter = $repoRoot.Substring(0,1).ToLower()
+$repoRootUnix = '/' + $driveLetter + ($repoRoot.Substring(2) -replace '\\', '/')
+bash -c "tar -czf - --exclude='*/node_modules' --exclude='*/dist' --exclude='*/.venv' --exclude='*/__pycache__' -C '$repoRootUnix' backend frontend deploy | ssh $REMOTE 'tar -xzf - -C /tmp/'"
 
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "SCP failed. Check SSH access: ssh $REMOTE" -ForegroundColor Red
+    Write-Host "Upload failed. Check SSH access: ssh $REMOTE" -ForegroundColor Red
     exit 1
 }
 

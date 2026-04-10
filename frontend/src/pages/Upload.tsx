@@ -74,18 +74,18 @@ export default function Upload() {
   }
 
   const s: Record<string, React.CSSProperties> = {
-    page: { padding: '1.25rem', maxWidth: 480, margin: '0 auto', fontFamily: 'system-ui', direction: 'rtl' },
+    page: { padding: '1.25rem', maxWidth: 480, margin: '0 auto', fontFamily: 'system-ui', direction: 'rtl', color: 'var(--app-text)' },
     title: { fontSize: '1.4rem', marginBottom: '0.75rem', fontWeight: 700 },
     label: { display: 'block', marginTop: '1rem', fontWeight: 600, fontSize: '0.95rem', marginBottom: 4 },
-    input: { width: '100%', padding: '0.75rem', fontSize: '1rem', borderRadius: 8, border: '1px solid #d1d5db', boxSizing: 'border-box' },
+    input: { width: '100%', padding: '0.75rem', fontSize: '1rem', borderRadius: 8, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', boxSizing: 'border-box' },
     btn: {
       width: '100%', padding: '0.9rem', fontSize: '1.05rem', marginTop: '1.25rem',
-      borderRadius: 10, border: 'none', background: submitting ? '#93c5fd' : '#2563eb',
+      borderRadius: 10, border: 'none', background: submitting ? 'var(--app-text-muted)' : 'var(--app-accent)',
       color: '#fff', fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
     },
     gpsBox: { marginTop: '0.75rem', padding: '0.6rem 0.9rem', borderRadius: 8, fontSize: 13 },
-    success: { background: '#d4edda', padding: '1rem', borderRadius: 10, marginTop: '1rem', fontSize: 15 },
-    errBox: { background: '#fef2f2', color: '#dc2626', padding: '0.75rem 1rem', borderRadius: 8, marginTop: '0.75rem', fontSize: 14 },
+    success: { background: 'var(--app-surface-muted)', border: '1px solid var(--app-border)', padding: '1rem', borderRadius: 10, marginTop: '1rem', fontSize: 15 },
+    errBox: { background: 'var(--app-warning-bg)', color: 'var(--app-danger)', padding: '0.75rem 1rem', border: '1px solid var(--app-border)', borderRadius: 8, marginTop: '0.75rem', fontSize: 14 },
   }
 
   return (
@@ -93,7 +93,7 @@ export default function Upload() {
       <h1 style={s.title}>דיווח על חנייה אסורה</h1>
 
       {/* GPS status */}
-      <div style={{ ...s.gpsBox, background: gps ? '#f0fdf4' : gpsError ? '#fef2f2' : '#f9fafb', color: gps ? '#15803d' : gpsError ? '#dc2626' : '#6b7280' }}>
+      <div style={{ ...s.gpsBox, background: gps ? 'rgba(21,128,61,0.12)' : gpsError ? 'var(--app-warning-bg)' : 'var(--app-surface-muted)', color: gps ? 'var(--app-success)' : gpsError ? 'var(--app-danger)' : 'var(--app-text-muted)' }}>
         {gps
           ? `📍 מיקום: ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}${gps.accuracy ? ` (±${Math.round(gps.accuracy)}מ')` : ''}`
           : gpsError
@@ -108,7 +108,7 @@ export default function Upload() {
           type="button"
           disabled={submitting}
           onClick={() => { if (inputRef.current) { (inputRef.current as any).capture = 'environment'; inputRef.current.click() } }}
-          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid #2563eb', background: '#eff6ff', color: '#1e40af', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
+          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid var(--app-accent)', background: 'var(--app-surface-muted)', color: 'var(--app-accent)', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
         >
           📷 צלם וידאו
         </button>
@@ -116,7 +116,7 @@ export default function Upload() {
           type="button"
           disabled={submitting}
           onClick={() => { if (inputRef.current) { (inputRef.current as any).removeAttribute?.('capture'); inputRef.current.removeAttribute('capture'); inputRef.current.click() } }}
-          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid #d1d5db', background: '#f9fafb', color: '#374151', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
+          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
         >
           🖼 בחר מהגלריה
         </button>
@@ -131,7 +131,7 @@ export default function Upload() {
         style={{ display: 'none' }}
       />
       {selectedFile && (
-        <div style={{ fontSize: 13, color: '#374151', marginTop: 4 }}>
+        <div style={{ fontSize: 13, color: 'var(--app-text)', marginTop: 4 }}>
           📹 {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
         </div>
       )}
@@ -164,7 +164,7 @@ export default function Upload() {
       {jobId && (
         <div style={s.success}>
           ✓ הדיווח התקבל! מספר עבודה: {jobId}
-          <div style={{ fontSize: 13, marginTop: 6, color: '#374151' }}>
+          <div style={{ fontSize: 13, marginTop: 6, color: 'var(--app-text)' }}>
             הוידאו מעובד ברקע. הדוח יופיע ברשימת הדוחות בקרוב.
           </div>
         </div>

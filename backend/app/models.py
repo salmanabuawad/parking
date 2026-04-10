@@ -133,6 +133,7 @@ class Ticket(Base):
     vehicle_year = Column(Integer, nullable=True)
     vehicle_make = Column(String(100), nullable=True)
     vehicle_model = Column(String(100), nullable=True)
+    original_video_path = Column(String(500), nullable=True)  # unblurred original, preserved after processing
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
@@ -236,5 +237,24 @@ class UploadJob(Base):
     violation_zone = Column(String(20), default="red_white")
     description = Column(Text, nullable=True)
     submitted_by = Column(String(50), nullable=True)
+    camera_id = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class FieldConfiguration(Base):
+    """Per-grid column configuration: width, order, visibility, pinning."""
+    __tablename__ = "field_configurations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    grid_name = Column(String(100), nullable=False)
+    field_name = Column(String(100), nullable=False)
+    width_chars = Column(Integer, nullable=False, default=10)
+    padding = Column(Integer, nullable=False, default=8)
+    hebrew_name = Column(String(200), nullable=True)
+    pinned = Column(Boolean, nullable=False, default=False)
+    pin_side = Column(String(10), nullable=True)   # 'left' | 'right' | null
+    visible = Column(Boolean, nullable=False, default=True)
+    column_order = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())

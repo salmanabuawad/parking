@@ -1,18 +1,14 @@
 import { Component, type ReactNode, useState, useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import {
+  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert,
+} from 'lucide-react'
 
 const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
+
 import { useAuth } from './context/AuthContext'
-import Cameras from './pages/Cameras'
-import Settings from './pages/Settings'
-import Home from './pages/Home'
-import Upload from './pages/Upload'
-import Tickets from './pages/Tickets'
-import TicketReview from './pages/TicketReview'
-import QueueMaintenance from './pages/QueueMaintenance'
-import ViolationRules from './pages/ViolationRules'
-import Login from './pages/Login'
-import { he } from './i18n/he'
+import { Header }  from './components/Header'
+import { Sidebar, type NavItem } from './components/Sidebar'
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768)
@@ -25,6 +21,18 @@ function useIsMobile() {
   return isMobile
 }
 
+import Cameras          from './pages/Cameras'
+import SettingsPage     from './pages/Settings'
+import Home             from './pages/Home'
+import Upload           from './pages/Upload'
+import Tickets          from './pages/Tickets'
+import TicketReview     from './pages/TicketReview'
+import QueueMaintenance from './pages/QueueMaintenance'
+import ViolationRules   from './pages/ViolationRules'
+import Login            from './pages/Login'
+import { he }           from './i18n/he'
+
+/* ── Error boundary ── */
 export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
   state = { hasError: false as boolean, error: undefined as Error | undefined }
 
@@ -46,150 +54,140 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { hasEr
   }
 }
 
-function MobileShell() {
-  return (
-    <div dir="rtl" style={{ minHeight: '100vh', background: '#f9fafb' }}>
-      <header style={{
-        padding: '14px 16px',
-        background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
-        color: '#fff',
-        textAlign: 'center',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      }}>
-        <strong style={{ fontSize: '1.1rem', letterSpacing: '0.02em' }}>דיווח חנייה אסורה</strong>
-      </header>
-      <Upload />
-    </div>
-  )
-}
-
-const NAV_LINKS = [
-  { to: '/', label: he.app.home },
-  { to: '/tickets', label: he.app.tickets },
-  { to: '/queue', label: he.app.queue },
-  { to: '/cameras', label: he.app.cameras },
-  { to: '/violation-rules', label: 'כללי עבירה' },
-  { to: '/settings', label: he.app.settings },
+/* ── Navigation items ── */
+const NAV_ITEMS: NavItem[] = [
+  {
+    id: 'home',
+    label: he.app.home,
+    icon: <LayoutDashboard className="w-4 h-4" />,
+  },
+  {
+    id: 'tickets-group',
+    label: 'דוחות חניה',
+    icon: <FileText className="w-4 h-4" />,
+    children: [
+      { id: 'tickets', label: he.app.tickets,    icon: <FileText className="w-3.5 h-3.5" /> },
+      { id: 'queue',   label: he.app.queue,      icon: <ListOrdered className="w-3.5 h-3.5" /> },
+    ],
+  },
+  {
+    id: 'cameras-group',
+    label: 'מצלמות',
+    icon: <Camera className="w-4 h-4" />,
+    children: [
+      { id: 'cameras',         label: he.app.cameras,  icon: <Camera className="w-3.5 h-3.5" /> },
+      { id: 'violation-rules', label: 'כללי עבירה',    icon: <ShieldAlert className="w-3.5 h-3.5" /> },
+    ],
+  },
+  {
+    id: 'settings',
+    label: he.app.settings,
+    icon: <Settings className="w-4 h-4" />,
+  },
 ]
 
-function NavLink({ to, label, disabled }: { to: string; label: string; disabled?: boolean }) {
-  const loc = useLocation()
-  const active = !disabled && (to === '/' ? loc.pathname === '/' : loc.pathname.startsWith(to))
-
-  if (disabled) {
-    return (
-      <span
-        title="בפיתוח 🚧"
-        style={{
-          padding: '6px 14px',
-          borderRadius: 8,
-          fontWeight: 400,
-          color: '#64748b',
-          fontSize: '1.05rem',
-          cursor: 'not-allowed',
-          userSelect: 'none',
-          opacity: 0.55,
-          position: 'relative',
-        }}
-      >
-        {label}
-      </span>
-    )
-  }
-
-  return (
-    <Link
-      to={to}
-      style={{
-        padding: '6px 14px',
-        borderRadius: 8,
-        textDecoration: 'none',
-        fontWeight: active ? 700 : 400,
-        color: active ? '#fff' : '#cbd5e1',
-        background: active ? 'rgba(255,255,255,0.18)' : 'transparent',
-        fontSize: '1.05rem',
-        transition: 'all 0.15s',
-      }}
-    >
-      {label}
-    </Link>
-  )
+/* Map nav id → route path */
+const ID_TO_PATH: Record<string, string> = {
+  home:             '/',
+  tickets:          '/tickets',
+  queue:            '/queue',
+  cameras:          '/cameras',
+  'violation-rules':'/violation-rules',
+  settings:         '/settings',
 }
 
+/* Map pathname → active nav id */
+function pathnameToActiveId(pathname: string): string {
+  if (pathname === '/')                         return 'home'
+  if (pathname.startsWith('/tickets'))          return 'tickets'
+  if (pathname.startsWith('/queue'))            return 'queue'
+  if (pathname.startsWith('/cameras'))          return 'cameras'
+  if (pathname.startsWith('/violation-rules'))  return 'violation-rules'
+  if (pathname.startsWith('/settings'))         return 'settings'
+  return 'home'
+}
+
+/* ── App shell (requires BrowserRouter context) ── */
 function AppShell() {
-  const { isLoggedIn, loading, logout, user } = useAuth()
-  const isMobile = useIsMobile()
+  const { isLoggedIn, loading } = useAuth()
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const activeId  = pathnameToActiveId(location.pathname)
+  const isMobile  = useIsMobile()
 
   if (loading) return <div dir="rtl" style={{ padding: 24 }}>{he.app.loading}</div>
-
-  if (isMobile) {
-    return <MobileShell />
-  }
 
   if (!isLoggedIn) {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*"      element={<Navigate to="/login" replace />} />
       </Routes>
     )
   }
 
-  return (
-    <div dir="rtl" style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      <header style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        padding: '0 24px',
-        height: 68,
-        background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%)',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 100,
-      }}>
-        <nav style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ color: '#fff', fontWeight: 800, fontSize: '1.25rem', marginLeft: 16, letterSpacing: '0.03em' }}>
-            {he.app.title}
-          </span>
-          {NAV_LINKS.map((l) => (
-            <NavLink key={l.to} to={l.to} label={l.label} disabled={l.disabled} />
-          ))}
-        </nav>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ color: '#bfdbfe', fontSize: '1rem' }}>{user?.username}</span>
-          <button
-            onClick={logout}
-            style={{
-              padding: '6px 16px',
-              background: 'rgba(255,255,255,0.15)',
-              color: '#fff',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: 8,
-              cursor: 'pointer',
-              fontSize: '1rem',
-              fontFamily: 'inherit',
-            }}
-          >
-            {he.app.logout}
-          </button>
-        </div>
-      </header>
+  /* ── Mobile: upload/report only ── */
+  if (isMobile) {
+    return (
+      <div className="app-shell" dir="rtl">
+        <Header
+          title={he.app.title}
+          logo={
+            <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
+              <Camera className="w-4 h-4 text-white" />
+            </div>
+          }
+        />
+        <main className="app-content bg-theme-content" style={{ overflowY: 'auto' }}>
+          <Routes>
+            <Route path="/upload" element={<Upload />} />
+            <Route path="*"       element={<Navigate to="/upload" replace />} />
+          </Routes>
+        </main>
+      </div>
+    )
+  }
 
-      <main style={{ padding: '0' }}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/upload" element={<Upload />} />
-          <Route path="/tickets" element={<Tickets />} />
-          <Route path="/tickets/:id" element={<TicketReview />} />
-          <Route path="/cameras" element={<Cameras />} />
-          <Route path="/violation-rules" element={<ViolationRules />} />
-          <Route path="/queue" element={<QueueMaintenance />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+  /* ── Desktop: full layout ── */
+  return (
+    <div className="app-shell" dir="rtl">
+
+      {/* ── Header ── */}
+      <Header
+        title={he.app.title}
+        logo={
+          <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
+            <Camera className="w-4 h-4 text-white" />
+          </div>
+        }
+      />
+
+      {/* ── Body ── */}
+      <div className="app-body">
+
+        <Sidebar
+          items={NAV_ITEMS}
+          activeId={activeId}
+          onSelect={id => {
+            const path = ID_TO_PATH[id]
+            if (path) navigate(path)
+          }}
+        />
+
+        <main className="app-content bg-theme-content">
+          <Routes>
+            <Route path="/"                element={<Home />} />
+            <Route path="/upload"          element={<Upload />} />
+            <Route path="/tickets"         element={<Tickets />} />
+            <Route path="/tickets/:id"     element={<TicketReview />} />
+            <Route path="/cameras"         element={<Cameras />} />
+            <Route path="/violation-rules" element={<ViolationRules />} />
+            <Route path="/queue"           element={<QueueMaintenance />} />
+            <Route path="/settings"        element={<SettingsPage />} />
+            <Route path="*"               element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
     </div>
   )
 }

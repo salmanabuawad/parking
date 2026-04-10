@@ -1,0 +1,58 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        /* ── Theme-driven (via CSS vars in index.css) ── */
+        'theme-header':              'rgb(var(--theme-header) / <alpha-value>)',
+        'theme-header-border':       'rgb(var(--theme-header-border) / <alpha-value>)',
+        'theme-sidebar':             'rgb(var(--theme-sidebar) / <alpha-value>)',
+        'theme-sidebar-hover':       'rgb(var(--theme-sidebar-hover) / <alpha-value>)',
+        'theme-sidebar-active':      'rgb(var(--theme-sidebar-active) / <alpha-value>)',
+        'theme-sidebar-stripe':      'rgb(var(--theme-sidebar-stripe) / <alpha-value>)',
+        'theme-tab-active':          'rgb(var(--theme-tab-active) / <alpha-value>)',
+        'theme-tab-active-hover':    'rgb(var(--theme-tab-active-hover) / <alpha-value>)',
+        'theme-tab-active-press':    'rgb(var(--theme-tab-active-press) / <alpha-value>)',
+        'theme-nav-bg':              'rgb(var(--theme-nav-bg) / <alpha-value>)',
+        'theme-tab-inactive':        'rgb(var(--theme-tab-inactive) / <alpha-value>)',
+        'theme-accent':              'rgb(var(--theme-accent) / <alpha-value>)',
+        'theme-accent-hover':        'rgb(var(--theme-accent-hover) / <alpha-value>)',
+        'theme-accent-press':        'rgb(var(--theme-accent-press) / <alpha-value>)',
+        'theme-table-header':        'rgb(var(--theme-table-header) / <alpha-value>)',
+        'theme-highlight':           'rgb(var(--theme-highlight) / <alpha-value>)',
+        'theme-content':             'rgb(var(--theme-content) / <alpha-value>)',
+        'theme-link':                'rgb(var(--theme-link) / <alpha-value>)',
+        'theme-text-primary':        'rgb(var(--theme-text-primary) / <alpha-value>)',
+        'theme-text-muted':          'rgb(var(--theme-text-muted) / <alpha-value>)',
+        'theme-card-border':         'rgb(var(--theme-card-border) / <alpha-value>)',
+        /* ── Static palette ── */
+        'app-header':      '#2E62A2',
+        'app-sidebar':     '#2F4D52',
+        'app-accent':      '#2196F3',
+        'app-accent-hover':'#1976D2',
+        'app-accent-press':'#1565C0',
+        'app-danger':      '#F44336',
+        'app-tabs-bg':     '#E8EDF1',
+        'app-bg':          '#F7F9FA',
+        'app-panel':       '#F0F0F0',
+        'app-input-border':'#CED4DA',
+        'app-text':        '#333333',
+        'app-muted':       '#6C757D',
+      },
+      fontFamily: {
+        sans: ['-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+      },
+      fontSize: {
+        'theme-base': ['var(--theme-font-size-base)', { lineHeight: '1.5' }],
+        'theme-sm':   ['var(--theme-font-size-sm)',   { lineHeight: '1.4' }],
+        'theme-xs':   ['var(--theme-font-size-xs)',   { lineHeight: '1.3' }],
+      },
+      width:      { 'theme-sidebar': 'var(--theme-sidebar-width)' },
+      minWidth:   { 'theme-sidebar': 'var(--theme-sidebar-width)' },
+      borderRadius: { 'theme-btn': 'var(--theme-btn-radius)' },
+      spacing:    { 'theme-icon': 'var(--theme-icon-size)' },
+    },
+  },
+  plugins: [],
+};

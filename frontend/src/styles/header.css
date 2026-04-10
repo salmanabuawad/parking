@@ -1,0 +1,138 @@
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  height: 68px;
+  padding: 0 24px;
+  background: linear-gradient(135deg, var(--app-header-start) 0%, var(--app-header-end) 100%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.app-header-title {
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: 0.03em;
+}
+
+.app-header-icons {
+  position: absolute;
+  left: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.app-header-iconBtn {
+  width: 40px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.95);
+  cursor: pointer;
+  padding: 0;
+}
+
+.app-header-iconBtn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.app-header-iconBtn--active {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.app-header-iconSvg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  fill: currentColor;
+}
+
+.app-header-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  width: 270px;
+  padding: 14px 14px 12px;
+  border-radius: 10px;
+  background: #2f3a3c;
+  color: #e5e7eb;
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  direction: rtl;
+}
+
+.app-header-menuRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.app-header-menuLabel {
+  font-size: 13px;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.app-header-seg {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+.app-header-pill {
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-header-pill:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-header-pill--selected {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.app-header-menuDivider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 10px 0 12px;
+}
+
+.app-header-logout {
+  width: 100%;
+  border: none;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(185, 28, 28, 0.85);
+  color: #fff;
+  font-weight: 800;
+  font-family: inherit;
+}
+
+.app-header-logout:hover {
+  filter: brightness(1.05);
+}
+

@@ -1,10 +1,12 @@
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
-import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { uploadApi } from '../api'
+import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
 
@@ -46,8 +48,8 @@ function StatusCell({ value }: { value: string }) {
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div style={{
-      background: '#fff',
-      border: '1px solid #e2e8f0',
+      background: 'var(--app-surface)',
+      border: '1px solid var(--app-border)',
       borderRadius: 12,
       padding: '1rem 1.25rem',
       minWidth: 110,
@@ -55,15 +57,19 @@ function StatCard({ label, value, color }: { label: string; value: number; color
       boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
     }}>
       <div style={{ fontSize: '1.75rem', fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: 2 }}>{label}</div>
+      <div style={{ fontSize: '0.85rem', color: 'var(--app-text-muted)', marginTop: 2 }}>{label}</div>
     </div>
   )
 }
 
 export default function Home() {
   useRtl(`${he.home.title} | ${he.app.title}`)
+  const agTheme = useAgGridTheme()
 
   const navigate = useNavigate()
+  const [fsVer, setFsVer] = useState(0)
+  useEffect(() => subscribeFontSize(() => setFsVer(v => v + 1)), [])
+
   const [jobs, setJobs] = useState<UploadJob[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
@@ -94,67 +100,82 @@ export default function Home() {
     failed: jobs.filter((j) => j.status === 'failed').length,
   }
 
-  const colDefs: ColDef<UploadJob>[] = [
-    { field: 'job_id', headerName: he.home.job, width: 90, sort: 'desc' },
-    {
-      field: 'status',
-      headerName: he.home.status,
-      width: 140,
-      cellRenderer: (p: ICellRendererParams<UploadJob>) => <StatusCell value={p.value} />,
-    },
-    {
-      field: 'license_plate',
-      headerName: he.home.plate,
-      width: 140,
-      valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : he.home.plateNotIdentified),
-    },
-    {
-      field: 'created_at',
-      headerName: he.home.created,
-      flex: 1,
-      valueFormatter: (p) => p.value ? new Date(p.value).toLocaleString('he-IL') : '—',
-    },
-    {
-      field: 'error_message',
-      headerName: he.home.error,
-      flex: 1.5,
-      cellRenderer: (p: ICellRendererParams<UploadJob>) =>
-        p.value
-          ? <span title={p.value} style={{ color: '#dc2626', fontSize: '0.82rem' }}>
-              {p.value.length > 70 ? `${p.value.slice(0, 70)}…` : p.value}
-            </span>
-          : <span style={{ color: '#94a3b8' }}>—</span>,
-    },
-    {
-      headerName: he.home.openTicket,
-      width: 120,
-      cellRenderer: (p: ICellRendererParams<UploadJob>) =>
-        p.data?.ticket_id ? (
-          <button
-            onClick={() => navigate(`/tickets/${p.data!.ticket_id}`)}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 6,
-              border: '1px solid #e2e8f0',
-              background: '#f8fafc',
-              color: '#1e40af',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
-              fontWeight: 600,
-              fontFamily: 'inherit',
-            }}
-          >
-            {he.home.openTicket}
-          </button>
-        ) : null,
-    },
-  ]
+  const colDefs = useMemo<ColDef<UploadJob>[]>(() => {
+    const w = getFontSizeWidthMultiplier()
+    return [
+      { field: 'job_id', headerName: he.home.job, width: Math.round(90 * w), sort: 'desc' },
+      {
+        field: 'status',
+        headerName: he.home.status,
+        width: Math.round(140 * w),
+        cellRenderer: (p: ICellRendererParams<UploadJob>) => <StatusCell value={p.value} />,
+      },
+      {
+        field: 'license_plate',
+        headerName: he.home.plate,
+        width: Math.round(140 * w),
+        valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : he.home.plateNotIdentified),
+      },
+      {
+        field: 'created_at',
+        headerName: he.home.created,
+        flex: 1,
+        valueFormatter: (p) => p.value ? new Date(p.value).toLocaleString('he-IL') : '—',
+      },
+      {
+        field: 'error_message',
+        headerName: he.home.error,
+        flex: 1.5,
+        cellRenderer: (p: ICellRendererParams<UploadJob>) =>
+          p.value
+            ? <span title={p.value} style={{ color: 'var(--app-danger)', fontSize: '0.82rem' }}>
+                {p.value.length > 70 ? `${p.value.slice(0, 70)}…` : p.value}
+              </span>
+            : <span style={{ color: 'var(--app-text-muted)' }}>—</span>,
+      },
+      {
+        headerName: he.home.openTicket,
+        width: Math.round(120 * w),
+        cellRenderer: (p: ICellRendererParams<UploadJob>) =>
+          p.data?.ticket_id ? (
+            <button
+              onClick={() => navigate(`/tickets/${p.data!.ticket_id}`)}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 6,
+                border: '1px solid var(--app-border)',
+                background: 'var(--app-surface-muted)',
+                color: 'var(--app-accent)',
+                cursor: 'pointer',
+                fontSize: '0.82rem',
+                fontWeight: 600,
+                fontFamily: 'inherit',
+              }}
+            >
+              {he.home.openTicket}
+            </button>
+          ) : null,
+      },
+    ]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fsVer, navigate])
 
   return (
-    <div style={{ padding: '1.5rem 2rem', maxWidth: 1200, margin: '0 auto' }}>
+    <div
+      style={{
+        padding: '1.5rem 2rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        color: 'var(--app-text)',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+        flex: 1,
+      }}
+    >
       <div style={{ marginBottom: '1.25rem' }}>
-        <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', color: '#0f172a' }}>{he.home.title}</h1>
-        <p style={{ margin: 0, color: '#64748b', fontSize: '0.95rem' }}>{he.home.subtitle}</p>
+        <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', color: 'var(--app-text)' }}>{he.home.title}</h1>
+        <p style={{ margin: 0, color: 'var(--app-text-muted)', fontSize: '0.95rem' }}>{he.home.subtitle}</p>
       </div>
 
       {/* Stat cards */}
@@ -166,16 +187,16 @@ export default function Home() {
       </div>
 
       {/* Queue grid */}
-      <div>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: '1rem', color: '#0f172a' }}>{he.home.queueTitle}</h2>
+          <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--app-text)' }}>{he.home.queueTitle}</h2>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="search"
               placeholder="חיפוש..."
               value={quickFilter}
               onChange={(e) => setQuickFilter(e.target.value)}
-              style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid #d7dfeb', fontSize: '0.88rem', width: 180, direction: 'rtl' }}
+              style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', fontSize: '0.88rem', width: 180, direction: 'rtl' }}
             />
             <button
               onClick={() => { setRefreshing(true); fetchJobs() }}
@@ -183,7 +204,7 @@ export default function Home() {
                 padding: '6px 14px',
                 borderRadius: 8,
                 border: 'none',
-                background: '#1e40af',
+                background: 'var(--app-accent)',
                 color: '#fff',
                 cursor: 'pointer',
                 fontSize: '0.85rem',
@@ -196,11 +217,11 @@ export default function Home() {
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', color: '#64748b', textAlign: 'center' }}>{he.home.loading}</div>
+          <div style={{ padding: '2rem', color: 'var(--app-text-muted)', textAlign: 'center' }}>{he.home.loading}</div>
         ) : (
-          <div style={{ height: 460, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+          <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginTop: '0.25rem' }}>
             <AgGridReact<UploadJob>
-              theme={themeQuartz}
+              theme={agTheme}
               rowData={jobs}
               columnDefs={colDefs}
               quickFilterText={quickFilter}
@@ -210,6 +231,7 @@ export default function Home() {
               rowHeight={46}
               defaultColDef={{ sortable: true, filter: true, resizable: true }}
               overlayNoRowsTemplate={`<span style="color:#94a3b8">${he.home.empty}</span>`}
+              style={{ width: '100%', height: '100%' }}
             />
           </div>
         )}

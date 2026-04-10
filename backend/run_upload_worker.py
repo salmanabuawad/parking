@@ -177,7 +177,7 @@ def process_one_job() -> bool:
 
         cfg = db.query(AppConfig).first()
         use_fast = getattr(settings, 'use_fast_hsv_pipeline', True)
-        blur_size = 15
+        blur_size = 9
         if cfg and getattr(cfg, 'blur_kernel_size', None) is not None and cfg.blur_kernel_size > 0:
             blur_size = max(3, cfg.blur_kernel_size)
         if blur_size % 2 == 0:
@@ -272,11 +272,22 @@ def process_one_job() -> bool:
         proc_path.write_bytes(blurred_bytes)
         frame_path.write_bytes(ticket_jpeg)
 
-        # Delete raw file to free disk space
+        # Preserve original unblurred video
+        original_video_rel: str | None = None
         try:
-            raw_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+            orig_dir = videos_dir / "original"
+            orig_dir.mkdir(parents=True, exist_ok=True)
+            orig_path = orig_dir / f"job_{job.id}.mp4"
+            raw_path.rename(orig_path)
+            original_video_rel = f"original/job_{job.id}.mp4"
+            print(f"[Job {job.id}] Original video preserved at {orig_path}", flush=True)
+        except Exception as move_err:
+            print(f"[Job {job.id}] Could not preserve original (non-fatal): {move_err}", flush=True)
+            # Fall back: delete to free disk space
+            try:
+                raw_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
         # --- Digital signing ---
         sig_hex: str | None = None
@@ -324,6 +335,7 @@ def process_one_job() -> bool:
             status="pending_review",
             video_path=f"processed/job_{job.id}.mp4",
             ticket_image_path=f"frames/job_{job.id}.jpg",
+            original_video_path=original_video_rel,
             latitude=job.latitude,
             longitude=job.longitude,
             captured_at=job.captured_at,

@@ -27,6 +27,7 @@ def migrate_postgres():
                 violation_zone VARCHAR(20) DEFAULT 'red_white',
                 description TEXT,
                 submitted_by VARCHAR(50),
+                camera_id VARCHAR(50),
                 created_at TIMESTAMPTZ DEFAULT NOW(),
                 completed_at TIMESTAMPTZ
             )
@@ -51,6 +52,7 @@ def migrate_sqlite():
                 violation_zone VARCHAR(20) DEFAULT 'red_white',
                 description TEXT,
                 submitted_by VARCHAR(50),
+                camera_id VARCHAR(50),
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 completed_at TIMESTAMP
             )

@@ -1,0 +1,112 @@
+.app-sidebar-rail {
+  width: 240px;
+  flex: 0 0 240px;
+  position: sticky;
+  top: 80px;
+  align-self: flex-start;
+  background: var(--app-header-start);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 8px 8px;
+  overflow: visible;
+}
+
+.app-sidebar-iconStack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.app-sidebar-iconWrap {
+  position: relative;
+}
+
+.app-sidebar-iconBtn {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  position: relative;
+  color: rgba(219, 234, 254, 1);
+  background: transparent;
+  transition: background-color 0.15s ease-in-out, transform 0.15s ease-in-out, border-right-color 0.15s ease-in-out;
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.2;
+  direction: rtl;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-sidebar-iconLabel {
+  display: none; /* icon-only mode removed */
+}
+
+.app-sidebar-iconBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.app-sidebar-iconBtn--active {
+  background: rgba(255, 255, 255, 0.2);
+  border-right: 3px solid #7dd3fc;
+  color: #ffffff;
+}
+
+.app-sidebar-submenu {
+  position: absolute;
+  right: 100%;
+  top: 0;
+  margin-right: 8px;
+  width: 180px;
+  background: var(--app-header-start);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px 0 0 12px;
+  padding: 6px;
+  z-index: 50;
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.25);
+}
+
+.app-sidebar-submenu-item {
+  display: block;
+  width: 100%;
+  text-align: right;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: rgba(255, 255, 255, 0.92);
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+}
+
+.app-sidebar-submenu-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.app-sidebar-submenu-item--active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.app-sidebar-logoutBtn {
+  width: 100%;
+  padding: 8px 6px;
+  background: rgba(185, 28, 28, 0.85);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: inherit;
+  position: relative;
+}
+
+.app-sidebar-logoutBtn:hover {
+  filter: brightness(1.05);
+}
+

@@ -40,6 +40,13 @@ async function fetchBlob(path: string): Promise<Blob> {
   return await res.blob();
 }
 
+function handle401(): never {
+  localStorage.removeItem("parking_token");
+  localStorage.removeItem("parking_user");
+  window.location.href = "/login";
+  throw new Error("Session expired");
+}
+
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   const isFormData = init?.body instanceof FormData;
   const res = await fetch(buildUrl(path), {
@@ -50,6 +57,9 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
       ...authHeaders(init?.headers as Record<string, string>),
     },
   });
+  if (res.status === 401) {
+    handle401();
+  }
   if (!res.ok) {
     let detail = `HTTP ${res.status}`;
     try {
@@ -85,6 +95,10 @@ const api = {
           }
         }
         xhr.onload = () => {
+          if (xhr.status === 401) {
+            handle401();
+            return;
+          }
           if (xhr.status >= 200 && xhr.status < 300) {
             try { resolve({ data: JSON.parse(xhr.responseText) }); }
             catch { resolve({ data: xhr.responseText as unknown as T }); }
@@ -136,6 +150,9 @@ export const ticketsApi = {
   },
   getRawVideo(ticketId: number | string) {
     return fetchBlob(`/tickets/${ticketId}/raw-video`);
+  },
+  getOriginalVideo(ticketId: number | string) {
+    return fetchBlob(`/tickets/${ticketId}/original-video`);
   },
   reprocessVideo(ticketId: number | string) {
     return fetchJson(`/tickets/${ticketId}/reprocess-video`, { method: "POST" });
@@ -250,3 +267,40 @@ export const uploadApi = {
     return fetchJson(`/upload/job/${jobId}/rerun`, { method: "POST" }).then((data) => ({ data }));
   },
 };
+
+export interface FieldConfiguration {
+  id?: number
+  grid_name: string
+  field_name: string
+  width_chars: number
+  padding: number
+  hebrew_name?: string | null
+  pinned: boolean
+  pin_side?: string | null
+  visible: boolean
+  column_order?: number | null
+}
+
+export const fieldConfigApi = {
+  getAll(gridName?: string): Promise<FieldConfiguration[]> {
+    const qs = gridName ? `?grid_name=${encodeURIComponent(gridName)}` : ''
+    return fetchJson(`/field-configurations${qs}`)
+  },
+  upsert(item: Omit<FieldConfiguration, 'id'>): Promise<FieldConfiguration> {
+    return fetchJson('/field-configurations/upsert', {
+      method: 'POST',
+      body: JSON.stringify(item),
+    })
+  },
+  upsertBulk(items: Omit<FieldConfiguration, 'id'>[]): Promise<{ count: number }> {
+    return fetchJson('/field-configurations/upsert-bulk', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    })
+  },
+  delete(gridName: string, fieldName: string): Promise<void> {
+    return fetchJson(`/field-configurations/${encodeURIComponent(gridName)}/${encodeURIComponent(fieldName)}`, {
+      method: 'DELETE',
+    })
+  },
+}

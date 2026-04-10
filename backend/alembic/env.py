@@ -22,7 +22,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Use DATABASE_URL from app settings (including .env)
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# ConfigParser interpolation treats '%' as special, so escape percent signs.
+# Example: password URL-encoded as '%23' must be passed as '%%23'.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:

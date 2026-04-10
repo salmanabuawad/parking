@@ -44,6 +44,8 @@ def _ticket_dict(t) -> dict:
         "violation_confidence": getattr(t, "violation_confidence", None),
         "violation_description_he": getattr(t, "violation_description_he", None),
         "violation_description_en": getattr(t, "violation_description_en", None),
+        # Original video (unblurred, preserved after processing)
+        "has_original_video": bool(getattr(t, "original_video_path", None)),
         # Digital signing
         "video_signature_key": getattr(t, "video_signature_key", None),
         "video_signed_at": t.video_signed_at.isoformat() if getattr(t, "video_signed_at", None) else None,
@@ -235,6 +237,26 @@ def get_ticket_raw_video(
         raise HTTPException(status_code=404, detail="Raw video not found")
 
     return Response(content=bytes(raw_vid.data), media_type="video/mp4")
+
+
+@router.get("/{ticket_id}/original-video")
+def get_ticket_original_video(
+    ticket_id: int,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+):
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    original_path = getattr(ticket, "original_video_path", None)
+    if not original_path:
+        raise HTTPException(status_code=404, detail="No original video preserved for this ticket")
+
+    fp = Path(settings.videos_dir) / str(original_path).replace("\\", "/")
+    if not fp.exists():
+        raise HTTPException(status_code=404, detail="Original video file not found on disk")
+
+    return Response(content=fp.read_bytes(), media_type="video/mp4")
 
 
 @router.post("/{ticket_id}/reprocess-video")

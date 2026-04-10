@@ -1,9 +1,11 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
-import { AllCommunityModule, ModuleRegistry, themeQuartz } from 'ag-grid-community'
+import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { ticketsApi } from '../api'
+import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
 
@@ -51,7 +53,7 @@ function ActionCell({ data }: ICellRendererParams<Ticket>) {
       onClick={() => navigate(`/tickets/${data.id}`)}
       style={{
         padding: '4px 12px',
-        background: '#1e40af',
+        background: 'var(--app-accent)',
         color: '#fff',
         border: 'none',
         borderRadius: 6,
@@ -74,6 +76,10 @@ const FILTER_BUTTONS = [
 
 export default function Tickets() {
   useRtl(`${he.tickets.title} | ${he.app.title}`)
+  const agTheme = useAgGridTheme()
+
+  const [fsVer, setFsVer] = useState(0)
+  useEffect(() => subscribeFontSize(() => setFsVer(v => v + 1)), [])
 
   const [tickets, setTickets] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,57 +102,73 @@ export default function Tickets() {
       .finally(() => setLoading(false))
   }, [filter])
 
-  const colDefs: ColDef<Ticket>[] = [
-    { field: 'id', headerName: 'מזהה', width: 80, sort: 'desc' },
-    {
-      field: 'license_plate',
-      headerName: 'לוחית רישוי',
-      flex: 1,
-      valueFormatter: (p) =>
-        p.value && p.value !== '11111' ? p.value : he.tickets.plateNotIdentified,
-    },
-    { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: (p) => p.value || '—' },
-    {
-      field: 'status',
-      headerName: 'סטטוס',
-      width: 150,
-      cellRenderer: (p: ICellRendererParams<Ticket>) => <StatusBadge value={p.value} />,
-    },
-    {
-      field: 'violation_rule_id',
-      headerName: 'כלל הפרה',
-      width: 130,
-      valueFormatter: (p) => p.value || '—',
-    },
-    {
-      field: 'violation_confidence',
-      headerName: 'ביטחון',
-      width: 100,
-      valueFormatter: (p) => (p.value != null ? `${Math.round(p.value * 100)}%` : '—'),
-    },
-    {
-      field: 'created_at',
-      headerName: 'תאריך',
-      width: 120,
-      valueFormatter: (p) =>
-        p.value ? new Date(p.value).toLocaleDateString('he-IL') : '—',
-    },
-    {
-      headerName: 'פעולה',
-      width: 100,
-      sortable: false,
-      filter: false,
-      cellRenderer: ActionCell,
-    },
-  ]
+  const colDefs = useMemo<ColDef<Ticket>[]>(() => {
+    const w = getFontSizeWidthMultiplier()
+    return [
+      { field: 'id', headerName: 'מזהה', width: Math.round(80 * w), sort: 'desc' },
+      {
+        field: 'license_plate',
+        headerName: 'לוחית רישוי',
+        flex: 1,
+        valueFormatter: (p) =>
+          p.value && p.value !== '11111' ? p.value : he.tickets.plateNotIdentified,
+      },
+      { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: (p) => p.value || '—' },
+      {
+        field: 'status',
+        headerName: 'סטטוס',
+        width: Math.round(150 * w),
+        cellRenderer: (p: ICellRendererParams<Ticket>) => <StatusBadge value={p.value} />,
+      },
+      {
+        field: 'violation_rule_id',
+        headerName: 'כלל הפרה',
+        width: Math.round(130 * w),
+        valueFormatter: (p) => p.value || '—',
+      },
+      {
+        field: 'violation_confidence',
+        headerName: 'ביטחון',
+        width: Math.round(100 * w),
+        valueFormatter: (p) => (p.value != null ? `${Math.round(p.value * 100)}%` : '—'),
+      },
+      {
+        field: 'created_at',
+        headerName: 'תאריך',
+        width: Math.round(120 * w),
+        valueFormatter: (p) =>
+          p.value ? new Date(p.value).toLocaleDateString('he-IL') : '—',
+      },
+      {
+        headerName: 'פעולה',
+        width: Math.round(100 * w),
+        sortable: false,
+        filter: false,
+        cellRenderer: ActionCell,
+      },
+    ]
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fsVer])
 
   const onFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setQuickFilter(e.target.value)
   }, [])
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 1100, margin: '0 auto' }}>
-      <h1 style={{ margin: '0 0 1rem', fontSize: '1.4rem', color: '#0f172a' }}>
+    <div
+      style={{
+        padding: '1.5rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        color: 'var(--app-text)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0,
+        minHeight: 0,
+        flex: 1,
+      }}
+    >
+      <h1 style={{ margin: '0 0 1rem', fontSize: '1.4rem', color: 'var(--app-text)' }}>
         {he.tickets.title}
       </h1>
 
@@ -160,9 +182,9 @@ export default function Tickets() {
               padding: '6px 16px',
               borderRadius: 20,
               border: '1.5px solid',
-              borderColor: filter === key ? '#1e40af' : '#d7dfeb',
-              background: filter === key ? '#1e40af' : '#fff',
-              color: filter === key ? '#fff' : '#334155',
+              borderColor: filter === key ? 'var(--app-accent)' : 'var(--app-border)',
+              background: filter === key ? 'var(--app-accent)' : 'var(--app-surface)',
+              color: filter === key ? '#fff' : 'var(--app-text)',
               cursor: 'pointer',
               fontWeight: filter === key ? 700 : 400,
               fontSize: '0.88rem',
@@ -184,7 +206,9 @@ export default function Tickets() {
           style={{
             padding: '8px 14px',
             borderRadius: 8,
-            border: '1.5px solid #d7dfeb',
+            border: '1.5px solid var(--app-border)',
+            background: 'var(--app-surface)',
+            color: 'var(--app-text)',
             fontSize: '0.95rem',
             width: 260,
             outline: 'none',
@@ -194,14 +218,14 @@ export default function Tickets() {
       </div>
 
       {loading ? (
-        <div style={{ color: '#64748b', padding: '2rem 0' }}>{he.tickets.loading}</div>
+        <div style={{ color: 'var(--app-text-muted)', padding: '2rem 0' }}>{he.tickets.loading}</div>
       ) : error ? (
-        <div style={{ color: '#dc2626', padding: '1rem 0' }}>{error}</div>
+        <div style={{ color: 'var(--app-danger)', padding: '1rem 0' }}>{error}</div>
       ) : (
-        <div style={{ height: 520, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+        <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginTop: '0.25rem' }}>
           <AgGridReact<Ticket>
             ref={gridRef}
-            theme={themeQuartz}
+            theme={agTheme}
             rowData={tickets}
             columnDefs={colDefs}
             quickFilterText={quickFilter}
@@ -210,6 +234,7 @@ export default function Tickets() {
             paginationPageSize={20}
             rowHeight={48}
             defaultColDef={{ sortable: true, filter: true, resizable: true }}
+            style={{ width: '100%', height: '100%' }}
           />
         </div>
       )}

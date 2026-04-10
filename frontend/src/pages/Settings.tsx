@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { settingsApi } from '../api'
 import { t } from '../i18n'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Settings() {
+  const { brightness, setBrightness, fontSize, setFontSize } = useTheme()
   const [settings, setSettings] = useState<{ blur_kernel_size: number; use_violation_pipeline: boolean } | null>(null)
   const [blurSize, setBlurSize] = useState(3)
   const [usePipeline, setUsePipeline] = useState(false)
@@ -29,13 +31,55 @@ export default function Settings() {
   }
 
   return (
-    <div style={{ padding: '1.5rem', maxWidth: 500, fontFamily: 'system-ui' }}>
+    <div style={{ padding: '1.5rem', maxWidth: 620, fontFamily: 'system-ui', color: 'var(--app-text)' }}>
       <h1>{t('settings')}</h1>
-      <p style={{ color: '#666', marginBottom: '1.5rem' }}>
+      <p style={{ color: 'var(--app-text-muted)', marginBottom: '1.5rem' }}>
         {t('settingsIntro')}
       </p>
+      <div style={{ background: 'var(--app-surface)', border: '1px solid var(--app-border)', padding: '1rem', borderRadius: 10, marginBottom: '1rem' }}>
+        <label style={{ display: 'block', fontWeight: 700, marginBottom: 8 }}>בהירות ותצוגה</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          {(['normal', 'dark', 'contrast'] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setBrightness(mode)}
+              style={{
+                padding: '0.45rem 0.8rem',
+                borderRadius: 8,
+                border: '1px solid var(--app-border)',
+                background: brightness === mode ? 'var(--app-accent)' : 'var(--app-surface-muted)',
+                color: brightness === mode ? '#fff' : 'var(--app-text)',
+                cursor: 'pointer',
+              }}
+            >
+              {mode === 'normal' ? 'רגיל' : mode === 'dark' ? 'כהה' : 'ניגודיות גבוהה'}
+            </button>
+          ))}
+        </div>
+        <label style={{ display: 'block', fontWeight: 700, marginBottom: 8 }}>גודל פונט</label>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {(['small', 'normal', 'large'] as const).map((size) => (
+            <button
+              key={size}
+              type="button"
+              onClick={() => setFontSize(size)}
+              style={{
+                padding: '0.45rem 0.8rem',
+                borderRadius: 8,
+                border: '1px solid var(--app-border)',
+                background: fontSize === size ? 'var(--app-accent)' : 'var(--app-surface-muted)',
+                color: fontSize === size ? '#fff' : 'var(--app-text)',
+                cursor: 'pointer',
+              }}
+            >
+              {size === 'small' ? 'קטן' : size === 'normal' ? 'רגיל' : 'גדול'}
+            </button>
+          ))}
+        </div>
+      </div>
       {settings && (
-        <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: 8 }}>
+        <div style={{ background: 'var(--app-surface)', border: '1px solid var(--app-border)', padding: '1.25rem', borderRadius: 8 }}>
           <label style={{ display: 'block', fontWeight: 600, marginBottom: 8 }}>
             {t('blurKernelLabel')}
           </label>
@@ -60,7 +104,7 @@ export default function Settings() {
             type="button"
             onClick={save}
             disabled={saving}
-            style={{ padding: '0.5rem 1rem', background: '#1a1a2e', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
+            style={{ padding: '0.5rem 1rem', background: 'var(--app-accent)', color: 'white', border: 'none', borderRadius: 6, cursor: 'pointer' }}
           >
             {saving ? t('saving') : t('save')}
           </button>
