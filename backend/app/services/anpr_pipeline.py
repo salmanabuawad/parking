@@ -239,7 +239,7 @@ def _detect_plate_hsv(frame: np.ndarray, roi_xyxy: Optional[tuple] = None) -> Op
         return None
 
     hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
-    yellow = cv2.inRange(hsv, np.array([10, 70, 70], np.uint8), np.array([45, 255, 255], np.uint8))
+    yellow = cv2.inRange(hsv, np.array([15, 80, 100], np.uint8), np.array([38, 255, 255], np.uint8))
     white = cv2.inRange(hsv, np.array([0, 0, 140], np.uint8), np.array([180, 60, 255], np.uint8))
     mask = cv2.bitwise_or(yellow, white)
 
@@ -257,10 +257,10 @@ def _detect_plate_hsv(frame: np.ndarray, roi_xyxy: Optional[tuple] = None) -> Op
     for c in contours:
         x, y, bw, bh = cv2.boundingRect(c)
         area = bw * bh
-        if area < 140:
+        if bw < 40 or bh < 12:
             continue
         ratio = bw / float(bh) if bh > 0 else 0
-        if not (1.8 <= ratio <= 6.5):
+        if not (2.5 <= ratio <= 7.0):
             continue
         # Edge density (filter out sand/flat regions)
         roi_e = cv2.Canny(gray_r[y:y+bh, x:x+bw], 80, 200)

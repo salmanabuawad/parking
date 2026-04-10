@@ -22,10 +22,11 @@ BLUR_KERNEL = 21
 TRACK_MISSES = 10
 SMOOTH_ALPHA = 0.70
 
-# Israeli plates: yellow background — wider HSV range to catch plates at distance/varied lighting.
-# Edge-density scoring (from test engine) compensates: sand/ground has low edge density.
-HSV_LOWER_YELLOW = (10, 70, 70)
-HSV_UPPER_YELLOW = (45, 255, 255)
+# Israeli plates: bright yellow background, H 15-38, S>=80, V>=100.
+# Conservative range avoids false positives on sand/ground/road markings.
+# Edge-density + pos scoring handles remaining candidates.
+HSV_LOWER_YELLOW = (15, 80, 100)
+HSV_UPPER_YELLOW = (38, 255, 255)
 
 # Red/white curb detection
 HSV_RED_LO1  = (0,   80,  80)
@@ -211,11 +212,11 @@ def _best_plate_from_mask(
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         area = w * h
-        if area < 140:          # ~12×12 minimum
+        if w < 40 or h < 12:
             continue
         ratio = w / float(h) if h > 0 else 0.0
-        # Wider aspect ratio: 1.8–6.5 (test engine values)
-        if ratio < 1.8 or ratio > 6.5:
+        # Israeli plates ~52×11.4 cm → ratio ≈ 4.6; allow 2.5–7.0
+        if ratio < 2.5 or ratio > 7.0:
             continue
 
         # Edge density — plates have lots of edges (characters); sky/sand/ground do not
