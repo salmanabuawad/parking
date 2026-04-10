@@ -184,17 +184,65 @@ def process_one_job() -> bool:
             blur_size += 1
         blur_kw = {'blur_strength': blur_size}
 
-        # --- Step 1: process video (blur) ---
+        # --- Step 1: process video (blur) + OCR via enterprise pipeline ---
         t0 = time.monotonic()
-        if use_fast:
-            blurred_bytes, ticket_jpeg = process_video_fast_hsv(video_bytes, **blur_kw)
-        else:
-            blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
-        print(f"[Job {job.id}] Video processed in {time.monotonic()-t0:.1f}s", flush=True)
-
-        # --- Step 2: OCR + violation analysis in parallel ---
         plate_from_job = job.license_plate
         skip_ocr = bool(plate_from_job and plate_from_job != "11111")
+        enterprise_plate: str | None = None
+
+        try:
+            import tempfile as _tf
+            from app.plate_pipeline.pipeline import run_pipeline
+            from app.plate_pipeline.config import PipelineConfig
+
+            with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _tmp_in:
+                _tmp_in.write(video_bytes)
+                _in_path = Path(_tmp_in.name)
+            _out_path = Path(_tf.mktemp(suffix=".mp4"))
+
+            _pipe_cfg = PipelineConfig(
+                input_path=_in_path,
+                output_path=_out_path,
+                blur_kernel_size=blur_size,
+                output_json=False,
+                detector_backend="hsv",
+                disable_ocr=skip_ocr,
+            )
+            _result = run_pipeline(_pipe_cfg)
+            _in_path.unlink(missing_ok=True)
+
+            if _out_path.exists() and _out_path.stat().st_size > 1024:
+                blurred_bytes = _out_path.read_bytes()
+                _out_path.unlink(missing_ok=True)
+            else:
+                _out_path.unlink(missing_ok=True)
+                raise RuntimeError("Enterprise pipeline produced no output video")
+
+            enterprise_plate = _result.get("validated_plate") or None
+            if enterprise_plate:
+                print(f"[Job {job.id}] Enterprise pipeline plate: {enterprise_plate}", flush=True)
+                skip_ocr = True  # already have plate from enterprise pipeline
+
+            # Extract preview frame from processed video
+            try:
+                _frames = extract_frames(blurred_bytes, count=1)
+                ticket_jpeg = _frames[0][0] if _frames else b""
+            except Exception:
+                ticket_jpeg = b""
+
+            print(f"[Job {job.id}] Enterprise pipeline done in {time.monotonic()-t0:.1f}s", flush=True)
+
+        except Exception as _pipe_err:
+            print(f"[Job {job.id}] Enterprise pipeline failed ({_pipe_err}), falling back", flush=True)
+            if use_fast:
+                blurred_bytes, ticket_jpeg = process_video_fast_hsv(video_bytes, **blur_kw)
+            else:
+                blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
+            print(f"[Job {job.id}] Fallback video processed in {time.monotonic()-t0:.1f}s", flush=True)
+
+        # --- Step 2: OCR + violation analysis in parallel ---
+        if enterprise_plate:
+            plate_from_job = enterprise_plate
 
         # Look up camera-specific rules and parking zones before dispatching parallel tasks
         camera_allowed_rules: list | None = None
