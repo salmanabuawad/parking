@@ -85,7 +85,7 @@ def _ocr_variants(img: np.ndarray) -> list[np.ndarray]:
     scale = max(6.0, 400.0 / max(w, 1))
     gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-    # Mild denoise (preserves edges better than NlMeans for small upscaled crops)
+    # Mild denoise
     gray_dn = cv2.bilateralFilter(gray, 9, 50, 50)
 
     # CLAHE equalization
@@ -95,19 +95,8 @@ def _ocr_variants(img: np.ndarray) -> list[np.ndarray]:
     # Otsu threshold on equalized image
     _, otsu = cv2.threshold(gray_eq, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
-    # Adaptive threshold on denoised image
-    adaptive = cv2.adaptiveThreshold(
-        gray_dn, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 15, 4
-    )
-
-    return [
-        gray_eq,        # equalized — best for yellow plates with CLAHE
-        otsu,           # Otsu binary — clean dark-on-bright
-        255 - otsu,     # inverted Otsu — bright-on-dark
-        adaptive,       # local adaptive — handles uneven lighting
-        255 - adaptive, # inverted adaptive
-        gray,           # raw rescaled gray — baseline
-    ]
+    # 3 variants — fast, covers yellow plates well
+    return [gray_eq, otsu, 255 - otsu]
 
 
 # ── Tesseract OCR ──────────────────────────────────────────────────────────
@@ -147,24 +136,24 @@ def read_digits_easyocr(img: np.ndarray) -> str:
 def read_plate_crop(
     crop: np.ndarray,
     psm_primary: int = 7,
-    psm_fallbacks: tuple[int, ...] = (8, 6, 13),
+    psm_fallbacks: tuple[int, ...] = (8,),
+    use_easyocr: bool = False,
 ) -> tuple[str, Optional[str]]:
     """
-    Try all OCR variants + PSM modes, then EasyOCR.
+    Fast path: 3 variants × 2 PSMs = 6 Tesseract calls max.
+    Set use_easyocr=True only for the final best-crop pass (slow).
     Input: raw BGR or grayscale crop from the ORIGINAL frame.
     Returns: (best_digits_str, error_reason_or_None)
     """
     best = ""
 
     for variant in _ocr_variants(crop):
-        # Primary PSM
         digits = read_digits_tesseract(variant, psm_primary)
         if 7 <= len(digits) <= 8:
             return digits, None
         if len(digits) > len(best):
             best = digits
 
-        # Fallback PSMs
         for psm in psm_fallbacks:
             digits = read_digits_tesseract(variant, psm)
             if 7 <= len(digits) <= 8:
@@ -172,11 +161,12 @@ def read_plate_crop(
             if len(digits) > len(best):
                 best = digits
 
-    # EasyOCR as last resort (on the raw crop, not a variant)
-    digits = read_digits_easyocr(crop)
-    if 7 <= len(digits) <= 8:
-        return digits, None
-    if len(digits) > len(best):
-        best = digits
+    # EasyOCR only when explicitly requested (best-crop pass)
+    if use_easyocr:
+        digits = read_digits_easyocr(crop)
+        if 7 <= len(digits) <= 8:
+            return digits, None
+        if len(digits) > len(best):
+            best = digits
 
     return best, (None if best else "OCR returned no digits")

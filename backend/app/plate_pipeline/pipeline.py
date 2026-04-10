@@ -278,7 +278,8 @@ def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
             f"frame={best_crop_frame}  sharpness={best_crop_sharpness:.1f}",
             flush=True,
         )
-        digits, _ = read_plate_crop(best_crop)
+        # use_easyocr=True only here — keeps per-frame OCR fast
+        digits, _ = read_plate_crop(best_crop, use_easyocr=True)
         print(f"[pipeline] best-crop OCR result: {digits!r}", flush=True)
         if digits:
             ocr_vote.add(digits)
