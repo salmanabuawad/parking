@@ -19,6 +19,17 @@ frontend/node_modules/.vite/
 # Claude Code local settings
 .claude/settings.local.json
 
+# ML model weights
+*.pt
+*.bin
+*.onnx
+*.pkl
+*.h5
+backend/weights/
+
+# Sample / test videos
+sample_video/
+
 # Video and image files (uploads, generated)
 *.mp4
 *.webm
