@@ -257,7 +257,7 @@ def _detect_plate_hsv(frame: np.ndarray, roi_xyxy: Optional[tuple] = None) -> Op
     for c in contours:
         x, y, bw, bh = cv2.boundingRect(c)
         area = bw * bh
-        if bw < 40 or bh < 12:
+        if bw < 25 or bh < 8:
             continue
         ratio = bw / float(bh) if bh > 0 else 0
         if not (2.5 <= ratio <= 7.0):

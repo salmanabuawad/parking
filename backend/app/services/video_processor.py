@@ -212,7 +212,7 @@ def _best_plate_from_mask(
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
         area = w * h
-        if w < 40 or h < 12:
+        if w < 25 or h < 8:
             continue
         ratio = w / float(h) if h > 0 else 0.0
         # Israeli plates ~52×11.4 cm → ratio ≈ 4.6; allow 2.5–7.0
@@ -388,8 +388,45 @@ def _blur_everything_except_plate(frame: np.ndarray, plate_box: Optional[BBox], 
     return blurred
 
 
-def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int = 120, original_frame: Optional[np.ndarray] = None) -> np.ndarray:
+def _quick_ocr_plate_crop(crop: np.ndarray) -> str:
+    """Run a quick OCR pass on a plate crop; return digit string or ''."""
+    if crop is None or crop.size == 0:
+        return ""
+    # Try EasyOCR first (already loaded by anpr_pipeline)
+    try:
+        from app.services.anpr_pipeline import read_plate_crop
+        digits, conf = read_plate_crop(crop)
+        if digits and 7 <= len(digits) <= 8:
+            return digits
+    except Exception:
+        pass
+    # Tesseract fallback
+    if pytesseract is not None:
+        try:
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop.copy()
+            gray = cv2.resize(gray, None, fx=4.0, fy=4.0, interpolation=cv2.INTER_CUBIC)
+            _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            text = pytesseract.image_to_string(
+                binary,
+                config="--oem 1 --psm 7 -c tessedit_char_whitelist=0123456789",
+            )
+            digits = _clean_ocr_text(text or "")
+            if 7 <= len(digits) <= 8:
+                return digits
+        except Exception:
+            pass
+    return ""
+
+
+def _overlay_plate_magnified(
+    frame: np.ndarray,
+    plate_box: BBox,
+    target_h: int = 120,
+    original_frame: Optional[np.ndarray] = None,
+    plate_text: Optional[str] = None,
+) -> np.ndarray:
     """Crop the plate region and paste a magnified version in the top-left corner.
+    Also renders the plate number text below the zoomed crop.
     If original_frame is provided, the crop is taken from it (unblurred source).
     """
     # Expand slightly to avoid clipping plate edges
@@ -403,16 +440,33 @@ def _overlay_plate_magnified(frame: np.ndarray, plate_box: BBox, target_h: int =
     scale = target_h / ph
     new_w = max(1, int(pw * scale))
     zoomed = cv2.resize(crop, (new_w, target_h), interpolation=cv2.INTER_CUBIC)
-    # Add a thin white border
+
+    # Text strip below zoom
+    text_label = plate_text if plate_text else ""
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = max(0.5, new_w / 220)
+    thickness = max(1, int(font_scale * 2))
+    (tw, th), baseline = cv2.getTextSize(text_label, font, font_scale, thickness) if text_label else ((0, 0), 0)
+    text_h = th + baseline + 8 if text_label else 0
+
     border = 2
     fh, fw = frame.shape[:2]
     x0, y0 = 10, 10
-    x1, y1 = x0 + new_w + border * 2, y0 + target_h + border * 2
+    x1 = x0 + new_w + border * 2
+    y1 = y0 + target_h + border * 2 + text_h
     if x1 > fw or y1 > fh:
         return frame
+
     out = frame.copy()
+    # White background for the entire block (image + text strip)
     out[y0:y1, x0:x1] = (255, 255, 255)
-    out[y0 + border:y1 - border, x0 + border:x1 - border] = zoomed
+    # Paste zoomed plate
+    out[y0 + border:y0 + border + target_h, x0 + border:x0 + border + new_w] = zoomed
+    # Render plate text in the strip below
+    if text_label:
+        txt_x = x0 + max(0, (new_w + border * 2 - tw) // 2)
+        txt_y = y0 + border + target_h + th + 4
+        cv2.putText(out, text_label, (txt_x, txt_y), font, font_scale, (20, 20, 180), thickness, cv2.LINE_AA)
     return out
 
 
@@ -783,6 +837,19 @@ def process_video(
     if global_best is not None:
         tracker.last_box = global_best
 
+    # Step 2b: OCR the best plate crop once so we can burn the number onto the video.
+    plate_overlay_text: Optional[str] = None
+    if global_best is not None:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        _ok, _f = cap.read()
+        if _ok:
+            x, y, w, h = global_best
+            _crop = _f[max(0,y):min(_f.shape[0],y+h), max(0,x):min(_f.shape[1],x+w)]
+            _txt = _quick_ocr_plate_crop(_crop)
+            if _txt:
+                plate_overlay_text = _txt
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
     frame_index   = 0
     preview_frame = None
     preview_index = int(total_frames * extract_frame_at)
@@ -806,7 +873,7 @@ def process_video(
                 last_effective_plate = global_best
         output = _blur_everything_except_plate(frame, last_effective_plate, kernel)
         if last_effective_plate is not None:
-            output = _overlay_plate_magnified(output, last_effective_plate, original_frame=frame)
+            output = _overlay_plate_magnified(output, last_effective_plate, original_frame=frame, plate_text=plate_overlay_text)
         output = _apply_watermark(output)
         writer.write(output)
         if frame_index == preview_index:
@@ -1017,6 +1084,18 @@ def _process_video_with_yolo(
     if global_best is not None:
         tracker.last_box = global_best
 
+    # OCR the best plate crop once so we can burn the number onto every frame.
+    plate_overlay_text: Optional[str] = None
+    if global_best is not None:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        _ok, _f = cap.read()
+        if _ok:
+            x, y, w, h = global_best
+            _crop = _f[max(0,y):min(_f.shape[0],y+h), max(0,x):min(_f.shape[1],x+w)]
+            _txt = _quick_ocr_plate_crop(_crop)
+            if _txt:
+                plate_overlay_text = _txt
+
     frame_index   = 0
     preview_frame = None
     preview_index = int(total_frames * extract_frame_at)
@@ -1061,7 +1140,7 @@ def _process_video_with_yolo(
 
         output = _blur_everything_except_plate(frame, last_effective_plate, kernel)
         if last_effective_plate is not None:
-            output = _overlay_plate_magnified(output, last_effective_plate, original_frame=frame)
+            output = _overlay_plate_magnified(output, last_effective_plate, original_frame=frame, plate_text=plate_overlay_text)
         output = _apply_watermark(output)
         writer.write(output)
         if frame_index == preview_index:
