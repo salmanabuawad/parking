@@ -157,9 +157,9 @@ def _expand_roi(shape: tuple[int, ...], roi: XYXY) -> XYXY:
 
 def _hsv_detect_plates(frame: np.ndarray) -> List[Tuple[BBox, float]]:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    mask_y = cv2.inRange(hsv, np.array(HSV_LOWER_YELLOW, dtype=np.uint8), np.array(HSV_UPPER_YELLOW, dtype=np.uint8))
-    mask_l = cv2.inRange(hsv, np.array(HSV_LOWER_LIGHT, dtype=np.uint8), np.array(HSV_UPPER_LIGHT, dtype=np.uint8))
-    mask = cv2.bitwise_or(mask_y, mask_l)
+    # Yellow mask only — the wide "light" mask caused massive false positives
+    # on roads, walls and other bright surfaces.
+    mask = cv2.inRange(hsv, np.array(HSV_LOWER_YELLOW, dtype=np.uint8), np.array(HSV_UPPER_YELLOW, dtype=np.uint8))
 
     k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 3))
     k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
@@ -182,7 +182,7 @@ def _hsv_detect_plates(frame: np.ndarray) -> List[Tuple[BBox, float]]:
             continue
         if area > frame_area * MAX_PLATE_AREA_RATIO:
             continue
-        if not (PLATE_MIN_RATIO < ratio < PLATE_MAX_RATIO):
+        if not (PLATE_MIN_RATIO <= ratio <= PLATE_MAX_RATIO):
             continue
         if y > int(frame_h * 0.95):
             continue
@@ -202,7 +202,7 @@ def _hsv_detect_plates(frame: np.ndarray) -> List[Tuple[BBox, float]]:
             + 0.22 * min(1.0, edge_density * 3.0)
             + 0.20 * rect_score
         )
-        if score < 0.22:
+        if score < 0.35:
             continue
         candidates.append(((x, y, w, h), float(score)))
 

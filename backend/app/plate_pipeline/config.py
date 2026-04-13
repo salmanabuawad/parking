@@ -5,20 +5,20 @@ from pathlib import Path
 from typing import Literal
 
 # --- Plate detection ---
-HSV_LOWER_YELLOW = (10, 50, 60)
-HSV_UPPER_YELLOW = (45, 255, 255)
+HSV_LOWER_YELLOW = (15, 80, 100)   # tighter: avoids faded yellow/beige/road markings
+HSV_UPPER_YELLOW = (38, 255, 255)  # matches Israeli plate yellow exactly
 HSV_LOWER_LIGHT = (0, 0, 150)
 HSV_UPPER_LIGHT = (180, 70, 255)
 # Width/height; must include motorcycle (~17/16) and scooter (~17/12) per PLATE_FORMAT_PRESETS.
 PLATE_MIN_RATIO = 1.0
 PLATE_MAX_RATIO = 7.0
-MIN_PLATE_AREA = 120
-MAX_PLATE_AREA_RATIO = 0.12
+MIN_PLATE_AREA = 400
+MAX_PLATE_AREA_RATIO = 0.08
 PLATE_YOLO_MODEL_PATH = "models/license_plate_detector.pt"
-PLATE_DETECT_TOP_K = 8
+PLATE_DETECT_TOP_K = 3
 ROI_HORIZONTAL_EXPAND = 0.08
 ROI_VERTICAL_EXPAND = 0.10
-MULTI_PLATE_MAX_PER_FRAME = 4
+MULTI_PLATE_MAX_PER_FRAME = 2
 
 # --- OCR ---
 OCR_CROP_MARGIN_PX = 6
