@@ -171,8 +171,7 @@ def _run_pipeline_enterprise(cfg: PipelineConfig) -> dict[str, Any]:
     track_history: dict[int, dict] = {}
     plate_format_info: Optional[dict] = None
 
-    ocr_margin = cfg.plate_crop_margin_px + cfg.anpr_ocr_extra_margin_px
-    ocr_every = max(1, min(3, max(1, cfg.ocr_every_n_frames)))
+    ocr_every = 5  # match reference script exactly
 
     if cfg.debug:
         debug_dir = cfg.output_path.parent / (cfg.output_path.stem + "_debug")
@@ -182,10 +181,9 @@ def _run_pipeline_enterprise(cfg: PipelineConfig) -> dict[str, Any]:
     info = get_video_info(cfg.input_path)
     fps = (info or {}).get("fps", 25)
     print(f"[anpr] video info: {info}", flush=True)
-    if not info or (info.get("frame_count") or 0) <= 0:
-        print("[anpr] WARNING: video metadata missing or zero frames — decode may fail (codec?)", flush=True)
 
-    for frame_idx, frame in read_frames(cfg.input_path, cfg.max_frames):
+    # Use full video — no frame cap; plate may appear late
+    for frame_idx, frame in read_frames(cfg.input_path, max_frames=None):
         detections = engine.detect_plate_candidates(frame)
         engine.update_tracks(detections, frame_idx)
         frame_detections_json.append(
@@ -197,44 +195,35 @@ def _run_pipeline_enterprise(cfg: PipelineConfig) -> dict[str, Any]:
 
         if detections:
             print(
-                f"[anpr] frame {frame_idx:04d}: {len(detections)} det(s)  "
-                f"{len(engine.tracks)} track(s)",
+                f"[anpr] frame {frame_idx:04d}: {len(detections)} det(s)",
                 flush=True,
             )
 
+        # OCR every 5 frames — NO quality gate (matches reference)
         if not cfg.disable_ocr and frame_idx % ocr_every == 0:
             for _tid, tr in list(engine.tracks.items()):
                 x1, y1, x2, y2 = tr["bbox"]
-                w, h = x2 - x1, y2 - y1
-                if w <= 1 or h <= 1:
+                if x2 - x1 <= 1 or y2 - y1 <= 1:
                     continue
-                plate_format_info = classify_plate_format(w, h)
-                crop = engine.extract_crop(frame, tr["bbox"], pad=ocr_margin)
+                crop = engine.extract_crop(frame, tr["bbox"])  # 15px pad
                 if crop is None or crop.size == 0:
                     continue
                 engine.update_track_crop(tr, crop)
-                sharp = _sharpness(crop)
-                ready = is_crop_ocr_ready(
-                    crop,
-                    min_width=cfg.ocr_min_plate_width,
-                    min_height=cfg.ocr_min_plate_height,
-                    min_sharpness=cfg.ocr_min_sharpness,
-                    min_brightness=cfg.ocr_min_brightness,
-                    max_brightness=cfg.ocr_max_brightness,
-                )
-                if ready:
-                    digits, ocr_err = read_plate_crop(crop, fast=True)
-                    if digits:
-                        engine.update_track_text(tr, [digits])
-                    if debug_dir is not None:
-                        debug_log.append({
-                            "frame_index": frame_idx,
-                            "track_id": tr["track_id"],
-                            "bbox_xyxy": list(tr["bbox"]),
-                            "sharpness": round(sharp, 2),
-                            "raw_ocr": digits,
-                            "ocr_error": ocr_err,
-                        })
+                digits, ocr_err = read_plate_crop(crop, fast=True)
+                if digits:
+                    engine.update_track_text(tr, [digits])
+                    print(
+                        f"[anpr] frame {frame_idx:04d} OCR: {digits!r}",
+                        flush=True,
+                    )
+                if debug_dir is not None:
+                    debug_log.append({
+                        "frame_index": frame_idx,
+                        "track_id": tr["track_id"],
+                        "bbox_xyxy": list(tr["bbox"]),
+                        "raw_ocr": digits,
+                        "ocr_error": ocr_err,
+                    })
 
         _snapshot_enterprise_track_history(engine, track_history)
 
