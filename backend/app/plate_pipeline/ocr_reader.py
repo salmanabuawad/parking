@@ -82,7 +82,7 @@ def _ocr_variants(img: np.ndarray) -> list[np.ndarray]:
 
     # Upscale: ensure at least 6× OR 400 px wide, whichever is bigger
     h, w = gray.shape[:2]
-    scale = max(6.0, 400.0 / max(w, 1))
+    scale = max(6.0, 800.0 / max(w, 1))
     gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
     # Mild denoise
@@ -106,7 +106,7 @@ def _ocr_variants_fast(img: np.ndarray) -> list[np.ndarray]:
     best contrast for black digits on a yellow background.
     """
     h, w = img.shape[:2] if img.ndim == 3 else (img.shape[0], img.shape[1])
-    scale = max(4.0, 320.0 / max(w, 1))
+    scale = max(6.0, 800.0 / max(w, 1))
 
     # Variant 1: HSV Value channel — yellow background → bright, black digits → dark
     if img.ndim == 3:

@@ -31,7 +31,7 @@ OCR_EVERY_N_FRAMES = 2  # ANPR: Tesseract every N frames (1=every frame; 2–3 t
 
 # --- Multi-track ANPR ---
 ANPR_IOU_MATCH_THRESHOLD = 0.25
-ANPR_OCR_EXTRA_MARGIN_PX = 8
+ANPR_OCR_EXTRA_MARGIN_PX = 12
 ANPR_MIN_VOTES_STABLE = 2
 ANPR_PREVIEW_MAX_TRACKS = 4
 YOLO_EVERY_N_FRAMES = 3      # run YOLO vehicle detection every N frames
