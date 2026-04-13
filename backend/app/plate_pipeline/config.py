@@ -9,7 +9,8 @@ HSV_LOWER_YELLOW = (10, 50, 60)
 HSV_UPPER_YELLOW = (45, 255, 255)
 HSV_LOWER_LIGHT = (0, 0, 150)
 HSV_UPPER_LIGHT = (180, 70, 255)
-PLATE_MIN_RATIO = 1.8
+# Width/height; must include motorcycle (~17/16) and scooter (~17/12) per PLATE_FORMAT_PRESETS.
+PLATE_MIN_RATIO = 1.0
 PLATE_MAX_RATIO = 7.0
 MIN_PLATE_AREA = 120
 MAX_PLATE_AREA_RATIO = 0.12
@@ -26,13 +27,19 @@ OCR_DENOISE_ENABLED = True
 OCR_SHARPEN_ENABLED = True
 OCR_PSM = 7
 OCR_PSM_FALLBACKS = (8, 6, 13)
-OCR_EVERY_N_FRAMES = 5
+OCR_EVERY_N_FRAMES = 2  # ANPR: Tesseract every N frames (1=every frame; 2–3 typical)
+
+# --- Multi-track ANPR ---
+ANPR_IOU_MATCH_THRESHOLD = 0.25
+ANPR_OCR_EXTRA_MARGIN_PX = 8
+ANPR_MIN_VOTES_STABLE = 2
+ANPR_PREVIEW_MAX_TRACKS = 4
 YOLO_EVERY_N_FRAMES = 3      # run YOLO vehicle detection every N frames
-MAX_FRAMES = 150              # cap video at ~5 s @ 30 fps; enough for plate read
+MAX_FRAMES = 60               # cap video at ~2 s @ 30 fps; enough for plate read
 OCR_MIN_PLATE_WIDTH = 20
 OCR_MIN_PLATE_HEIGHT = 6
-OCR_MIN_SHARPNESS = 3.0
-OCR_MIN_BRIGHTNESS = 15.0
+OCR_MIN_SHARPNESS = 2.0
+OCR_MIN_BRIGHTNESS = 10.0
 OCR_MAX_BRIGHTNESS = 250.0
 
 # --- Tracking ---
@@ -42,15 +49,19 @@ TRACK_IOU_MIN = 0.10
 TRACK_STABLE_AFTER = 2
 
 # --- Blur / render ---
-BLUR_KERNEL_SIZE = 9
+BLUR_KERNEL_SIZE = 3  # Gaussian kernel (odd); 3 = very light background blur
 BLUR_EXPAND_RATIO = 0.18
 TEMPORAL_BLUR_ENABLED = True
 TEMPORAL_BLUR_MAX_MISSES = 6
-PREVIEW_ENABLED = True
+PREVIEW_ENABLED = False  # corner inset duplicates the in-scene sharp plate (looks like "2 frames")
 PREVIEW_MAX_W_RATIO = 0.28
 PREVIEW_MAX_H_RATIO = 0.20
 PREVIEW_MARGIN_PX = 10
 PREVIEW_ZOOM = 4.0
+
+# --- Enterprise engine: zoom ROI for HSV detection (plates appear larger in pixels) ---
+ENTERPRISE_DETECTION_ZOOM = 1.75
+ENTERPRISE_DETECTION_ROI_Y_START = 0.26  # zoom pass uses rows [y_start:height]; skips upper scene/sky
 
 # --- Israeli plate formats ---
 PLATE_FORMAT_PRESETS = [
@@ -80,9 +91,9 @@ class PipelineConfig:
     input_path: Path = Path(".")
     output_path: Path = Path(".")
     debug: bool = False
-    max_frames: int | None = None
+    max_frames: int | None = MAX_FRAMES
     registry_csv: Path | None = None
-    detector_backend: Literal["hsv", "yolo"] = "yolo"
+    detector_backend: Literal["hsv", "yolo", "enterprise"] = "yolo"
     disable_ocr: bool = False
     output_json: bool = True
 
@@ -91,7 +102,6 @@ class PipelineConfig:
     vehicle_model_path: str = VEHICLE_MODEL_PATH
     vehicle_imgsz: int = VEHICLE_IMGSZ
     yolo_every_n_frames: int = YOLO_EVERY_N_FRAMES
-    max_frames: int | None = MAX_FRAMES
 
     # Thresholds / tuning
     plate_crop_margin_px: int = OCR_CROP_MARGIN_PX
@@ -116,3 +126,9 @@ class PipelineConfig:
     preview_max_h_ratio: float = PREVIEW_MAX_H_RATIO
     preview_margin_px: int = PREVIEW_MARGIN_PX
     preview_zoom: float = PREVIEW_ZOOM
+    anpr_iou_match_threshold: float = ANPR_IOU_MATCH_THRESHOLD
+    anpr_ocr_extra_margin_px: int = ANPR_OCR_EXTRA_MARGIN_PX
+    anpr_min_votes_stable: int = ANPR_MIN_VOTES_STABLE
+    anpr_preview_max_tracks: int = ANPR_PREVIEW_MAX_TRACKS
+    enterprise_detection_zoom: float = ENTERPRISE_DETECTION_ZOOM
+    enterprise_detection_roi_y_start: float = ENTERPRISE_DETECTION_ROI_Y_START
