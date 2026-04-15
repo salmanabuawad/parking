@@ -19,6 +19,10 @@ class SettingsUpdate(BaseModel):
     temporal_blur_enabled: Optional[bool] = None
     temporal_blur_max_misses: Optional[int] = None
     use_violation_pipeline: Optional[bool] = None
+    anpr_detector_backend: Optional[str] = None
+    anpr_ocr_every_n_frames: Optional[int] = None
+    enterprise_detection_zoom: Optional[float] = None
+    enterprise_detection_roi_y_start: Optional[float] = None
 
 
 def _get_config(db: Session) -> AppConfig:
@@ -31,6 +35,10 @@ def _get_config(db: Session) -> AppConfig:
             temporal_blur_enabled=True,
             temporal_blur_max_misses=6,
             use_violation_pipeline=True,
+            anpr_detector_backend="enterprise",
+            anpr_ocr_every_n_frames=2,
+            enterprise_detection_zoom=1.75,
+            enterprise_detection_roi_y_start=0.26,
         )
         db.add(cfg)
         db.commit()
@@ -47,6 +55,10 @@ def get_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
         "temporal_blur_enabled": cfg.temporal_blur_enabled,
         "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
         "use_violation_pipeline": cfg.use_violation_pipeline,
+        "anpr_detector_backend": cfg.anpr_detector_backend,
+        "anpr_ocr_every_n_frames": cfg.anpr_ocr_every_n_frames,
+        "enterprise_detection_zoom": cfg.enterprise_detection_zoom,
+        "enterprise_detection_roi_y_start": cfg.enterprise_detection_roi_y_start,
     }
 
 
@@ -76,6 +88,20 @@ def update_settings(
     if body.use_violation_pipeline is not None:
         cfg.use_violation_pipeline = body.use_violation_pipeline
 
+    if body.anpr_detector_backend is not None:
+        val = str(body.anpr_detector_backend).strip().lower()
+        if val in {"hsv", "yolo", "enterprise"}:
+            cfg.anpr_detector_backend = val
+
+    if body.anpr_ocr_every_n_frames is not None:
+        cfg.anpr_ocr_every_n_frames = max(1, min(10, int(body.anpr_ocr_every_n_frames)))
+
+    if body.enterprise_detection_zoom is not None:
+        cfg.enterprise_detection_zoom = max(1.0, min(4.0, float(body.enterprise_detection_zoom)))
+
+    if body.enterprise_detection_roi_y_start is not None:
+        cfg.enterprise_detection_roi_y_start = max(0.0, min(0.85, float(body.enterprise_detection_roi_y_start)))
+
     db.commit()
     db.refresh(cfg)
 
@@ -85,6 +111,10 @@ def update_settings(
         "temporal_blur_enabled": cfg.temporal_blur_enabled,
         "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
         "use_violation_pipeline": cfg.use_violation_pipeline,
+        "anpr_detector_backend": cfg.anpr_detector_backend,
+        "anpr_ocr_every_n_frames": cfg.anpr_ocr_every_n_frames,
+        "enterprise_detection_zoom": cfg.enterprise_detection_zoom,
+        "enterprise_detection_roi_y_start": cfg.enterprise_detection_roi_y_start,
     }
 
 

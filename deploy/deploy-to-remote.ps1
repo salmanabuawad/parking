@@ -11,13 +11,24 @@ $DEPLOY_ROOT = "/opt/parking"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = Split-Path -Parent $scriptDir
 
+function Get-DeployBash {
+    foreach ($p in @(
+        "C:\Program Files\Git\bin\bash.exe",
+        "C:\Program Files (x86)\Git\bin\bash.exe"
+    )) {
+        if (Test-Path $p) { return $p }
+    }
+    return "bash"
+}
+$BashExe = Get-DeployBash
+
 Write-Host "=== Deploying from $repoRoot to $REMOTE ===" -ForegroundColor Cyan
 
 # Copy app and deploy files to /tmp on server (exclude node_modules, dist, .venv, __pycache__)
 Write-Host "Copying backend, frontend, deploy (excluding node_modules)..." -ForegroundColor Yellow
 $driveLetter = $repoRoot.Substring(0,1).ToLower()
 $repoRootUnix = '/' + $driveLetter + ($repoRoot.Substring(2) -replace '\\', '/')
-bash -c "tar -czf - --exclude='*/node_modules' --exclude='*/dist' --exclude='*/.venv' --exclude='*/__pycache__' -C '$repoRootUnix' backend frontend deploy | ssh $REMOTE 'tar -xzf - -C /tmp/'"
+& $BashExe -c "tar -czf - --exclude='*/node_modules' --exclude='*/dist' --exclude='*/.venv' --exclude='*/__pycache__' -C '$repoRootUnix' backend frontend deploy | ssh $REMOTE 'tar -xzf - -C /tmp/'"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Upload failed. Check SSH access (e.g. ssh $REMOTE)" -ForegroundColor Red

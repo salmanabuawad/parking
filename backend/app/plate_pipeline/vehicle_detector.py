@@ -25,21 +25,31 @@ class VehicleDetector:
         self.model_path = model_path
         self.imgsz = imgsz
         self._model = None
+        self._model_failed = False
 
     def _get_model(self):
+        if self._model_failed:
+            return None
         if self._model is None:
-            from ultralytics import YOLO
-
-            self._model = YOLO(self.model_path)
+            try:
+                from ultralytics import YOLO
+                self._model = YOLO(self.model_path)
+            except Exception:
+                self._model_failed = True
+                return None
         return self._model
 
     def detect(self, frame: np.ndarray) -> List[VehicleDetection]:
         model = self._get_model()
+        if model is None:
+            return []
         results = model.predict(frame, verbose=False, imgsz=self.imgsz)
         return self._to_detections(results)
 
     def detect_and_track(self, frame: np.ndarray) -> List[VehicleDetection]:
         model = self._get_model()
+        if model is None:
+            return []
         results = model.track(frame, persist=True, verbose=False, imgsz=self.imgsz)
         return self._to_detections(results)
 

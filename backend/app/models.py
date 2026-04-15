@@ -138,6 +138,28 @@ class Ticket(Base):
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
 
+    anpr_track_results = relationship(
+        "AnprTrackResult",
+        back_populates="ticket",
+        cascade="all, delete-orphan",
+    )
+
+
+class AnprTrackResult(Base):
+    """Per-track ANPR outcome persisted for dashboard / audit (Israeli private plates)."""
+
+    __tablename__ = "anpr_track_results"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    track_id = Column(Integer, nullable=False)
+    raw_digits = Column(String(16), nullable=False)
+    normalized_plate = Column(String(32), nullable=False)
+    vote_count = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    ticket = relationship("Ticket", back_populates="anpr_track_results")
+
 
 class TicketScreenshot(Base):
     """Screenshot attached to a ticket (blurred evidence). Supports both Alembic and simple schema."""
@@ -179,6 +201,11 @@ class AppConfig(Base):
     temporal_blur_enabled = Column(Boolean, default=True, nullable=False)
     temporal_blur_max_misses = Column(Integer, default=6, nullable=False)
     use_violation_pipeline = Column(Boolean, default=True, nullable=False)
+    # ANPR pipeline tuning (used by upload worker -> plate_pipeline PipelineConfig)
+    anpr_detector_backend = Column(String(20), default="enterprise", nullable=False)
+    anpr_ocr_every_n_frames = Column(Integer, default=2, nullable=False)
+    enterprise_detection_zoom = Column(Float, default=1.75, nullable=False)
+    enterprise_detection_roi_y_start = Column(Float, default=0.26, nullable=False)
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, LogOut, Sun, Moon, Contrast, Type, ChevronDown, User } from 'lucide-react';
+import { Settings, LogOut, ChevronDown, User } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { useTheme, type Brightness, type FontSize, type ThemeId } from '../context/ThemeContext';
+import { ThemeSettingsDropdown } from './ThemeSettingsDropdown';
 
 interface HeaderProps {
   title: string;
@@ -10,7 +10,6 @@ interface HeaderProps {
 
 export function Header({ title, logo }: HeaderProps) {
   const { user, logout } = useAuth();
-  const { brightness, setBrightness, themeId, setThemeId, fontSize, setFontSize } = useTheme();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -28,22 +27,6 @@ export function Header({ title, logo }: HeaderProps) {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
-
-  const brightnessOpts: { value: Brightness; label: string; icon: React.ReactNode }[] = [
-    { value: 'light',    label: 'בהיר',      icon: <Sun className="w-4 h-4" /> },
-    { value: 'normal',   label: 'רגיל',      icon: <Sun className="w-4 h-4 opacity-60" /> },
-    { value: 'dark',     label: 'כהה',       icon: <Moon className="w-4 h-4" /> },
-    { value: 'contrast', label: 'ניגודיות',  icon: <Contrast className="w-4 h-4" /> },
-  ];
-  const fontSizeOpts: { value: FontSize; label: string; size: string }[] = [
-    { value: 'small',  label: 'קטן',  size: 'text-xs' },
-    { value: 'normal', label: 'רגיל', size: 'text-sm' },
-    { value: 'large',  label: 'גדול', size: 'text-base' },
-  ];
-  const themeOpts: { value: ThemeId; label: string }[] = [
-    { value: 'ocean', label: '🌊 Ocean' },
-    { value: 'mist',  label: '🌫 Mist'  },
-  ];
 
   return (
     <header className="flex-shrink-0 bg-theme-header border-b border-white/20 px-4 h-12 flex items-center gap-3 z-40">
@@ -70,72 +53,8 @@ export function Header({ title, logo }: HeaderProps) {
         </button>
 
         {settingsOpen && (
-          <div className="absolute left-0 top-full mt-1 w-56 bg-white rounded-xl shadow-xl
-                          border border-gray-100 z-50 overflow-hidden animate-slide-in">
-
-            {/* Theme */}
-            <div className="px-3 pt-3 pb-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">ערכת נושא</p>
-              <div className="flex gap-2">
-                {themeOpts.map(t => (
-                  <button
-                    key={t.value}
-                    onClick={() => setThemeId(t.value)}
-                    className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-all
-                      ${themeId === t.value
-                        ? 'bg-theme-accent text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-px bg-gray-100 mx-3" />
-
-            {/* Brightness */}
-            <div className="px-3 py-2">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">בהירות</p>
-              <div className="grid grid-cols-2 gap-1.5">
-                {brightnessOpts.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setBrightness(opt.value)}
-                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all
-                      ${brightness === opt.value
-                        ? 'bg-theme-accent text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >
-                    {opt.icon}
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="h-px bg-gray-100 mx-3" />
-
-            {/* Font size */}
-            <div className="px-3 py-2 pb-3">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                <Type className="w-3 h-3" /> גודל גופן
-              </p>
-              <div className="flex gap-1.5">
-                {fontSizeOpts.map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setFontSize(opt.value)}
-                    className={`flex-1 py-1.5 rounded-lg font-medium transition-all ${opt.size}
-                      ${fontSize === opt.value
-                        ? 'bg-theme-accent text-white shadow-sm'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="absolute left-0 top-full mt-1 z-50">
+            <ThemeSettingsDropdown />
           </div>
         )}
       </div>

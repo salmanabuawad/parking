@@ -16,6 +16,7 @@ def read_frames(
     """Yield (frame_idx, frame) from video. Stops at max_frames if set."""
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
+        print(f"[video_io] ERROR: cannot open video for frame decode: {path}", flush=True)
         return
     idx = 0
     try:

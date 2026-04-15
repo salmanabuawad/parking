@@ -1,8 +1,7 @@
 """
 Privacy rendering pipeline.
-- Light blur on whole frame
-- Restore all detected plate boxes sharply
-- Optional unblurred enlarged plate preview in upper-left corner
+- Light blur on whole frame (kernel from config; smaller = less blur)
+- Restore best plate bbox sharply in-scene only (no corner inset — avoids duplicating the plate as a second "frame")
 """
 from __future__ import annotations
 
@@ -99,4 +98,52 @@ def render_privacy_frame(
     if plate_text:
         cv2.putText(out, plate_text, (10, out.shape[0] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
 
+    return out
+
+
+def render_privacy_frame_tracks(
+    frame: np.ndarray,
+    plate_bboxes: list[BBox],
+    kernel_size: int = BLUR_KERNEL_SIZE,
+) -> np.ndarray:
+    """
+    Privacy frame: blur background, restore plate bbox(s) in-place.
+    Plate number is drawn once in overlay_track_plate_labels (final pass), not here.
+    """
+    out = blur_frame(frame, kernel_size)
+    plate_bboxes = plate_bboxes or []
+
+    for x, y, w, h in plate_bboxes:
+        if w <= 0 or h <= 0:
+            continue
+        y0, y1 = max(0, y), max(0, y) + h
+        x0, x1 = max(0, x), max(0, x) + w
+        crop = frame[y0:y1, x0:x1].copy()
+        out = restore_plate_region(out, crop, (x, y, w, h))
+        cv2.rectangle(out, (x, y), (x + w, y + h), (255, 255, 255), 1)
+
+    return out
+
+
+def overlay_track_plate_labels(
+    frame_bgr: np.ndarray,
+    labels_xywh: list[tuple[BBox, str]],
+) -> np.ndarray:
+    """Draw normalized plate strings near each bbox (on an already-rendered frame)."""
+    out = frame_bgr
+    h = out.shape[0]
+    for (x, y, w, hbox), text in labels_xywh:
+        if not text:
+            continue
+        ty = min(h - 8, y + hbox + 20)
+        cv2.putText(
+            out,
+            text,
+            (max(4, x), ty),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
     return out

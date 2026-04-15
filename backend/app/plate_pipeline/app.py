@@ -21,9 +21,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--registry-csv", type=Path, default=None, help="Gov.il registry CSV path")
     parser.add_argument(
         "--detector-backend",
-        choices=["hsv", "yolo"],
+        choices=["hsv", "yolo", "enterprise"],
         default="hsv",
-        help="Plate detector backend (default: hsv)",
+        help="Plate detector backend: hsv, yolo, or enterprise (HSV+IOU+single preview)",
     )
     parser.add_argument("--disable-ocr", action="store_true", help="Skip OCR; output fully blurred only")
     parser.add_argument("--output-json", action="store_true", default=True, help="Write JSON result (default: on)")

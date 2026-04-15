@@ -15,7 +15,14 @@ import pytest
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1].parent))
 
+from app.plate_pipeline.anpr_multi import (
+    MultiPlateTracker,
+    PlateDetectionXYXY,
+    iou_xyxy,
+    normalize_israeli_private_plate,
+)
 from app.plate_pipeline.blur_pipeline import blur_except_plate, blur_frame
+from app.plate_pipeline.config import PLATE_MAX_RATIO, PLATE_MIN_RATIO
 from app.plate_pipeline.plate_detector import PlateDetector, _hsv_detect_plates
 from app.plate_pipeline.plate_format import classify_plate_format
 from app.plate_pipeline.ocr_vote import OCRVote
@@ -41,6 +48,19 @@ def test_yellow_mask_generation():
 
 
 # --- Plate contour filtering ---
+def test_motorcycle_aspect_yellow_plate_detected():
+    """HSV path must accept Israeli motorcycle-like aspect (~17/16), not only wide car plates."""
+    h, w = 200, 400
+    frame = np.zeros((h, w, 3), dtype=np.uint8)
+    # ~85x80 BGR yellow → ratio width/height ≈ 1.06 (17 cm / 16 cm plate)
+    frame[60:140, 160:245] = (0, 255, 255)
+    boxes = _hsv_detect_plates(frame)
+    assert boxes, "motorcycle-shaped yellow plate should produce a candidate"
+    (_, _, bw, bh), _ = boxes[0]
+    assert bh > 0
+    assert PLATE_MIN_RATIO <= (bw / bh) <= PLATE_MAX_RATIO
+
+
 def test_plate_contour_filtering():
     """Contours that don't meet ratio/area should be filtered out."""
     # Create frame with very tall narrow blob (not plate-like) and valid plate
@@ -48,13 +68,14 @@ def test_plate_contour_filtering():
     frame = np.zeros((h, w, 3), dtype=np.uint8)
     # Tall narrow stripe - should be filtered (ratio too extreme)
     frame[10:190, 100:115] = (0, 220, 255)
-    # Valid plate-like rectangle
-    frame[80:95, 200:320] = (0, 220, 255)
+    # Valid plate-like rectangle (ratio within configured band; was 120x15 => 8.0, over PLATE_MAX_RATIO)
+    frame[80:95, 200:275] = (0, 220, 255)
     boxes = _hsv_detect_plates(frame)
-    # Should get plate-like one; tall stripe filtered by PLATE_MIN_RATIO / PLATE_MAX_RATIO
+    assert boxes, "expected at least one plate-like contour"
+    # Tall stripe filtered by PLATE_MIN_RATIO / PLATE_MAX_RATIO
     for (_, _, bw, bh), _ in boxes:
         ratio = bw / bh if bh > 0 else 0
-        assert 1.5 <= ratio <= 7.0
+        assert PLATE_MIN_RATIO <= ratio <= PLATE_MAX_RATIO
 
 
 def test_plate_contour_filtering_small_area():
@@ -185,6 +206,32 @@ def test_plate_format_classification():
     fmt3 = classify_plate_format(34, 32)
     assert fmt3 is not None
     assert fmt3["name"] == "motorcycle"
+
+
+def test_normalize_israeli_private_plate():
+    assert normalize_israeli_private_plate("1234567") == "12-345-67"
+    assert normalize_israeli_private_plate("12345678") == "123-45-678"
+    assert normalize_israeli_private_plate("12-345-67") == "12-345-67"
+    assert normalize_israeli_private_plate("123") is None
+
+
+def test_iou_xyxy_overlap():
+    a = (0, 0, 100, 100)
+    b = (50, 50, 150, 150)
+    assert 0.0 < iou_xyxy(a, b) < 1.0
+    assert iou_xyxy(a, (200, 200, 300, 300)) == 0.0
+
+
+def test_multi_plate_tracker_assigns_ids():
+    tr = MultiPlateTracker(iou_match_threshold=0.1, max_misses=3, smoothing_alpha=1.0)
+    d1 = [PlateDetectionXYXY(bbox=(10, 10, 110, 50), confidence=0.9)]
+    active = tr.update(0, d1)
+    assert len(active) == 1
+    assert active[0].track_id == 1
+    d2 = [PlateDetectionXYXY(bbox=(12, 12, 112, 52), confidence=0.9)]
+    active2 = tr.update(1, d2)
+    assert len(active2) == 1
+    assert active2[0].track_id == 1
 
 
 def test_plate_format_zero_height():

@@ -177,7 +177,7 @@ def process_one_job() -> bool:
 
         cfg = db.query(AppConfig).first()
         use_fast = getattr(settings, 'use_fast_hsv_pipeline', True)
-        blur_size = 9
+        blur_size = 3  # default: very light blur; AppConfig.blur_kernel_size overrides
         if cfg and getattr(cfg, 'blur_kernel_size', None) is not None and cfg.blur_kernel_size > 0:
             blur_size = max(3, cfg.blur_kernel_size)
         if blur_size % 2 == 0:
@@ -189,13 +189,38 @@ def process_one_job() -> bool:
         plate_from_job = job.license_plate
         skip_ocr = bool(plate_from_job and plate_from_job != "11111")
         enterprise_plate: str | None = None
+        anpr_tracks: list = []
+        # When plate_pipeline succeeds, do not run extract_license_plate (different detector/OCR).
+        used_enterprise_pipeline = False
 
         try:
             import tempfile as _tf
             from app.plate_pipeline.pipeline import run_pipeline
             from app.plate_pipeline.config import PipelineConfig
 
-            print(f"[Job {job.id}] ENGINE: enterprise plate_pipeline  ocr={'skip' if skip_ocr else 'enabled'}  detector=hsv", flush=True)
+            _backend_root = Path(__file__).resolve().parent
+            _plate_model = _backend_root / "models" / "license_plate_detector.pt"
+            _detector_backend = "enterprise"
+            _ocr_every = 5  # speed profile: OCR every 5th frame (was 2)
+            _det_zoom = 1.60  # lighter zoom reduces per-frame CPU
+            _det_roi_y0 = 0.26
+            _max_frames = 150  # cap per-job processing time on CPU
+            _min_votes_stable = 1  # reduce EasyOCR fallback invocations
+            if cfg:
+                _db_backend = str(getattr(cfg, "anpr_detector_backend", "enterprise") or "enterprise").lower()
+                if _db_backend in {"hsv", "yolo", "enterprise"}:
+                    _detector_backend = _db_backend
+                _ocr_every = max(3, min(12, int(getattr(cfg, "anpr_ocr_every_n_frames", 5) or 5)))
+                _det_zoom = max(1.0, min(4.0, float(getattr(cfg, "enterprise_detection_zoom", 1.75) or 1.75)))
+                _det_roi_y0 = max(0.0, min(0.85, float(getattr(cfg, "enterprise_detection_roi_y_start", 0.26) or 0.26)))
+            _plate_yolo_path = str(_plate_model) if _plate_model.is_file() else "models/license_plate_detector.pt"
+            print(
+                f"[Job {job.id}] ENGINE: plate_pipeline  ocr={'skip' if skip_ocr else 'enabled'}  "
+                f"detector={_detector_backend}  ocr_every={_ocr_every}  "
+                f"det_zoom={_det_zoom:.2f}  det_roi_y0={_det_roi_y0:.2f}  "
+                f"max_frames={_max_frames}  min_votes={_min_votes_stable}",
+                flush=True,
+            )
 
             with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _tmp_in:
                 _tmp_in.write(video_bytes)
@@ -206,9 +231,15 @@ def process_one_job() -> bool:
                 input_path=_in_path,
                 output_path=_out_path,
                 blur_kernel_size=blur_size,
+                max_frames=_max_frames,
                 output_json=False,
-                detector_backend="hsv",
+                detector_backend=_detector_backend,
+                plate_yolo_model_path=_plate_yolo_path,
                 disable_ocr=skip_ocr,
+                ocr_every_n_frames=_ocr_every,
+                enterprise_detection_zoom=_det_zoom,
+                enterprise_detection_roi_y_start=_det_roi_y0,
+                anpr_min_votes_stable=_min_votes_stable,
             )
             _result = run_pipeline(_pipe_cfg)
             _in_path.unlink(missing_ok=True)
@@ -221,9 +252,14 @@ def process_one_job() -> bool:
                 raise RuntimeError("Enterprise pipeline produced no output video")
 
             enterprise_plate = _result.get("validated_plate") or None
+            anpr_tracks = _result.get("anpr_tracks") or []
             if enterprise_plate:
                 print(f"[Job {job.id}] Enterprise pipeline plate: {enterprise_plate}", flush=True)
                 skip_ocr = True  # already have plate from enterprise pipeline
+            if anpr_tracks:
+                print(f"[Job {job.id}] ANPR tracks: {len(anpr_tracks)}", flush=True)
+
+            used_enterprise_pipeline = True
 
             # Extract preview frame from processed video
             try:
@@ -271,10 +307,18 @@ def process_one_job() -> bool:
             except (ValueError, TypeError, Exception) as cam_err:
                 print(f"[Job {job.id}] Camera lookup skipped: {cam_err}", flush=True)
 
+        # Parallel video_processor OCR only when plate_pipeline did not run (fallback path).
+        skip_parallel_ocr = skip_ocr or used_enterprise_pipeline
+        if used_enterprise_pipeline and not skip_ocr:
+            print(
+                f"[Job {job.id}] Skipping extract_license_plate (plate_pipeline already processed video)",
+                flush=True,
+            )
+
         t1 = time.monotonic()
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = {}
-            if not skip_ocr:
+            if not skip_parallel_ocr:
                 futures["ocr"] = pool.submit(_run_ocr, video_bytes, job.id)
             futures["violation"] = pool.submit(
                 _run_violation_analysis, video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at
@@ -403,6 +447,14 @@ def process_one_job() -> bool:
             ticket_kw.update(vehicle_data)
 
         ticket = ticket_repo.create(**ticket_kw)
+
+        if anpr_tracks:
+            try:
+                from app.repositories.anpr_track_repo import AnprTrackRepository
+
+                AnprTrackRepository(db).replace_for_ticket(ticket.id, anpr_tracks)
+            except Exception as anpr_err:
+                print(f"[Job {job.id}] ANPR track DB log failed: {anpr_err}", flush=True)
 
         # Apply violation analysis result
         if violation_data:

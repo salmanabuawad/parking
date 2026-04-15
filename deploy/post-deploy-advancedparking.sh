@@ -61,10 +61,10 @@ sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && '$BACKEND_DIR/.venv/bin/python
 mkdir -p "$BACKEND_DIR/videos"/{raw,processed,frames,screenshots}
 chown -R "$APP_USER:$APP_USER" "$BACKEND_DIR/videos"
 
-# Start services (separate from existing parking services)
+# (Re)start services — must use restart so running workers load new code after deploy (start is a no-op if already active)
 systemctl daemon-reload
 systemctl enable advancedparking-backend advancedparking-worker
-systemctl start advancedparking-backend advancedparking-worker
+systemctl restart advancedparking-backend advancedparking-worker
 systemctl reload nginx
 
 echo "--- Service status ---"

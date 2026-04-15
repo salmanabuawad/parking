@@ -40,10 +40,10 @@ echo "Running migrations..."
 sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && '$BACKEND_DIR/.venv/bin/python' -m alembic -c '$BACKEND_DIR/alembic.ini' upgrade head"
 echo "Migrations done."
 
-# Start services
+# (Re)start services — restart loads new code after deploy
 systemctl daemon-reload
 systemctl enable parking-backend parking-worker
-systemctl start parking-backend parking-worker
+systemctl restart parking-backend parking-worker
 systemctl reload nginx
 echo "--- Services ---"
 systemctl is-active parking-backend parking-worker nginx

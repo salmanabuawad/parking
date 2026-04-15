@@ -17,6 +17,18 @@ $APP_USER    = "advancedparking"
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot  = Split-Path -Parent $scriptDir
 
+# Prefer Git Bash on Windows — plain `bash` often resolves to WSL with no distro.
+function Get-DeployBash {
+    foreach ($p in @(
+        "C:\Program Files\Git\bin\bash.exe",
+        "C:\Program Files (x86)\Git\bin\bash.exe"
+    )) {
+        if (Test-Path $p) { return $p }
+    }
+    return "bash"
+}
+$BashExe = Get-DeployBash
+
 Write-Host "=== Deploying to ${REMOTE}:${DEPLOY_ROOT} ===" -ForegroundColor Cyan
 Write-Host "    Existing /opt/parking deployment will NOT be touched." -ForegroundColor Yellow
 
@@ -24,23 +36,16 @@ Write-Host "    Existing /opt/parking deployment will NOT be touched." -Foregrou
 Write-Host "Copying backend, frontend, deploy (excluding node_modules)..." -ForegroundColor Yellow
 $driveLetter = $repoRoot.Substring(0,1).ToLower()
 $repoRootUnix = '/' + $driveLetter + ($repoRoot.Substring(2) -replace '\\', '/')
-bash -c "tar -czf - --exclude='*/node_modules' --exclude='*/dist' --exclude='*/.venv' --exclude='*/__pycache__' -C '$repoRootUnix' backend frontend deploy | ssh $REMOTE 'tar -xzf - -C /tmp/'"
+& $BashExe -c "tar -czf - --exclude='*/node_modules' --exclude='*/dist' --exclude='*/.venv' --exclude='*/__pycache__' -C '$repoRootUnix' backend frontend deploy | ssh $REMOTE 'tar -xzf - -C /tmp/'"
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Upload failed. Check SSH access: ssh $REMOTE" -ForegroundColor Red
     exit 1
 }
 
-# 2. Preserve existing .env, copy files, run setup
+# 2. Preserve existing .env, copy files, run setup (single line avoids CRLF breaking remote bash)
 Write-Host "Running setup on server..." -ForegroundColor Yellow
-$setupCmd = @"
-sudo mkdir -p $DEPLOY_ROOT && \
-(sudo test -f $DEPLOY_ROOT/backend/.env && sudo cp $DEPLOY_ROOT/backend/.env /tmp/advancedparking.env.bak || true) && \
-sudo cp -r /tmp/backend /tmp/frontend /tmp/deploy $DEPLOY_ROOT/ && \
-(sudo test -f /tmp/advancedparking.env.bak && sudo mv /tmp/advancedparking.env.bak $DEPLOY_ROOT/backend/.env || true) && \
-find $DEPLOY_ROOT/deploy -name '*.sh' -exec sed -i 's/\r//' {} + && \
-sudo DEPLOY_ROOT=$DEPLOY_ROOT APP_USER=$APP_USER bash $DEPLOY_ROOT/deploy/setup-advancedparking.sh
-"@
+$setupCmd = "sudo mkdir -p $DEPLOY_ROOT && (sudo test -f $DEPLOY_ROOT/backend/.env && sudo cp $DEPLOY_ROOT/backend/.env /tmp/advancedparking.env.bak || true) && sudo cp -r /tmp/backend /tmp/frontend /tmp/deploy $DEPLOY_ROOT/ && (sudo test -f /tmp/advancedparking.env.bak && sudo mv /tmp/advancedparking.env.bak $DEPLOY_ROOT/backend/.env || true) && find $DEPLOY_ROOT/deploy -name '*.sh' -exec sed -i 's/\r//' {} + && sudo DEPLOY_ROOT=$DEPLOY_ROOT APP_USER=$APP_USER bash $DEPLOY_ROOT/deploy/setup-advancedparking.sh"
 ssh $REMOTE $setupCmd
 
 if ($LASTEXITCODE -ne 0) {

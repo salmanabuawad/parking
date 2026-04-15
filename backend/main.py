@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, cameras, sample, settings as settings_router, tickets, upload, ticket_screenshots, violation_rules as violation_rules_router, parking_zones as parking_zones_router
+from app.routers import auth, cameras, sample, settings as settings_router, tickets, upload, ticket_screenshots, violation_rules as violation_rules_router, parking_zones as parking_zones_router, anpr as anpr_router
 from app.routers import field_configurations as field_configurations_router
 
 app = FastAPI(title="Parking Enforcement API")
@@ -17,6 +17,7 @@ app.include_router(settings_router.router, prefix="/api")
 app.include_router(violation_rules_router.router, prefix="/api")
 app.include_router(parking_zones_router.router, prefix="/api")
 app.include_router(field_configurations_router.router, prefix="/api")
+app.include_router(anpr_router.router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
