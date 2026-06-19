@@ -104,7 +104,7 @@ export default function Login() {
           <p className="text-theme-text-muted text-sm">{t('signInSubtitle')}</p>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-xl p-8 border border-theme-card-border">
+        <div className="app-card p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
 
             {/* Username */}
@@ -152,7 +152,7 @@ export default function Login() {
 
             {/* Error */}
             {error && (
-              <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="flex items-start gap-2 text-red-600 text-theme-sm">
                 <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
@@ -162,9 +162,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading || !username.trim() || !password}
-              className="w-full py-3 px-4 bg-theme-tab-active hover:bg-theme-tab-active-hover text-white
-                         font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200
-                         disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="btn-primary w-full justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading
                 ? <><Loader2 className="w-5 h-5 animate-spin" /><span>{t('signInProgress')}</span></>

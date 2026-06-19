@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import { FileText } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { ticketsApi } from '../api'
@@ -21,28 +22,16 @@ interface Ticket {
   violation_confidence?: number
 }
 
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  pending_review: { bg: '#fff2d1', color: '#a16b00', label: 'ממתין לבדיקה' },
-  approved:       { bg: '#daf5e6', color: '#0f8b4c', label: 'אושר' },
-  final:          { bg: '#daf5e6', color: '#0f8b4c', label: 'סופי' },
-  rejected:       { bg: '#fde8e8', color: '#c83737', label: 'נדחה' },
+const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
+  pending_review: { cls: 'badge-warning', label: 'ממתין לבדיקה' },
+  approved:       { cls: 'badge-success', label: 'אושר' },
+  final:          { cls: 'badge-success', label: 'סופי' },
+  rejected:       { cls: 'badge-danger',  label: 'נדחה' },
 }
 
 function StatusBadge({ value }: { value: string }) {
-  const s = STATUS_STYLE[value] ?? { bg: '#f1f5f9', color: '#475569', label: value }
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '3px 10px',
-      borderRadius: 999,
-      background: s.bg,
-      color: s.color,
-      fontWeight: 600,
-      fontSize: '0.82rem',
-    }}>
-      {s.label}
-    </span>
-  )
+  const s = STATUS_BADGE[value] ?? { cls: 'badge-neutral', label: value }
+  return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
 function ActionCell({ data }: ICellRendererParams<Ticket>) {
@@ -51,16 +40,7 @@ function ActionCell({ data }: ICellRendererParams<Ticket>) {
   return (
     <button
       onClick={() => navigate(`/tickets/${data.id}`)}
-      style={{
-        padding: '4px 12px',
-        background: 'var(--app-accent)',
-        color: '#fff',
-        border: 'none',
-        borderRadius: 6,
-        cursor: 'pointer',
-        fontSize: '0.82rem',
-        fontFamily: 'inherit',
-      }}
+      className="inline-flex items-center gap-1 px-3 py-1 rounded-md text-xs font-semibold bg-theme-accent text-white hover:bg-theme-accent-hover transition-colors"
     >
       {he.tickets.review}
     </button>
@@ -155,41 +135,26 @@ export default function Tickets() {
   }, [])
 
   return (
-    <div
-      style={{
-        padding: '1.5rem',
-        width: '100%',
-        boxSizing: 'border-box',
-        color: 'var(--app-text)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 0,
-        minHeight: 0,
-        flex: 1,
-      }}
-    >
-      <h1 style={{ margin: '0 0 1rem', fontSize: '1.4rem', color: 'var(--app-text)' }}>
-        {he.tickets.title}
-      </h1>
+    <div className="page-container">
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <FileText className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <h1 className="page-header-title">{he.tickets.title}</h1>
+      </div>
 
-      {/* Status filter buttons */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+      {/* Status filter pills */}
+      <div className="flex flex-wrap gap-2">
         {FILTER_BUTTONS.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setFilter(key)}
-            style={{
-              padding: '6px 16px',
-              borderRadius: 20,
-              border: '1.5px solid',
-              borderColor: filter === key ? 'var(--app-accent)' : 'var(--app-border)',
-              background: filter === key ? 'var(--app-accent)' : 'var(--app-surface)',
-              color: filter === key ? '#fff' : 'var(--app-text)',
-              cursor: 'pointer',
-              fontWeight: filter === key ? 700 : 400,
-              fontSize: '0.88rem',
-              transition: 'all 0.15s',
-            }}
+            className={`px-4 py-1.5 rounded-full text-theme-sm font-medium border transition-colors ${
+              filter === key
+                ? 'bg-theme-accent text-white border-theme-accent'
+                : 'bg-white text-theme-text-primary border-theme-card-border hover:bg-black/5'
+            }`}
           >
             {label}
           </button>
@@ -197,32 +162,22 @@ export default function Tickets() {
       </div>
 
       {/* Quick filter search */}
-      <div style={{ marginBottom: '0.75rem' }}>
+      <div className="w-64">
         <input
           type="search"
           placeholder="חיפוש חופשי..."
           value={quickFilter}
           onChange={onFilterChange}
-          style={{
-            padding: '8px 14px',
-            borderRadius: 8,
-            border: '1.5px solid var(--app-border)',
-            background: 'var(--app-surface)',
-            color: 'var(--app-text)',
-            fontSize: '0.95rem',
-            width: 260,
-            outline: 'none',
-            direction: 'rtl',
-          }}
+          className="input-base"
         />
       </div>
 
       {loading ? (
-        <div style={{ color: 'var(--app-text-muted)', padding: '2rem 0' }}>{he.tickets.loading}</div>
+        <div className="flex items-center justify-center py-12 text-theme-text-muted">{he.tickets.loading}</div>
       ) : error ? (
-        <div style={{ color: 'var(--app-danger)', padding: '1rem 0' }}>{error}</div>
+        <div className="text-red-600 py-4">{error}</div>
       ) : (
-        <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginTop: '0.25rem' }}>
+        <div className="grid-card">
           <AgGridReact<Ticket>
             ref={gridRef}
             theme={agTheme}

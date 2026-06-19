@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Camera, Image as ImageIcon, Video, MapPin } from 'lucide-react'
 import api from '../api'
 
 interface GpsCoords {
@@ -73,98 +74,111 @@ export default function Upload() {
     }
   }
 
-  const s: Record<string, React.CSSProperties> = {
-    page: { padding: '1.25rem', maxWidth: 480, margin: '0 auto', fontFamily: 'system-ui', direction: 'rtl', color: 'var(--app-text)' },
-    title: { fontSize: '1.4rem', marginBottom: '0.75rem', fontWeight: 700 },
-    label: { display: 'block', marginTop: '1rem', fontWeight: 600, fontSize: '0.95rem', marginBottom: 4 },
-    input: { width: '100%', padding: '0.75rem', fontSize: '1rem', borderRadius: 8, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', boxSizing: 'border-box' },
-    btn: {
-      width: '100%', padding: '0.9rem', fontSize: '1.05rem', marginTop: '1.25rem',
-      borderRadius: 10, border: 'none', background: submitting ? 'var(--app-text-muted)' : 'var(--app-accent)',
-      color: '#fff', fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
-    },
-    gpsBox: { marginTop: '0.75rem', padding: '0.6rem 0.9rem', borderRadius: 8, fontSize: 13 },
-    success: { background: 'var(--app-surface-muted)', border: '1px solid var(--app-border)', padding: '1rem', borderRadius: 10, marginTop: '1rem', fontSize: 15 },
-    errBox: { background: 'var(--app-warning-bg)', color: 'var(--app-danger)', padding: '0.75rem 1rem', border: '1px solid var(--app-border)', borderRadius: 8, marginTop: '0.75rem', fontSize: 14 },
-  }
-
   return (
-    <div style={s.page}>
-      <h1 style={s.title}>דיווח על חנייה אסורה</h1>
+    <div className="page-container max-w-[480px] w-full mx-auto" dir="rtl">
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <Camera className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <h1 className="page-header-title">דיווח על חנייה אסורה</h1>
+      </div>
 
       {/* GPS status */}
-      <div style={{ ...s.gpsBox, background: gps ? 'rgba(21,128,61,0.12)' : gpsError ? 'var(--app-warning-bg)' : 'var(--app-surface-muted)', color: gps ? 'var(--app-success)' : gpsError ? 'var(--app-danger)' : 'var(--app-text-muted)' }}>
-        {gps
-          ? `📍 מיקום: ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}${gps.accuracy ? ` (±${Math.round(gps.accuracy)}מ')` : ''}`
-          : gpsError
-          ? `⚠ ${gpsError} — הדיווח יישלח ללא GPS`
-          : '⏳ מאתר מיקום GPS…'}
+      <div
+        className={`app-card p-3 text-theme-sm flex items-center gap-2 ${
+          gps ? 'text-green-700' : gpsError ? 'text-red-600' : 'text-theme-text-muted'
+        }`}
+      >
+        <MapPin className="w-4 h-4 shrink-0" />
+        <span>
+          {gps
+            ? `מיקום: ${gps.latitude.toFixed(5)}, ${gps.longitude.toFixed(5)}${gps.accuracy ? ` (±${Math.round(gps.accuracy)}מ')` : ''}`
+            : gpsError
+            ? `${gpsError} — הדיווח יישלח ללא GPS`
+            : 'מאתר מיקום GPS…'}
+        </span>
       </div>
 
       {/* Video capture */}
-      <label style={s.label} htmlFor="video-upload">בחר / צלם וידאו</label>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 4 }}>
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => { if (inputRef.current) { (inputRef.current as any).capture = 'environment'; inputRef.current.click() } }}
-          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid var(--app-accent)', background: 'var(--app-surface-muted)', color: 'var(--app-accent)', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
-        >
-          📷 צלם וידאו
-        </button>
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => { if (inputRef.current) { (inputRef.current as any).removeAttribute?.('capture'); inputRef.current.removeAttribute('capture'); inputRef.current.click() } }}
-          style={{ flex: 1, padding: '0.6rem', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', cursor: 'pointer', fontWeight: 600, fontFamily: 'inherit', fontSize: '0.9rem' }}
-        >
-          🖼 בחר מהגלריה
-        </button>
-      </div>
-      <input
-        ref={inputRef}
-        id="video-upload"
-        type="file"
-        accept="video/*"
-        onChange={onFileChange}
-        disabled={submitting}
-        style={{ display: 'none' }}
-      />
-      {selectedFile && (
-        <div style={{ fontSize: 13, color: 'var(--app-text)', marginTop: 4 }}>
-          📹 {selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)
+      <div>
+        <label className="label-base" htmlFor="video-upload">בחר / צלם וידאו</label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => { if (inputRef.current) { (inputRef.current as any).capture = 'environment'; inputRef.current.click() } }}
+            className="btn-primary flex-1"
+          >
+            <Camera className="w-4 h-4" />
+            <span>צלם וידאו</span>
+          </button>
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => { if (inputRef.current) { (inputRef.current as any).removeAttribute?.('capture'); inputRef.current.removeAttribute('capture'); inputRef.current.click() } }}
+            className="btn-cancel flex-1"
+          >
+            <ImageIcon className="w-4 h-4" />
+            <span>בחר מהגלריה</span>
+          </button>
         </div>
-      )}
+        <input
+          ref={inputRef}
+          id="video-upload"
+          type="file"
+          accept="video/*"
+          onChange={onFileChange}
+          disabled={submitting}
+          className="hidden"
+        />
+        {selectedFile && (
+          <div className="flex items-center gap-1.5 text-theme-sm text-theme-text-primary mt-2">
+            <Video className="w-4 h-4 shrink-0" />
+            <span>{selectedFile.name} ({(selectedFile.size / 1024 / 1024).toFixed(1)} MB)</span>
+          </div>
+        )}
+      </div>
 
       {/* License plate (optional) */}
-      <label style={s.label}>מספר רכב (אופציונלי)</label>
-      <input
-        type="text"
-        value={licensePlate}
-        onChange={e => setLicensePlate(e.target.value)}
-        placeholder="לדוגמה: 1234567"
-        style={s.input}
-        inputMode="numeric"
-      />
+      <div>
+        <label className="label-base">מספר רכב (אופציונלי)</label>
+        <input
+          type="text"
+          value={licensePlate}
+          onChange={e => setLicensePlate(e.target.value)}
+          placeholder="לדוגמה: 1234567"
+          className="input-base"
+          inputMode="numeric"
+        />
+      </div>
 
       {/* Zone */}
-      <label style={s.label}>סוג חנייה</label>
-      <select value={zone} onChange={e => setZone(e.target.value)} style={s.input}>
-        <option value="red_white">אדום-לבן (אסור לחלוטין)</option>
-        <option value="blue_white">כחול-לבן (תשלום)</option>
-      </select>
+      <div>
+        <label className="label-base">סוג חנייה</label>
+        <select value={zone} onChange={e => setZone(e.target.value)} className="input-base">
+          <option value="red_white">אדום-לבן (אסור לחלוטין)</option>
+          <option value="blue_white">כחול-לבן (תשלום)</option>
+        </select>
+      </div>
 
       {/* Submit */}
-      <button onClick={handleSubmit} disabled={submitting || !selectedFile} style={s.btn}>
+      <button onClick={handleSubmit} disabled={submitting || !selectedFile} className="btn-primary w-full justify-center">
         {submitting ? 'מעלה…' : 'שלח דיווח'}
       </button>
 
-      {error && <div style={s.errBox}>⚠ {error}</div>}
+      {error && (
+        <div className="app-card p-3 text-theme-sm text-red-600">
+          ⚠ {error}
+        </div>
+      )}
 
       {jobId && (
-        <div style={s.success}>
-          ✓ הדיווח התקבל! מספר עבודה: {jobId}
-          <div style={{ fontSize: 13, marginTop: 6, color: 'var(--app-text)' }}>
+        <div className="app-card p-4">
+          <div className="text-theme-base font-medium text-green-700">
+            ✓ הדיווח התקבל! מספר עבודה: {jobId}
+          </div>
+          <div className="text-theme-sm text-theme-text-muted mt-1.5">
             הוידאו מעובד ברקע. הדוח יופיע ברשימת הדוחות בקרוב.
           </div>
         </div>

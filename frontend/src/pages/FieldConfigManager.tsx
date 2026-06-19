@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef } from 'ag-grid-community'
+import { Sliders, RefreshCw, Save, X } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { fieldConfigApi, FieldConfiguration } from '../api'
 import { useFieldConfigInvalidate } from '../context/FieldConfigContext'
@@ -205,65 +206,83 @@ export default function FieldConfigManager() {
       cellRenderer: (p: any) => (
         <button
           onClick={() => handleDelete(p.data)}
-          style={{ background: 'var(--app-danger)', color: '#fff', border: 'none', borderRadius: 5, padding: '2px 10px', cursor: 'pointer', fontSize: '0.8rem' }}
+          className="inline-flex items-center justify-center px-2.5 py-0.5 rounded-md text-xs font-semibold bg-red-600 text-white hover:bg-red-700 transition-colors"
         >✕</button>
       ),
     },
   ], [isDirty, handleDelete])
 
   return (
-    <div style={{ padding: '1.5rem 2rem', width: '100%', boxSizing: 'border-box', color: 'var(--app-text)', display: 'flex', flexDirection: 'column', minHeight: 0, flex: 1, direction: 'rtl' }}>
+    <div className="page-container" dir="rtl">
       {toast && (
-        <div style={{ position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', background: toast.ok ? '#065f46' : '#991b1b', color: '#fff', padding: '10px 24px', borderRadius: 8, fontWeight: 600, zIndex: 9999, fontSize: '0.95rem' }}>
+        <div
+          className={`fixed top-5 left-1/2 -translate-x-1/2 z-[9999] px-6 py-2.5 rounded-lg font-semibold text-white text-theme-sm ${
+            toast.ok ? 'bg-green-700' : 'bg-red-700'
+          }`}
+        >
           {toast.msg}
         </div>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: '1rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', color: 'var(--app-text)' }}>הגדרות שדות גריד</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--app-text-muted)', fontSize: '0.9rem' }}>שליטה על רוחב, סדר ונראות עמודות בכל גריד</p>
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <Sliders className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <h1 className="page-header-title">הגדרות שדות גריד</h1>
+          <p className="page-header-label opacity-90">שליטה על רוחב, סדר ונראות עמודות בכל גריד</p>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap items-center gap-2">
           {dirtyMap.size > 0 && (
             <>
-              <button onClick={cancelAll} disabled={saving} style={{ padding: '8px 16px', background: 'var(--app-surface-muted)', color: 'var(--app-text)', border: '1.5px solid var(--app-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
-                ביטול ({dirtyMap.size})
+              <button onClick={cancelAll} disabled={saving} className="btn-cancel">
+                <X className="w-4 h-4" />
+                <span>ביטול ({dirtyMap.size})</span>
               </button>
-              <button onClick={saveAll} disabled={saving} style={{ padding: '8px 16px', background: 'var(--app-accent)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
-                {saving ? 'שומר...' : `שמור הכל (${dirtyMap.size})`}
+              <button onClick={saveAll} disabled={saving} className="btn-primary">
+                <Save className="w-4 h-4" />
+                <span>{saving ? 'שומר...' : `שמור הכל (${dirtyMap.size})`}</span>
               </button>
             </>
           )}
-          <button onClick={load} style={{ padding: '8px 16px', background: 'var(--app-surface-muted)', color: 'var(--app-text)', border: '1.5px solid var(--app-border)', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}>
-            רענן
+          <button onClick={load} className="btn-cancel">
+            <RefreshCw className="w-4 h-4" />
+            <span>רענן</span>
           </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: '0.75rem', alignItems: 'center' }}>
-        <select
-          value={filterGrid}
-          onChange={(e) => setFilterGrid(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', fontSize: '0.9rem', direction: 'rtl' }}
-        >
-          <option value="all">כל הגרידים</option>
-          {uniqueGrids.map((g) => <option key={g} value={g}>{g}</option>)}
-        </select>
-        <input
-          type="search"
-          placeholder="חיפוש..."
-          value={quickFilter}
-          onChange={(e) => setQuickFilter(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', fontSize: '0.9rem', width: 200, direction: 'rtl' }}
-        />
-        <span style={{ color: 'var(--app-text-muted)', fontSize: '0.88rem' }}>{filtered.length} רשומות</span>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="w-48">
+          <select
+            value={filterGrid}
+            onChange={(e) => setFilterGrid(e.target.value)}
+            className="input-base"
+            dir="rtl"
+          >
+            <option value="all">כל הגרידים</option>
+            {uniqueGrids.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+        <div className="w-52">
+          <input
+            type="search"
+            placeholder="חיפוש..."
+            value={quickFilter}
+            onChange={(e) => setQuickFilter(e.target.value)}
+            className="input-base"
+            dir="rtl"
+          />
+        </div>
+        <span className="text-theme-text-muted text-theme-sm">{filtered.length} רשומות</span>
       </div>
 
       {loading ? (
-        <p style={{ color: 'var(--app-text-muted)' }}>{t('loading')}</p>
+        <div className="flex items-center justify-center py-12 text-theme-text-muted">{t('loading')}</div>
       ) : (
-        <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
+        <div className="grid-card">
           <AgGridReact<FieldConfiguration>
             ref={gridRef}
             theme={agTheme}

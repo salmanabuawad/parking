@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import { ListOrdered } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import api from '../api'
@@ -27,41 +28,23 @@ interface Settings {
   use_violation_pipeline?: boolean
 }
 
-const STATUS_COLOR: Record<string, { color: string; bg: string }> = {
-  queued:     { color: '#92400e', bg: '#fef3c7' },
-  processing: { color: '#1e40af', bg: '#dbeafe' },
-  completed:  { color: '#065f46', bg: '#d1fae5' },
-  failed:     { color: '#991b1b', bg: '#fee2e2' },
+const STATUS_BADGE: Record<string, { cls: string; key: string }> = {
+  queued:     { cls: 'badge-warning', key: 'statusQueued' },
+  processing: { cls: 'badge-info',    key: 'statusProcessing' },
+  completed:  { cls: 'badge-success', key: 'statusCompleted' },
+  failed:     { cls: 'badge-danger',  key: 'statusFailed' },
 }
 
 function StatusCell({ value }: { value: string }) {
-  const s = STATUS_COLOR[value] ?? { color: '#374151', bg: '#f3f4f6' }
-  const labels: Record<string, string> = {
-    queued: t('statusQueued'),
-    processing: t('statusProcessing'),
-    completed: t('statusCompleted'),
-    failed: t('statusFailed'),
-  }
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '3px 10px',
-      borderRadius: 999,
-      background: s.bg,
-      color: s.color,
-      fontWeight: 600,
-      fontSize: '0.82rem',
-    }}>
-      {labels[value] ?? value}
-    </span>
-  )
+  const s = STATUS_BADGE[value]
+  return <span className={`badge ${s ? s.cls : 'badge-neutral'}`}>{s ? t(s.key) : value}</span>
 }
 
 function ErrorCell({ value }: { value: string | null }) {
-  if (!value) return <span style={{ color: 'var(--app-text-muted)' }}>—</span>
+  if (!value) return <span className="text-theme-text-muted">—</span>
   const short = value.length > 70 ? `${value.slice(0, 70)}…` : value
   return (
-    <span title={value} style={{ color: 'var(--app-danger)', fontSize: '0.82rem' }}>
+    <span title={value} className="text-red-600 text-theme-xs">
       {short}
     </span>
   )
@@ -156,7 +139,7 @@ export default function QueueMaintenance() {
         headerName: t('source'),
         flex: 1.5,
         cellRenderer: (p: ICellRendererParams<UploadJob>) =>
-          p.value ? <code style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>{p.value}</code> : <span style={{ color: 'var(--app-text-muted)' }}>—</span>,
+          p.value ? <code className="text-theme-xs break-all">{p.value}</code> : <span className="text-theme-text-muted">—</span>,
       },
       {
         field: 'status',
@@ -178,12 +161,12 @@ export default function QueueMaintenance() {
           p.value ? (
             <Link
               to={`/tickets/${p.value}`}
-              style={{ color: 'var(--app-accent)', fontWeight: 600, textDecoration: 'none', fontSize: '0.88rem' }}
+              className="text-theme-link font-semibold no-underline text-theme-sm"
             >
               #{p.value}
             </Link>
           ) : (
-            <span style={{ color: 'var(--app-text-muted)' }}>—</span>
+            <span className="text-theme-text-muted">—</span>
           ),
       },
       {
@@ -197,47 +180,40 @@ export default function QueueMaintenance() {
   }, [fsVer])
 
   return (
-    <div
-      style={{
-        padding: '1.5rem 2rem',
-        width: '100%',
-        boxSizing: 'border-box',
-        color: 'var(--app-text)',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-        flex: 1,
-      }}
-    >
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: '1rem' }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: '1.4rem', color: 'var(--app-text)' }}>{t('queueMaintenance')}</h1>
-          <p style={{ margin: '4px 0 0', color: 'var(--app-text-muted)', fontSize: '0.92rem' }}>
+    <div className="page-container">
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <ListOrdered className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <h1 className="page-header-title">{t('queueMaintenance')}</h1>
+          <p className="page-header-label opacity-90">
             {t('queueSubtitle')}{' '}
-            <Link to="/settings" style={{ color: 'var(--app-accent)' }}>{t('editBlurSettings')}</Link>
+            <Link to="/settings" className="text-theme-link">{t('editBlurSettings')}</Link>
           </p>
         </div>
-
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex-1" />
+        <div className="action-bar flex flex-wrap items-center gap-2">
           <input
             ref={fileInputRef}
             type="file"
             accept="video/*"
             onChange={handleFileChange}
             disabled={uploading}
-            style={{ display: 'none' }}
+            className="hidden"
           />
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            style={{ padding: '8px 16px', background: 'var(--app-accent)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}
+            className="btn-primary"
           >
             {uploading ? t('uploading') : t('uploadVideo')}
           </button>
           <button
             onClick={handleResetStuck}
             disabled={resettingStuck}
-            style={{ padding: '8px 16px', background: 'var(--app-danger)', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit' }}
+            className="btn-danger"
           >
             {resettingStuck ? '...' : 'איפוס תקועים'}
           </button>
@@ -245,28 +221,26 @@ export default function QueueMaintenance() {
       </div>
 
       {settings && (
-        <div style={{ marginBottom: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'var(--app-surface-muted)', border: '1px solid var(--app-border)', borderRadius: 8 }}>
-          <strong style={{ fontSize: '0.88rem' }}>{t('blurKernelSize')}:</strong>
-          <span style={{ background: 'rgba(37,99,235,0.14)', color: 'var(--app-accent)', padding: '2px 8px', borderRadius: 4, fontSize: '0.88rem', fontWeight: 600 }}>
-            {settings.blur_kernel_size}
-          </span>
+        <div className="app-card inline-flex items-center gap-2 px-3.5 py-1.5 self-start">
+          <strong className="text-theme-sm">{t('blurKernelSize')}:</strong>
+          <span className="badge badge-info">{settings.blur_kernel_size}</span>
         </div>
       )}
 
-      <div style={{ marginBottom: '0.75rem' }}>
+      <div className="w-56">
         <input
           type="search"
           placeholder="חיפוש..."
           value={quickFilter}
           onChange={(e) => setQuickFilter(e.target.value)}
-          style={{ padding: '7px 12px', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', fontSize: '0.9rem', width: 220, direction: 'rtl' }}
+          className="input-base"
         />
       </div>
 
       {loading ? (
-        <p style={{ color: 'var(--app-text-muted)' }}>{t('loading')}</p>
+        <div className="flex items-center justify-center py-12 text-theme-text-muted">{t('loading')}</div>
       ) : (
-        <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginTop: '0.25rem' }}>
+        <div className="grid-card">
           <AgGridReact<UploadJob>
             theme={agTheme}
             rowData={jobs}

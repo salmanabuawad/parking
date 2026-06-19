@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Camera as CameraIcon } from 'lucide-react'
 import { camerasApi, violationRulesApi, parkingZonesApi, getApiBase } from '../api'
 import { t } from '../i18n'
 
@@ -174,83 +175,96 @@ export default function Cameras() {
   }
 
   return (
-    <div style={{ padding: '1.5rem', fontFamily: 'system-ui', maxWidth: 900, color: 'var(--app-text)' }}>
-      <h1>{t('cameras')}</h1>
-      <p style={{ color: 'var(--app-text-muted)', marginBottom: '1.5rem' }}>
-        {t('camerasIntro')}
-      </p>
+    <div className="page-container">
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <CameraIcon className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <h1 className="page-header-title">{t('cameras')}</h1>
+          <p className="page-header-label opacity-90">{t('camerasIntro')}</p>
+        </div>
+      </div>
 
-      <form onSubmit={save} style={{ background: 'var(--app-surface-muted)', border: '1px solid var(--app-border)', padding: '1.25rem', borderRadius: 8, marginBottom: '1.5rem' }}>
-        <h3>{editing ? t('editCamera') : t('addCamera')}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+      <form onSubmit={save} className="app-card p-5">
+        <h3 className="text-base font-semibold text-theme-text-primary mb-3">{editing ? t('editCamera') : t('addCamera')}</h3>
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label>{t('nameRequired')}</label>
-            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} />
+            <label className="label-base">{t('nameRequired')}</label>
+            <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required className="input-base" />
           </div>
           <div>
-            <label>{t('location')}</label>
-            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} placeholder={t('locationPlaceholder')} />
+            <label className="label-base">{t('location')}</label>
+            <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} className="input-base" placeholder={t('locationPlaceholder')} />
           </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label>{t('connectionType')}</label>
-            <select value={form.connection_type} onChange={e => setForm({ ...form, connection_type: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }}>
+            <label className="label-base">{t('connectionType')}</label>
+            <select value={form.connection_type} onChange={e => setForm({ ...form, connection_type: e.target.value })} className="input-base">
               {CONNECTION_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
             </select>
           </div>
           <div>
-            <label>{t('paramSource')}</label>
-            <select value={form.param_source} onChange={e => setForm({ ...form, param_source: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }}>
+            <label className="label-base">{t('paramSource')}</label>
+            <select value={form.param_source} onChange={e => setForm({ ...form, param_source: e.target.value })} className="input-base">
               {PARAM_SOURCES.map(p => <option key={p} value={p}>{p.replace('_', ' ')}</option>)}
             </select>
           </div>
         </div>
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label>{t('connectionConfigJson')}</label>
-          <textarea value={typeof form.connection_config === 'string' ? form.connection_config : JSON.stringify(form.connection_config || {}, null, 2)} onChange={e => setForm({ ...form, connection_config: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace', border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} placeholder='{"ip":"192.168.1.100","port":554}' />
+        <div className="mb-3">
+          <label className="label-base">{t('connectionConfigJson')}</label>
+          <textarea value={typeof form.connection_config === 'string' ? form.connection_config : JSON.stringify(form.connection_config || {}, null, 2)} onChange={e => setForm({ ...form, connection_config: e.target.value })} rows={2} className="input-base font-mono" placeholder='{"ip":"192.168.1.100","port":554}' />
         </div>
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label>{t('paramsJson')}</label>
-          <textarea value={typeof form.params === 'string' ? form.params : JSON.stringify(form.params || {}, null, 2)} onChange={e => setForm({ ...form, params: e.target.value })} rows={2} style={{ width: '100%', padding: 6, fontFamily: 'monospace', border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} placeholder='{"moving":true,"night_light":true,"resolution":"1080p","fps":30}' />
+        <div className="mb-3">
+          <label className="label-base">{t('paramsJson')}</label>
+          <textarea value={typeof form.params === 'string' ? form.params : JSON.stringify(form.params || {}, null, 2)} onChange={e => setForm({ ...form, params: e.target.value })} rows={2} className="input-base font-mono" placeholder='{"moving":true,"night_light":true,"resolution":"1080p","fps":30}' />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
-            <label>{t('manufacturer')}</label>
-            <input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} />
+            <label className="label-base">{t('manufacturer')}</label>
+            <input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} className="input-base" />
           </div>
           <div>
-            <label>{t('model')}</label>
-            <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} style={{ width: '100%', padding: 6, border: '1px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)' }} />
+            <label className="label-base">{t('model')}</label>
+            <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-base" />
           </div>
         </div>
 
         {/* Parking zones (multi-select) */}
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label style={{ display: 'block', marginBottom: 4 }}>אזורי חניה באזור המצלמה (ניתן לבחור מספר)</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {availableZones.length === 0 && <span style={{ color: 'var(--app-text-muted)', fontSize: '0.85rem' }}>טוען אזורים...</span>}
+        <div className="mb-3">
+          <label className="label-base block mb-1">אזורי חניה באזור המצלמה (ניתן לבחור מספר)</label>
+          <div className="flex flex-wrap gap-2">
+            {availableZones.length === 0 && <span className="text-theme-text-muted text-theme-sm">טוען אזורים...</span>}
             {availableZones.map(zone => (
-              <label key={zone.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', background: form.selected_zone_ids.includes(zone.id) ? 'rgba(21,128,61,0.12)' : 'var(--app-surface)', border: '1px solid var(--app-border)', borderRadius: 4, padding: '3px 8px', cursor: 'pointer' }}>
+              <label
+                key={zone.id}
+                className={`flex items-center gap-1 text-theme-sm rounded border px-2 py-1 cursor-pointer ${
+                  form.selected_zone_ids.includes(zone.id)
+                    ? 'bg-green-100 border-green-300'
+                    : 'border-theme-card-border'
+                }`}
+              >
                 <input
                   type="checkbox"
                   checked={form.selected_zone_ids.includes(zone.id)}
                   onChange={() => toggleZone(zone.id)}
                 />
                 {zone.name_he}
-                {zone.description_he && <span style={{ color: 'var(--app-text-muted)', fontSize: '0.78rem' }}> — {zone.description_he}</span>}
+                {zone.description_he && <span className="text-theme-text-muted text-theme-xs"> — {zone.description_he}</span>}
               </label>
             ))}
           </div>
-          <p style={{ fontSize: '0.78rem', color: 'var(--app-text-muted)', margin: '4px 0 0' }}>אם לא נבחר אזור — כל הכללים יבדקו (ברירת מחדל)</p>
+          <p className="text-theme-xs text-theme-text-muted mt-1">אם לא נבחר אזור — כל הכללים יבדקו (ברירת מחדל)</p>
         </div>
 
         {/* Violation rules (multi-select) */}
-        <div style={{ marginBottom: '0.75rem' }}>
-          <label style={{ display: 'block', marginBottom: 4 }}>כללי הפרה לבדיקה</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        <div className="mb-3">
+          <label className="label-base block mb-1">כללי הפרה לבדיקה</label>
+          <div className="flex flex-wrap gap-2">
             {availableRules.map(rule => (
-              <label key={rule.id} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+              <label key={rule.id} className="flex items-center gap-1 text-theme-sm whitespace-nowrap">
                 <input
                   type="checkbox"
                   checked={form.violation_rules.includes(rule.id)}
@@ -265,21 +279,21 @@ export default function Cameras() {
               </label>
             ))}
           </div>
-          <p style={{ fontSize: '0.78rem', color: 'var(--app-text-muted)', margin: '4px 0 0' }}>אם לא נבחר כלום — כל הכללים יבדקו (ברירת מחדל)</p>
+          <p className="text-theme-xs text-theme-text-muted mt-1">אם לא נבחר כלום — כל הכללים יבדקו (ברירת מחדל)</p>
         </div>
 
-        <div style={{ marginBottom: '1rem' }}>
-          <label><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
+        <div className="mb-4">
+          <label className="flex items-center gap-1 text-theme-sm"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
         </div>
-        <div>
-          <button type="submit" style={{ marginRight: 8 }}>{editing ? t('update') : t('add')}</button>
-          {editing && <button type="button" onClick={() => { setEditing(null); setForm(EMPTY_FORM) }}>{t('cancel')}</button>}
+        <div className="action-bar flex flex-wrap items-center gap-2">
+          <button type="submit" className="btn-primary">{editing ? t('update') : t('add')}</button>
+          {editing && <button type="button" onClick={() => { setEditing(null); setForm(EMPTY_FORM) }} className="btn-cancel">{t('cancel')}</button>}
         </div>
       </form>
 
-      <h2>{t('configuredCameras')}</h2>
-      {loading ? <p>{t('loading')}</p> : (
-        <ul style={{ listStyle: 'none', padding: 0 }}>
+      <h2 className="text-base font-semibold text-theme-text-primary">{t('configuredCameras')}</h2>
+      {loading ? <p className="text-theme-text-muted">{t('loading')}</p> : (
+        <ul className="list-none p-0 flex flex-col gap-2">
           {cameras.map(c => {
             const hasVideoDb = (c.connection_config as Record<string, unknown>)?.video_id
             const hasVideoFile = (c.connection_config as Record<string, unknown>)?.sample_video
@@ -289,39 +303,39 @@ export default function Cameras() {
             const zoneIds = cameraZoneMap[c.id] || []
             const zoneNames = availableZones.filter(z => zoneIds.includes(z.id)).map(z => z.name_he)
             return (
-              <li key={c.id} style={{ background: 'var(--app-surface)', border: '1px solid var(--app-border)', borderRadius: 8, padding: '1rem', marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <li key={c.id} className="app-card p-4">
+                <div className="flex justify-between items-center flex-wrap gap-2">
                   <div>
                     <strong>{c.name}</strong> — {c.connection_type} {c.location && `@ ${c.location}`}
-                    {c.manufacturer && <span style={{ color: 'var(--app-text-muted)', marginLeft: 8 }}>{c.manufacturer} {c.model}</span>}
+                    {c.manufacturer && <span className="text-theme-text-muted ms-2">{c.manufacturer} {c.model}</span>}
                     {zoneNames.length > 0 && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--app-success)', marginTop: 2 }}>
+                      <div className="text-theme-xs text-green-700 mt-0.5">
                         אזורים: {zoneNames.join(', ')}
                       </div>
                     )}
                     {c.violation_rules && c.violation_rules.length > 0 && (
-                      <div style={{ fontSize: '0.8rem', color: 'var(--app-text-muted)', marginTop: 2 }}>
+                      <div className="text-theme-xs text-theme-text-muted mt-0.5">
                         כללים: {c.violation_rules.join(', ')}
                       </div>
                     )}
                   </div>
-                  <div>
+                  <div className="action-bar flex flex-wrap items-center gap-2">
                     {hasSample && (
-                      <a href={videoUrl} target="_blank" rel="noreferrer" style={{ marginRight: 8 }}>{t('watchSample')}</a>
+                      <a href={videoUrl} target="_blank" rel="noreferrer" className="btn-ghost">{t('watchSample')}</a>
                     )}
-                    <button onClick={() => startEdit(c)} style={{ marginRight: 8 }}>{t('edit')}</button>
-                    <button onClick={() => remove(c.id)} style={{ background: 'var(--app-danger)', color: 'white' }}>{t('delete')}</button>
+                    <button onClick={() => startEdit(c)} className="btn-secondary">{t('edit')}</button>
+                    <button onClick={() => remove(c.id)} className="btn-danger">{t('delete')}</button>
                   </div>
                 </div>
                 {hasSample && (
-                  <video src={videoUrl} controls style={{ width: '100%', maxWidth: 400, marginTop: 8, borderRadius: 4 }} />
+                  <video src={videoUrl} controls className="w-full max-w-[400px] mt-2 rounded" />
                 )}
               </li>
             )
           })}
         </ul>
       )}
-      {!loading && cameras.length === 0 && <p style={{ color: 'var(--app-text-muted)' }}>{t('noCameras')}</p>}
+      {!loading && cameras.length === 0 && <p className="text-theme-text-muted">{t('noCameras')}</p>}
     </div>
   )
 }

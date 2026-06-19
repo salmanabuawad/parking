@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { ClipboardCheck, Camera, Download, Check, X, Pencil } from "lucide-react";
 import { ticketsApi } from "../api";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
@@ -35,25 +36,24 @@ const PLATE_UNKNOWN = "11111";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 6 }}>
-      <div style={{ fontSize: 10, color: "var(--app-text-muted)", marginBottom: 1, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+    <div className="mb-2">
+      <div className="text-[11px] text-theme-text-muted mb-0.5">{label}</div>
       <div>{children}</div>
     </div>
   );
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending_review: "#d97706",
-  approved: "#16a34a",
-  rejected: "#dc2626",
-  paid: "#2563eb",
+const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
+  pending_review: { cls: "badge-warning", label: "ממתין לבדיקה" },
+  approved:       { cls: "badge-success", label: "אושר" },
+  rejected:       { cls: "badge-danger",  label: "נדחה" },
+  paid:           { cls: "badge-info",    label: "שולם" },
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  pending_review: "ממתין לבדיקה",
-  approved: "אושר",
-  rejected: "נדחה",
-  paid: "שולם",
+const DECISION_STYLE: Record<string, { badge: string; bar: string; label: string }> = {
+  confirmed_violation: { badge: "badge-danger",  bar: "bg-red-600",   label: "הפרה מאושרת" },
+  suspected_violation: { badge: "badge-warning", bar: "bg-amber-500", label: "הפרה חשודה" },
+  no_violation:        { badge: "badge-success", bar: "bg-green-600", label: "ללא הפרה" },
 };
 
 export default function TicketReview() {
@@ -120,24 +120,6 @@ export default function TicketReview() {
     };
   }, [ticketId]);
 
-  async function handleReprocess() {
-    try {
-      setState("loading");
-      setError(null);
-      await ticketsApi.reprocessVideo(ticketId);
-      const blob = await ticketsApi.getProcessedVideo(ticketId);
-      const url = URL.createObjectURL(blob);
-      setVideoUrl((prev) => {
-        if (prev) URL.revokeObjectURL(prev);
-        return url;
-      });
-      setState("ready");
-    } catch (err: any) {
-      setState("error");
-      setError(err?.message || "Reprocessing failed");
-    }
-  }
-
   async function handleStatusChange(status: "approved" | "rejected") {
     if (!ticket) return;
     setSaving(true);
@@ -195,386 +177,332 @@ export default function TicketReview() {
   }
 
   const plateOk = ticket && ticket.license_plate && ticket.license_plate !== PLATE_UNKNOWN && ticket.license_plate !== "";
+  const statusBadge = ticket ? (STATUS_BADGE[ticket.status] ?? { cls: "badge-neutral", label: ticket.status }) : null;
 
   return (
     <div className="page-fill">
     <div className="page-body-scroll">
-    <div dir="rtl" style={{ padding: 24, width: '100%', boxSizing: 'border-box', fontFamily: "Arial, sans-serif", color: "var(--app-text)" }}>
+    <div dir="rtl" className="p-4 sm:p-6 text-theme-text-primary">
+
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <h1 style={{ margin: 0, fontSize: 22 }}>בדיקת דוח #{ticketId}</h1>
-          <Link to="/queue" style={{ fontSize: 13, color: "var(--app-accent)" }}>← תור עיבוד</Link>
-          <Link to="/tickets" style={{ fontSize: 13, color: "var(--app-accent)" }}>← כל הדוחות</Link>
-        </div>
+      <div className="page-header rounded-lg px-3 py-2 mb-4 flex items-center gap-3 flex-wrap">
+        <span className="page-header-icon">
+          <ClipboardCheck className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <h1 className="page-header-title">בדיקת דוח #{ticketId}</h1>
+        <div className="flex-1" />
+        <Link to="/queue" className="text-white/90 hover:text-white text-theme-sm">← תור עיבוד</Link>
+        <Link to="/tickets" className="text-white/90 hover:text-white text-theme-sm">← כל הדוחות</Link>
       </div>
 
       {state === "error" && (
-        <div style={{ color: "var(--app-danger)", marginBottom: 12, padding: "8px 12px", background: "var(--app-warning-bg)", border: "1px solid var(--app-border)", borderRadius: 6 }}>
+        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-theme-sm">
           שגיאה: {error}
         </div>
       )}
 
       {/* Side-by-side: video + details */}
-      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="flex gap-5 items-start flex-wrap">
 
-        {/* Left column: violation analysis + video */}
-        <div style={{ flex: "1 1 340px", minWidth: 280, display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Left column: video + screenshots */}
+        <div className="grow basis-[340px] min-w-[280px] flex flex-col gap-4">
 
-        {/* Video panel */}
-        <div>
-          <div style={{ border: "1px solid var(--app-border)", borderRadius: 10, overflow: "hidden", background: "#000" }}>
-            {videoUrl ? (
-              <video
-                ref={videoRef}
-                key={videoUrl}
-                src={videoUrl}
-                controls
-                playsInline
-                style={{ width: "100%", maxHeight: 320, display: "block" }}
-              />
-            ) : (
-              <div style={{ padding: 32, textAlign: "center", color: "var(--app-text-muted)", background: "#111" }}>
-                {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
-              </div>
-            )}
-          <canvas ref={canvasRef} style={{ display: "none" }} />
-          {videoUrl && (
-            <div style={{ padding: "10px 12px", background: "var(--app-header-start)", display: "flex", alignItems: "center", gap: 10 }}>
-              <button
-                onClick={captureScreenshot}
-                disabled={capturing || state !== "ready"}
-                style={{
-                  padding: "7px 16px",
-                  background: capturing ? "var(--app-text-muted)" : "var(--app-accent)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 6,
-                  cursor: capturing ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
-                  fontSize: "0.9rem",
-                  fontWeight: 600,
-                }}
-              >
-                {capturing ? "שומר…" : "📸 צלם תמונה"}
-              </button>
-              {captureMsg && (
-                <span style={{ fontSize: "0.85rem", color: captureMsg.startsWith("✓") ? "#4ade80" : "#f87171" }}>
-                  {captureMsg}
-                </span>
+          {/* Video panel */}
+          <div>
+            <div className="rounded-xl overflow-hidden border border-theme-card-border bg-black">
+              {videoUrl ? (
+                <video
+                  ref={videoRef}
+                  key={videoUrl}
+                  src={videoUrl}
+                  controls
+                  playsInline
+                  className="w-full block max-h-80"
+                />
+              ) : (
+                <div className="p-8 text-center text-slate-400 bg-neutral-900">
+                  {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
+                </div>
               )}
-              {ticket?.has_original_video && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const blob = await ticketsApi.getOriginalVideo(ticketId);
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement("a");
-                      a.href = url;
-                      a.download = `original_ticket_${ticketId}.mp4`;
-                      a.click();
-                      URL.revokeObjectURL(url);
-                    } catch (e: any) {
-                      alert("שגיאה בהורדת הוידאו המקורי: " + (e?.message || e));
-                    }
-                  }}
-                  style={{
-                    padding: "7px 16px",
-                    background: "#374151",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 6,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    fontSize: "0.9rem",
-                    fontWeight: 600,
-                    marginRight: "auto",
-                  }}
-                >
-                  ⬇️ הורד מקורי
-                </button>
+              <canvas ref={canvasRef} className="hidden" />
+              {videoUrl && (
+                <div className="px-3 py-2.5 bg-slate-800 flex items-center gap-2.5">
+                  <button onClick={captureScreenshot} disabled={capturing || state !== "ready"} className="btn-primary">
+                    <Camera className="w-4 h-4" />
+                    <span>{capturing ? "שומר…" : "צלם תמונה"}</span>
+                  </button>
+                  {captureMsg && (
+                    <span className={`text-theme-sm ${captureMsg.startsWith("✓") ? "text-green-300" : "text-red-300"}`}>
+                      {captureMsg}
+                    </span>
+                  )}
+                  {ticket?.has_original_video && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const blob = await ticketsApi.getOriginalVideo(ticketId);
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = `original_ticket_${ticketId}.mp4`;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch (e: any) {
+                          alert("שגיאה בהורדת הוידאו המקורי: " + (e?.message || e));
+                        }
+                      }}
+                      className="btn-cancel mr-auto"
+                    >
+                      <Download className="w-4 h-4" />
+                      <span>הורד מקורי</span>
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Screenshot gallery — under video */}
+          {(screenshots.length > 0 || videoUrl) && (
+            <div className="app-card p-4">
+              <h3 className="text-base font-semibold mb-3">
+                צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
+              </h3>
+              {screenshots.length === 0 ? (
+                <p className="text-theme-text-muted text-theme-sm m-0">עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
+              ) : (
+                <>
+                  <div className="flex gap-2.5 flex-wrap">
+                    {screenshots.map((s) => (
+                      <div
+                        key={s.id}
+                        onClick={() => setExpanded(expanded === s.id ? null : s.id)}
+                        className={`cursor-pointer rounded-lg overflow-hidden bg-slate-100 border-2 ${expanded === s.id ? "border-theme-accent" : "border-transparent"}`}
+                      >
+                        <img
+                          src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
+                          alt={`Screenshot ${s.id}`}
+                          className="w-[140px] h-20 object-cover block"
+                          loading="lazy"
+                        />
+                        <div className="text-[11px] text-center px-1 py-0.5 text-theme-text-muted leading-tight">
+                          {s.frame_time_seconds != null && ticket?.captured_at
+                            ? new Date(new Date(ticket.captured_at).getTime() + s.frame_time_seconds * 1000)
+                                .toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+                            : s.frame_time_seconds != null ? `+${s.frame_time_seconds.toFixed(1)}s` : "—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {expanded !== null && (
+                    <div className="mt-3 rounded-lg overflow-hidden border border-theme-card-border">
+                      <img
+                        src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
+                        alt="Expanded screenshot"
+                        className="w-full block"
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
-          </div>
-        </div>
-
-        {/* Screenshot gallery — under video */}
-        {(screenshots.length > 0 || videoUrl) && (
-          <div style={{ background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 10, padding: "18px 22px" }}>
-            <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>
-              צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
-            </h3>
-            {screenshots.length === 0 ? (
-              <p style={{ color: "var(--app-text-muted)", fontSize: 13, margin: 0 }}>עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
-            ) : (
-              <>
-                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  {screenshots.map((s) => (
-                    <div
-                      key={s.id}
-                      onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-                      style={{ cursor: "pointer", borderRadius: 8, overflow: "hidden", border: expanded === s.id ? "2px solid var(--app-accent)" : "2px solid transparent", background: "var(--app-surface-muted)" }}
-                    >
-                      <img
-                        src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
-                        alt={`Screenshot ${s.id}`}
-                        style={{ width: 140, height: 80, objectFit: "cover", display: "block" }}
-                        loading="lazy"
-                      />
-                      <div style={{ fontSize: 11, textAlign: "center", padding: "3px 4px", color: "var(--app-text-muted)", lineHeight: 1.3 }}>
-                        {s.frame_time_seconds != null && ticket?.captured_at
-                          ? new Date(new Date(ticket.captured_at).getTime() + s.frame_time_seconds * 1000)
-                              .toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
-                          : s.frame_time_seconds != null ? `+${s.frame_time_seconds.toFixed(1)}s` : "—"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {expanded !== null && (
-                  <div style={{ marginTop: 12, borderRadius: 8, overflow: "hidden", border: "1px solid var(--app-border)" }}>
-                    <img
-                      src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
-                      alt="Expanded screenshot"
-                      style={{ width: "100%", display: "block" }}
-                    />
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
 
         </div>{/* end left column */}
 
-        {/* Right section: violation analysis + details side by side */}
-        <div style={{ flex: "1 1 320px", display: "flex", flexDirection: "row", gap: 16, flexWrap: "wrap", alignItems: "flex-start" }}>
+        {/* Right section: details + violation analysis */}
+        <div className="grow basis-[320px] flex flex-row gap-4 flex-wrap items-start">
 
-        {ticket && (
-          <div style={{ flex: "1 1 240px", background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 10, padding: "12px 16px", position: "sticky", top: 88 }}>
+          {ticket && (
+            <div className="app-card grow basis-[240px] p-4 sticky top-[88px]">
 
-            {/* Plate */}
-            <Field label="מספר לוחית">
-              {editMode ? (
-                <input
-                  value={editPlate}
-                  onChange={e => setEditPlate(e.target.value)}
-                  style={{ fontFamily: "monospace", fontSize: 18, padding: "4px 8px", border: "1px solid var(--app-border)", borderRadius: 4, width: "100%", background: "var(--app-surface)", color: "var(--app-text)" }}
-                />
-              ) : plateOk ? (
-                <div>
-                  <span style={{ fontWeight: 700, fontSize: 20, letterSpacing: 3, fontFamily: "monospace" }}>
-                    {ticket.license_plate}
-                  </span>
-                  {ticket.plate_detection_reason && (
-                    <div style={{ fontSize: 12, color: "var(--app-warning-text)", marginTop: 4, background: "var(--app-warning-bg)", padding: "4px 8px", borderRadius: 4 }}>
-                      ⚠ {ticket.plate_detection_reason}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <span style={{ fontWeight: 600, color: "#dc2626" }}>לא זוהה</span>
-                  {ticket.plate_detection_reason && (
-                    <div style={{ fontSize: 12, color: "var(--app-text-muted)", marginTop: 4 }}>{ticket.plate_detection_reason}</div>
-                  )}
-                </div>
-              )}
-            </Field>
-
-            <div style={{ borderTop: "1px solid var(--app-border)", margin: "6px 0" }} />
-
-            {/* Status */}
-            <Field label="סטטוס">
-              <span style={{
-                fontWeight: 600,
-                color: STATUS_COLORS[ticket.status] || "#374151",
-                background: "var(--app-surface-muted)",
-                padding: "2px 10px",
-                borderRadius: 12,
-                fontSize: 14,
-              }}>
-                {STATUS_LABELS[ticket.status] || ticket.status}
-              </span>
-            </Field>
-
-            {/* Violation zone */}
-            {ticket.violation_zone && (
-              <Field label="אזור עצירה">
-                <span>{ticket.violation_zone}</span>
-              </Field>
-            )}
-
-            {/* Fine */}
-            <Field label="קנס">
-              {editMode ? (
-                <input
-                  type="number"
-                  value={editFine}
-                  onChange={e => setEditFine(e.target.value)}
-                  placeholder="סכום ₪"
-                  style={{ padding: "4px 8px", border: "1px solid var(--app-border)", borderRadius: 4, width: 120, background: "var(--app-surface)", color: "var(--app-text)" }}
-                />
-              ) : ticket.fine_amount != null ? (
-                <span style={{ fontWeight: 600, color: "#dc2626" }}>₪{ticket.fine_amount}</span>
-              ) : (
-                <span style={{ color: "var(--app-text-muted)", fontSize: 13 }}>לא נקבע</span>
-              )}
-            </Field>
-
-            <div style={{ borderTop: "1px solid var(--app-border)", margin: "6px 0" }} />
-
-            {/* Location */}
-            {ticket.location && (
-              <Field label="מיקום">
-                <span style={{ fontSize: 13, color: "var(--app-text)" }}>{ticket.location}</span>
-              </Field>
-            )}
-
-            {/* Capture time */}
-            {ticket.captured_at && (
-              <Field label="זמן צילום">
-                {new Date(ticket.captured_at).toLocaleString("he-IL")}
-              </Field>
-            )}
-
-            {/* Submission time */}
-            {ticket.created_at && (
-              <Field label="זמן הגשה">
-                {new Date(ticket.created_at).toLocaleString("he-IL")}
-              </Field>
-            )}
-
-            {/* Description */}
-            {ticket.description && (
-              <Field label="תיאור">
-                <span style={{ fontSize: 13, color: "var(--app-text)" }}>{ticket.description}</span>
-              </Field>
-            )}
-
-            {/* Admin notes */}
-            <div style={{ borderTop: "1px solid var(--app-border)", margin: "6px 0" }} />
-            <Field label="הערות מנהל">
-              {editMode ? (
-                <textarea
-                  value={editNotes}
-                  onChange={e => setEditNotes(e.target.value)}
-                  rows={3}
-                  style={{ width: "100%", padding: "6px 8px", border: "1px solid var(--app-border)", borderRadius: 4, fontSize: 13, resize: "vertical", background: "var(--app-surface)", color: "var(--app-text)" }}
-                />
-              ) : ticket.admin_notes ? (
-                <span style={{ fontSize: 13 }}>{ticket.admin_notes}</span>
-              ) : (
-                <span style={{ color: "var(--app-text-muted)", fontSize: 13 }}>אין הערות</span>
-              )}
-            </Field>
-
-            {/* Admin action buttons */}
-            <div style={{ borderTop: "1px solid var(--app-border)", marginTop: 8, paddingTop: 8 }}>
-              {editMode ? (
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={handleSaveEdit}
-                    disabled={saving}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "none", background: "var(--app-accent)", color: "#fff", fontWeight: 600, cursor: "pointer" }}
-                  >
-                    {saving ? "שומר…" : "שמור"}
-                  </button>
-                  <button
-                    onClick={() => { setEditMode(false); setEditNotes(ticket.admin_notes || ""); setEditFine(ticket.fine_amount != null ? String(ticket.fine_amount) : ""); setEditPlate(ticket.license_plate || ""); }}
-                    disabled={saving}
-                    style={{ flex: 1, padding: "8px 0", borderRadius: 6, border: "1px solid var(--app-border)", background: "var(--app-surface-muted)", color: "var(--app-text)", cursor: "pointer" }}
-                  >
-                    ביטול
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  {ticket.status !== "approved" && (
-                    <button
-                      onClick={() => handleStatusChange("approved")}
-                      disabled={saving}
-                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "var(--app-success)", color: "#fff", fontWeight: 600, cursor: "pointer" }}
-                    >
-                      ✓ אשר
-                    </button>
-                  )}
-                  {ticket.status !== "rejected" && (
-                    <button
-                      onClick={() => handleStatusChange("rejected")}
-                      disabled={saving}
-                      style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "none", background: "var(--app-danger)", color: "#fff", fontWeight: 600, cursor: "pointer" }}
-                    >
-                      ✗ דחה
-                    </button>
-                  )}
-                  <button
-                    onClick={() => setEditMode(true)}
-                    disabled={saving}
-                    style={{ flex: 1, minWidth: 90, padding: "8px 0", borderRadius: 6, border: "1px solid var(--app-border)", background: "var(--app-surface-muted)", color: "var(--app-text)", cursor: "pointer" }}
-                  >
-                    ✎ ערוך
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Violation analysis */}
-        {ticket && ticket.violation_decision && (
-          <div style={{ flex: "1 1 240px", background: "var(--app-surface)", border: "1px solid var(--app-border)", borderRadius: 10, padding: "18px 22px" }}>
-            <h3 style={{ margin: "0 0 14px", fontSize: 16 }}>ניתוח הפרה אוטומטי</h3>
-            {(() => {
-              const dec = ticket.violation_decision!;
-              const conf = ticket.violation_confidence ?? 0;
-              const color = dec === "confirmed_violation" ? "var(--app-danger)"
-                : dec === "suspected_violation" ? "#d97706"
-                : dec === "no_violation" ? "var(--app-success)"
-                : "var(--app-text-muted)";
-              const badgeBg = dec === "confirmed_violation"
-                ? "rgba(185, 28, 28, 0.15)"
-                : dec === "suspected_violation"
-                  ? "rgba(217, 119, 6, 0.15)"
-                  : dec === "no_violation"
-                    ? "rgba(21, 128, 61, 0.15)"
-                    : "var(--app-surface-muted)";
-              const labelHe = dec === "confirmed_violation" ? "הפרה מאושרת"
-                : dec === "suspected_violation" ? "הפרה חשודה"
-                : dec === "no_violation" ? "ללא הפרה"
-                : "עדויות לא מספיקות";
-              return (
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10, flexWrap: "wrap" }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color, background: badgeBg, padding: "3px 12px", borderRadius: 12 }}>
-                      {labelHe}
+              {/* Plate */}
+              <Field label="מספר לוחית">
+                {editMode ? (
+                  <input
+                    value={editPlate}
+                    onChange={e => setEditPlate(e.target.value)}
+                    className="input-base font-mono text-lg tracking-widest"
+                  />
+                ) : plateOk ? (
+                  <div>
+                    <span className="font-bold text-xl tracking-[3px] font-mono">
+                      {ticket.license_plate}
                     </span>
-                    {ticket.violation_rule_id && (
-                      <span style={{ fontSize: 12, color: "var(--app-text-muted)", fontFamily: "monospace" }}>{ticket.violation_rule_id}</span>
+                    {ticket.plate_detection_reason && (
+                      <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700">
+                        ⚠ {ticket.plate_detection_reason}
+                      </div>
                     )}
-                    <span style={{ fontSize: 12, color: "var(--app-text-muted)" }}>ביטחון: {Math.round(conf * 100)}%</span>
                   </div>
-                  <div style={{ height: 6, background: "var(--app-surface-muted)", borderRadius: 3, marginBottom: 10 }}>
-                    <div style={{ height: "100%", width: `${Math.round(conf * 100)}%`, background: color, borderRadius: 3 }} />
+                ) : (
+                  <div>
+                    <span className="font-semibold text-red-600">לא זוהה</span>
+                    {ticket.plate_detection_reason && (
+                      <div className="text-theme-xs text-theme-text-muted mt-1">{ticket.plate_detection_reason}</div>
+                    )}
                   </div>
-                  {ticket.violation_description_he && (
-                    <div style={{ fontSize: 13, color: "var(--app-text)", marginBottom: 6, lineHeight: 1.5 }}>
-                      {ticket.violation_description_he}
+                )}
+              </Field>
+
+              <div className="border-t border-theme-card-border my-1.5" />
+
+              {/* Status */}
+              <Field label="סטטוס">
+                {statusBadge && <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>}
+              </Field>
+
+              {/* Violation zone */}
+              {ticket.violation_zone && (
+                <Field label="אזור עצירה">
+                  <span>{ticket.violation_zone}</span>
+                </Field>
+              )}
+
+              {/* Fine */}
+              <Field label="קנס">
+                {editMode ? (
+                  <div className="w-32">
+                    <input
+                      type="number"
+                      value={editFine}
+                      onChange={e => setEditFine(e.target.value)}
+                      placeholder="סכום ₪"
+                      className="input-base"
+                    />
+                  </div>
+                ) : ticket.fine_amount != null ? (
+                  <span className="font-semibold text-red-600">₪{ticket.fine_amount}</span>
+                ) : (
+                  <span className="text-theme-text-muted text-theme-sm">לא נקבע</span>
+                )}
+              </Field>
+
+              <div className="border-t border-theme-card-border my-1.5" />
+
+              {/* Location */}
+              {ticket.location && (
+                <Field label="מיקום">
+                  <span className="text-theme-sm">{ticket.location}</span>
+                </Field>
+              )}
+
+              {/* Capture time */}
+              {ticket.captured_at && (
+                <Field label="זמן צילום">
+                  {new Date(ticket.captured_at).toLocaleString("he-IL")}
+                </Field>
+              )}
+
+              {/* Submission time */}
+              {ticket.created_at && (
+                <Field label="זמן הגשה">
+                  {new Date(ticket.created_at).toLocaleString("he-IL")}
+                </Field>
+              )}
+
+              {/* Description */}
+              {ticket.description && (
+                <Field label="תיאור">
+                  <span className="text-theme-sm">{ticket.description}</span>
+                </Field>
+              )}
+
+              {/* Admin notes */}
+              <div className="border-t border-theme-card-border my-1.5" />
+              <Field label="הערות מנהל">
+                {editMode ? (
+                  <textarea
+                    value={editNotes}
+                    onChange={e => setEditNotes(e.target.value)}
+                    rows={3}
+                    className="input-base min-h-[72px] resize-y"
+                  />
+                ) : ticket.admin_notes ? (
+                  <span className="text-theme-sm">{ticket.admin_notes}</span>
+                ) : (
+                  <span className="text-theme-text-muted text-theme-sm">אין הערות</span>
+                )}
+              </Field>
+
+              {/* Admin action buttons */}
+              <div className="border-t border-theme-card-border mt-2 pt-2">
+                {editMode ? (
+                  <div className="flex gap-2">
+                    <button onClick={handleSaveEdit} disabled={saving} className="btn-primary flex-1">
+                      {saving ? "שומר…" : "שמור"}
+                    </button>
+                    <button
+                      onClick={() => { setEditMode(false); setEditNotes(ticket.admin_notes || ""); setEditFine(ticket.fine_amount != null ? String(ticket.fine_amount) : ""); setEditPlate(ticket.license_plate || ""); }}
+                      disabled={saving}
+                      className="btn-cancel flex-1"
+                    >
+                      ביטול
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2 flex-wrap">
+                    {ticket.status !== "approved" && (
+                      <button onClick={() => handleStatusChange("approved")} disabled={saving} className="btn-success grow min-w-[90px]">
+                        <Check className="w-4 h-4" />
+                        <span>אשר</span>
+                      </button>
+                    )}
+                    {ticket.status !== "rejected" && (
+                      <button onClick={() => handleStatusChange("rejected")} disabled={saving} className="btn-danger grow min-w-[90px]">
+                        <X className="w-4 h-4" />
+                        <span>דחה</span>
+                      </button>
+                    )}
+                    <button onClick={() => setEditMode(true)} disabled={saving} className="btn-cancel grow min-w-[90px]">
+                      <Pencil className="w-4 h-4" />
+                      <span>ערוך</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Violation analysis */}
+          {ticket && ticket.violation_decision && (
+            <div className="app-card grow basis-[240px] p-4">
+              <h3 className="text-base font-semibold mb-3.5">ניתוח הפרה אוטומטי</h3>
+              {(() => {
+                const dec = ticket.violation_decision!;
+                const conf = ticket.violation_confidence ?? 0;
+                const pct = Math.round(conf * 100);
+                const m = DECISION_STYLE[dec] ?? { badge: "badge-neutral", bar: "bg-slate-400", label: "עדויות לא מספיקות" };
+                return (
+                  <div>
+                    <div className="flex items-center gap-3 mb-2.5 flex-wrap">
+                      <span className={`badge ${m.badge}`}>{m.label}</span>
+                      {ticket.violation_rule_id && (
+                        <span className="text-theme-xs text-theme-text-muted font-mono">{ticket.violation_rule_id}</span>
+                      )}
+                      <span className="text-theme-xs text-theme-text-muted">ביטחון: {pct}%</span>
                     </div>
-                  )}
-                  {ticket.violation_description_en && (
-                    <div style={{ fontSize: 12, color: "var(--app-text-muted)", fontStyle: "italic" }}>
-                      {ticket.violation_description_en}
+                    <div className="h-1.5 bg-slate-200 rounded mb-2.5">
+                      <div className={`h-full rounded ${m.bar}`} style={{ width: `${pct}%` }} />
                     </div>
-                  )}
-                  <div style={{ marginTop: 10, fontSize: 11, color: "var(--app-text-muted)" }}>
-                    * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
+                    {ticket.violation_description_he && (
+                      <div className="text-theme-sm mb-1.5 leading-relaxed">
+                        {ticket.violation_description_he}
+                      </div>
+                    )}
+                    {ticket.violation_description_en && (
+                      <div className="text-theme-xs text-theme-text-muted italic">
+                        {ticket.violation_description_en}
+                      </div>
+                    )}
+                    <div className="mt-2.5 text-[11px] text-theme-text-muted">
+                      * ניתוח אוטומטי — נדרש אישור אנושי לפני הוצאת דוח
+                    </div>
                   </div>
-                </div>
-              );
-            })()}
-          </div>
-        )}
+                );
+              })()}
+            </div>
+          )}
 
         </div>{/* end right column */}
       </div>

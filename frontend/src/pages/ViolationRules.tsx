@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { ShieldAlert } from 'lucide-react'
 import { violationRulesApi } from '../api'
 import { t } from '../i18n'
 
@@ -66,110 +67,111 @@ export default function ViolationRules() {
   const activeCount = rules.filter(r => r.is_active).length
 
   return (
-    <div style={{ padding: '1.5rem', fontFamily: 'system-ui', maxWidth: 960, color: 'var(--app-text)' }}>
-      <h1>כללי הפרת חניה / Violation Rules</h1>
-      <p style={{ color: 'var(--app-text-muted)', marginBottom: '1.5rem' }}>
+    <div className="page-container">
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <ShieldAlert className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <h1 className="page-header-title">כללי הפרת חניה / Violation Rules</h1>
+      </div>
+
+      <p className="text-theme-text-muted">
         הפעל או השבת כללים לפי הצורך. כללים מושבתים לא ייבדקו בניתוח הוידאו.
         ניתן להגדיר לכל מצלמה אילו כללים פעילים עבורה בדף המצלמות.
       </p>
 
-      {loading ? <p>{t('loading')}</p> : (
+      {loading ? (
+        <p className="text-theme-text-muted">{t('loading')}</p>
+      ) : (
         <>
-          <p style={{ fontSize: '0.85rem', color: 'var(--app-text-muted)', marginBottom: '1rem' }}>
+          <p className="text-theme-sm text-theme-text-muted">
             {activeCount} מתוך {rules.length} כללים פעילים
           </p>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-            <thead>
-              <tr style={{ background: 'var(--app-surface-muted)', textAlign: 'right' }}>
-                <th style={thStyle}>מזהה</th>
-                <th style={thStyle}>שם הכלל</th>
-                <th style={thStyle}>בסיס חוקי</th>
-                <th style={thStyle}>קנס (₪)</th>
-                <th style={thStyle}>פעיל</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map(rule => (
-                <tr key={rule.rule_id} style={{
-                  borderBottom: '1px solid var(--app-border)',
-                  opacity: rule.is_active ? 1 : 0.5,
-                  background: rule.is_active ? 'var(--app-surface)' : 'var(--app-surface-muted)',
-                }}>
-                  <td style={{ ...tdStyle, fontFamily: 'monospace', fontWeight: 600, color: 'var(--app-text)', whiteSpace: 'nowrap' }}>
-                    {rule.rule_id}
-                  </td>
-                  <td style={tdStyle}>
-                    <div style={{ fontWeight: 500 }}>{rule.title_he}</div>
-                    <div style={{ color: 'var(--app-text-muted)', fontSize: '0.8rem' }}>{rule.title_en}</div>
-                    {rule.description_he && (
-                      <div style={{ color: 'var(--app-text-muted)', fontSize: '0.78rem', marginTop: 2 }}>{rule.description_he}</div>
-                    )}
-                  </td>
-                  <td style={{ ...tdStyle, fontSize: '0.8rem', color: 'var(--app-text-muted)', maxWidth: 200 }}>
-                    {rule.legal_basis_he && <div>{rule.legal_basis_he}</div>}
-                    {rule.legal_basis_en && <div style={{ color: 'var(--app-text-muted)' }}>{rule.legal_basis_en}</div>}
-                  </td>
-                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>
-                    {editing === rule.rule_id ? (
-                      <span style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                        <input
-                          type="number"
-                          value={editFine}
-                          onChange={e => setEditFine(e.target.value)}
-                          style={{ width: 70, padding: '2px 4px' }}
-                          min={0}
-                        />
-                        <button
-                          onClick={() => saveFine(rule)}
-                          disabled={saving === rule.rule_id}
-                          style={{ padding: '2px 8px', fontSize: '0.8rem' }}
-                        >✓</button>
-                        <button
-                          onClick={() => setEditing(null)}
-                          style={{ padding: '2px 6px', fontSize: '0.8rem' }}
-                        >✕</button>
-                      </span>
-                    ) : (
-                      <span
-                        onClick={() => { setEditing(rule.rule_id); setEditFine(String(rule.fine_ils ?? '')) }}
-                        style={{ cursor: 'pointer', borderBottom: '1px dashed var(--app-text-muted)', padding: '0 2px' }}
-                        title="לחץ לעריכה"
-                      >
-                        {rule.fine_ils != null ? `₪${rule.fine_ils}` : '—'}
-                      </span>
-                    )}
-                  </td>
-                  <td style={{ ...tdStyle, textAlign: 'center' }}>
-                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={rule.is_active}
-                        disabled={saving === rule.rule_id}
-                        onChange={() => toggleActive(rule)}
-                        style={{ width: 18, height: 18, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: '0.8rem', color: rule.is_active ? 'var(--app-success)' : 'var(--app-text-muted)' }}>
-                        {rule.is_active ? 'פעיל' : 'כבוי'}
-                      </span>
-                    </label>
-                  </td>
+          <div className="app-card p-4 overflow-x-auto">
+            <table className="w-full border-collapse text-theme-sm">
+              <thead>
+                <tr className="text-right">
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">מזהה</th>
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">שם הכלל</th>
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">בסיס חוקי</th>
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">קנס (₪)</th>
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">פעיל</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {rules.map(rule => (
+                  <tr
+                    key={rule.rule_id}
+                    className={`border-b border-theme-card-border ${rule.is_active ? '' : 'opacity-50'}`}
+                  >
+                    <td className="px-3 py-2.5 align-top font-mono font-semibold text-theme-text-primary whitespace-nowrap">
+                      {rule.rule_id}
+                    </td>
+                    <td className="px-3 py-2.5 align-top">
+                      <div className="font-medium">{rule.title_he}</div>
+                      <div className="text-theme-xs text-theme-text-muted">{rule.title_en}</div>
+                      {rule.description_he && (
+                        <div className="text-theme-xs text-theme-text-muted mt-0.5">{rule.description_he}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-theme-xs text-theme-text-muted max-w-[200px]">
+                      {rule.legal_basis_he && <div>{rule.legal_basis_he}</div>}
+                      {rule.legal_basis_en && <div className="text-theme-text-muted">{rule.legal_basis_en}</div>}
+                    </td>
+                    <td className="px-3 py-2.5 align-top whitespace-nowrap">
+                      {editing === rule.rule_id ? (
+                        <span className="flex gap-1 items-center">
+                          <div className="w-20">
+                            <input
+                              type="number"
+                              value={editFine}
+                              onChange={e => setEditFine(e.target.value)}
+                              className="input-base"
+                              min={0}
+                            />
+                          </div>
+                          <button
+                            onClick={() => saveFine(rule)}
+                            disabled={saving === rule.rule_id}
+                            className="inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold bg-theme-accent text-white hover:bg-theme-accent-hover transition-colors disabled:opacity-50"
+                          >✓</button>
+                          <button
+                            onClick={() => setEditing(null)}
+                            className="inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold text-theme-text-primary hover:bg-black/5 transition-colors"
+                          >✕</button>
+                        </span>
+                      ) : (
+                        <span
+                          onClick={() => { setEditing(rule.rule_id); setEditFine(String(rule.fine_ils ?? '')) }}
+                          className="cursor-pointer border-b border-dashed border-theme-card-border px-0.5"
+                          title="לחץ לעריכה"
+                        >
+                          {rule.fine_ils != null ? `₪${rule.fine_ils}` : '—'}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-center">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={rule.is_active}
+                          disabled={saving === rule.rule_id}
+                          onChange={() => toggleActive(rule)}
+                          className="w-[18px] h-[18px] cursor-pointer"
+                        />
+                        <span className={`badge ${rule.is_active ? 'badge-success' : 'badge-neutral'}`}>
+                          {rule.is_active ? 'פעיל' : 'כבוי'}
+                        </span>
+                      </label>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
     </div>
   )
-}
-
-const thStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderBottom: '2px solid var(--app-border)',
-  fontWeight: 600,
-}
-
-const tdStyle: React.CSSProperties = {
-  padding: '10px 12px',
-  verticalAlign: 'top',
 }

@@ -1,8 +1,8 @@
-
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import { LayoutDashboard, RefreshCw } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { uploadApi } from '../api'
@@ -21,43 +21,23 @@ interface UploadJob {
   error_message?: string
 }
 
-const STATUS_STYLE: Record<string, { color: string; bg: string; label: string }> = {
-  queued:     { color: '#92400e', bg: '#fef3c7', label: 'ממתין בתור' },
-  processing: { color: '#1e40af', bg: '#dbeafe', label: 'מעובד' },
-  completed:  { color: '#065f46', bg: '#d1fae5', label: 'הושלם' },
-  failed:     { color: '#991b1b', bg: '#fee2e2', label: 'נכשל' },
+const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
+  queued:     { cls: 'badge-warning', label: 'ממתין בתור' },
+  processing: { cls: 'badge-info',    label: 'מעובד' },
+  completed:  { cls: 'badge-success', label: 'הושלם' },
+  failed:     { cls: 'badge-danger',  label: 'נכשל' },
 }
 
 function StatusCell({ value }: { value: string }) {
-  const s = STATUS_STYLE[value] ?? { color: '#374151', bg: '#f3f4f6', label: value }
-  return (
-    <span style={{
-      display: 'inline-block',
-      padding: '3px 10px',
-      borderRadius: 999,
-      background: s.bg,
-      color: s.color,
-      fontWeight: 600,
-      fontSize: '0.82rem',
-    }}>
-      {s.label}
-    </span>
-  )
+  const s = STATUS_BADGE[value] ?? { cls: 'badge-neutral', label: value }
+  return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
   return (
-    <div style={{
-      background: 'var(--app-surface)',
-      border: '1px solid var(--app-border)',
-      borderRadius: 12,
-      padding: '1rem 1.25rem',
-      minWidth: 110,
-      flex: 1,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-    }}>
-      <div style={{ fontSize: '1.75rem', fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: '0.85rem', color: 'var(--app-text-muted)', marginTop: 2 }}>{label}</div>
+    <div className="app-card flex-1 min-w-[110px] px-5 py-4">
+      <div className={`text-3xl font-bold ${accent}`}>{value}</div>
+      <div className="text-sm text-theme-text-muted mt-0.5">{label}</div>
     </div>
   )
 }
@@ -128,10 +108,10 @@ export default function Home() {
         flex: 1.5,
         cellRenderer: (p: ICellRendererParams<UploadJob>) =>
           p.value
-            ? <span title={p.value} style={{ color: 'var(--app-danger)', fontSize: '0.82rem' }}>
+            ? <span title={p.value} className="text-red-600 text-theme-xs">
                 {p.value.length > 70 ? `${p.value.slice(0, 70)}…` : p.value}
               </span>
-            : <span style={{ color: 'var(--app-text-muted)' }}>—</span>,
+            : <span className="text-theme-text-muted">—</span>,
       },
       {
         headerName: he.home.openTicket,
@@ -140,17 +120,7 @@ export default function Home() {
           p.data?.ticket_id ? (
             <button
               onClick={() => navigate(`/tickets/${p.data!.ticket_id}`)}
-              style={{
-                padding: '4px 12px',
-                borderRadius: 6,
-                border: '1px solid var(--app-border)',
-                background: 'var(--app-surface-muted)',
-                color: 'var(--app-accent)',
-                cursor: 'pointer',
-                fontSize: '0.82rem',
-                fontWeight: 600,
-                fontFamily: 'inherit',
-              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold text-theme-link hover:bg-black/5 transition-colors"
             >
               {he.home.openTicket}
             </button>
@@ -161,65 +131,51 @@ export default function Home() {
   }, [fsVer, navigate])
 
   return (
-    <div
-      style={{
-        padding: '1.5rem 2rem',
-        width: '100%',
-        boxSizing: 'border-box',
-        color: 'var(--app-text)',
-        display: 'flex',
-        flexDirection: 'column',
-        minHeight: 0,
-        flex: 1,
-      }}
-    >
-      <div style={{ marginBottom: '1.25rem' }}>
-        <h1 style={{ margin: '0 0 4px', fontSize: '1.5rem', color: 'var(--app-text)' }}>{he.home.title}</h1>
-        <p style={{ margin: 0, color: 'var(--app-text-muted)', fontSize: '0.95rem' }}>{he.home.subtitle}</p>
+    <div className="page-container">
+      {/* Page header */}
+      <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
+        <span className="page-header-icon">
+          <LayoutDashboard className="w-5 h-5" strokeWidth={1.5} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <h1 className="page-header-title">{he.home.title}</h1>
+          <p className="page-header-label opacity-90">{he.home.subtitle}</p>
+        </div>
       </div>
 
       {/* Stat cards */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <StatCard label="סה״כ" value={counts.total} color="#1e40af" />
-        <StatCard label="ממתינים" value={counts.pending} color="#d97706" />
-        <StatCard label="הושלמו" value={counts.completed} color="#065f46" />
-        <StatCard label="נכשלו" value={counts.failed} color="#dc2626" />
+      <div className="flex flex-wrap gap-3">
+        <StatCard label="סה״כ"   value={counts.total}     accent="text-blue-700" />
+        <StatCard label="ממתינים" value={counts.pending}   accent="text-amber-600" />
+        <StatCard label="הושלמו"  value={counts.completed} accent="text-green-700" />
+        <StatCard label="נכשלו"   value={counts.failed}    accent="text-red-600" />
       </div>
 
       {/* Queue grid */}
-      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem', flexWrap: 'wrap', gap: 8 }}>
-          <h2 style={{ margin: 0, fontSize: '1rem', color: 'var(--app-text)' }}>{he.home.queueTitle}</h2>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              type="search"
-              placeholder="חיפוש..."
-              value={quickFilter}
-              onChange={(e) => setQuickFilter(e.target.value)}
-              style={{ padding: '6px 10px', borderRadius: 8, border: '1.5px solid var(--app-border)', background: 'var(--app-surface)', color: 'var(--app-text)', fontSize: '0.88rem', width: 180, direction: 'rtl' }}
-            />
-            <button
-              onClick={() => { setRefreshing(true); fetchJobs() }}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 8,
-                border: 'none',
-                background: 'var(--app-accent)',
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-                fontFamily: 'inherit',
-              }}
-            >
-              {refreshing ? he.home.refreshing : he.home.refresh}
+      <div className="flex flex-col flex-1 min-h-0 gap-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <h2 className="text-base font-semibold text-theme-text-primary">{he.home.queueTitle}</h2>
+          <div className="flex items-center gap-2">
+            <div className="w-44">
+              <input
+                type="search"
+                placeholder="חיפוש..."
+                value={quickFilter}
+                onChange={(e) => setQuickFilter(e.target.value)}
+                className="input-base"
+              />
+            </div>
+            <button onClick={() => { setRefreshing(true); fetchJobs() }} className="btn-primary">
+              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? he.home.refreshing : he.home.refresh}</span>
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ padding: '2rem', color: 'var(--app-text-muted)', textAlign: 'center' }}>{he.home.loading}</div>
+          <div className="flex items-center justify-center py-12 text-theme-text-muted">{he.home.loading}</div>
         ) : (
-          <div style={{ flex: 1, minHeight: 0, borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.08)', marginTop: '0.25rem' }}>
+          <div className="grid-card">
             <AgGridReact<UploadJob>
               theme={agTheme}
               rowData={jobs}
