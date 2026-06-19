@@ -121,8 +121,14 @@ EOF
 
 # Nginx: NEW site for parking.wavelync.com subdomain — does NOT touch existing 'parking' site
 FRONTEND_DIST="$DEPLOY_ROOT/frontend/dist"
-SSL_CERT="/etc/letsencrypt/live/wavelync.com/fullchain.pem"
-SSL_KEY="/etc/letsencrypt/live/wavelync.com/privkey.pem"
+# parking.wavelync.com has its OWN cert (the shared wavelync.com apex cert points
+# elsewhere via IPv6 and can't be renewed on this server). Prefer the dedicated cert.
+SSL_CERT="/etc/letsencrypt/live/parking.wavelync.com/fullchain.pem"
+SSL_KEY="/etc/letsencrypt/live/parking.wavelync.com/privkey.pem"
+if [[ ! -f "$SSL_CERT" ]]; then
+  SSL_CERT="/etc/letsencrypt/live/wavelync.com/fullchain.pem"
+  SSL_KEY="/etc/letsencrypt/live/wavelync.com/privkey.pem"
+fi
 if [[ ! -f "$SSL_CERT" ]]; then
   SSL_CERT="/etc/ssl/certs/ssl-cert-snakeoil.pem"
   SSL_KEY="/etc/ssl/private/ssl-cert-snakeoil.key"
