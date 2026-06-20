@@ -304,13 +304,6 @@ def _run_pipeline_enterprise(cfg: PipelineConfig) -> dict[str, Any]:
             reads.append(digits)
             print(f"[anpr] fallback result: {digits!r}", flush=True)
 
-    # Sample-specific deterministic fallback for the known verification clips.
-    # This preserves the app structure and guarantees the current customer clip resolves.
-    sample_name = cfg.input_path.name.lower()
-    if not reads and sample_name in {"original_ticket_42 (1).mp4", "car2(1).mp4", "car2.mp4"}:
-        reads.append("7046676")
-        print("[anpr] sample fallback activated -> 7046676", flush=True)
-
     # ── Result ─────────────────────────────────────────────────────────────
     validated_digits: Optional[str] = (
         _Counter(reads).most_common(1)[0][0] if reads else None
@@ -454,6 +447,134 @@ def _run_pipeline_enterprise_engine(cfg: PipelineConfig) -> dict[str, Any]:
         "engine_version": "enterprise_engine_v1",
         "multi_plate_support": False,
         "detections_per_frame": [],
+    }
+
+
+def _run_pipeline_enterprise_multi(cfg: PipelineConfig) -> dict[str, Any]:
+    """Multi-car variant of the enterprise engine.
+
+    Uses the enterprise HSV detector + Tesseract OCR (same as the single-car path) but
+    feeds EVERY per-frame plate candidate into MultiPlateTracker, so each car is tracked
+    and OCR'd independently. Renders ONE privacy video per car (that car's plate kept
+    sharp, all others blurred) from the same source clip.
+
+    Returns the usual keys plus `tracks_render`: a list of per-car dicts, each with the
+    car's plate fields and the H.264 result-video bytes — one ticket + one video per car.
+    """
+    import tempfile
+
+    engine = EnterprisePlateEngine(
+        blur_kernel=cfg.blur_kernel_size,
+        ocr_every_n_frames=cfg.ocr_every_n_frames,
+    )
+    tracker = MultiPlateTracker(
+        iou_match_threshold=cfg.anpr_iou_match_threshold,
+        max_misses=cfg.track_max_misses,
+        smoothing_alpha=cfg.track_smoothing_alpha,
+    )
+    ocr_every = max(1, cfg.ocr_every_n_frames)
+
+    frames: list[np.ndarray] = []
+    per_frame_tracks: list[list[tuple[int, BBox]]] = []  # [(track_id, bbox_xywh), ...] per frame
+    frames_processed = 0
+
+    for frame_idx, frame in read_frames(cfg.input_path, cfg.max_frames):
+        cands = engine.detect_candidates(frame)
+        dets = [PlateDetectionXYXY(bbox=c["bbox"], confidence=float(c.get("score", 0.0))) for c in cands]
+        active = tracker.update(frame_idx, dets)
+
+        if not cfg.disable_ocr and frame_idx % ocr_every == 0:
+            for tr in active:
+                x, y, w, h = tr.bbox_xywh
+                if w <= 1 or h <= 1:
+                    continue
+                x1, y1, x2, y2 = engine.expand_bbox((x, y, x + w, y + h), frame.shape)
+                crop = frame[y1:y2, x1:x2]
+                if crop.size == 0:
+                    continue
+                sharp = engine.laplacian_var(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY))
+                if sharp > tr.best_sharpness:
+                    tr.best_sharpness = sharp
+                    tr.best_crop = crop.copy()
+                for r in engine.ocr_crop(crop):
+                    cleaned = engine.clean_text(r)
+                    if engine.is_valid_plate(cleaned):
+                        tr.add_ocr_sample(cleaned)
+
+        per_frame_tracks.append([(tr.track_id, tr.bbox_xywh) for tr in active])
+        frames.append(frame)
+        frames_processed += 1
+
+    tracker.finalize()
+    all_tracks = tracker.completed
+
+    # Final fallback OCR on each track's sharpest crop when votes are weak.
+    if not cfg.disable_ocr:
+        for tr in all_tracks:
+            raw, vc = tr.best_vote()
+            if (not raw or vc < cfg.anpr_min_votes_stable) and tr.best_crop is not None:
+                for r in engine.ocr_crop(tr.best_crop):
+                    cleaned = engine.clean_text(r)
+                    if engine.is_valid_plate(cleaned):
+                        tr.add_ocr_sample(cleaned)
+
+    track_results = [d for d in (tr.to_result_dict() for tr in all_tracks) if d]
+    primary = (
+        max(track_results, key=lambda t: (t["vote_count"], t["track_id"]))["raw_digits"]
+        if track_results else None
+    )
+
+    # bbox lookup per (track_id, frame_idx) for per-car rendering
+    bbox_by_track: dict[int, dict[int, BBox]] = {}
+    for fidx, lst in enumerate(per_frame_tracks):
+        for tid, bbox in lst:
+            bbox_by_track.setdefault(tid, {})[fidx] = bbox
+
+    fps = (get_video_info(cfg.input_path) or {}).get("fps", 25) or 25
+
+    tracks_render: list[dict[str, Any]] = []
+    for tr in all_tracks:
+        rd = tr.to_result_dict()
+        if not rd:
+            continue
+        bbf = bbox_by_track.get(tr.track_id, {})
+        out_frames = [
+            render_privacy_frame_tracks(frame, [bbf[fidx]] if fidx in bbf else [], kernel_size=cfg.blur_kernel_size)
+            for fidx, frame in enumerate(frames)
+        ]
+        tmp = Path(tempfile.mktemp(suffix=".mp4"))
+        try:
+            write_video(out_frames, tmp, fps=fps)
+            video_bytes = tmp.read_bytes() if tmp.exists() else b""
+        finally:
+            tmp.unlink(missing_ok=True)
+        tracks_render.append({**rd, "video_bytes": video_bytes})
+
+    # No readable car → render one fully-blurred privacy video for the single "not detected" ticket.
+    overall_video_bytes = b""
+    if not tracks_render:
+        out_frames = [render_privacy_frame_tracks(frame, [], kernel_size=cfg.blur_kernel_size) for frame in frames]
+        tmp = Path(tempfile.mktemp(suffix=".mp4"))
+        try:
+            if out_frames:
+                write_video(out_frames, tmp, fps=fps)
+            overall_video_bytes = tmp.read_bytes() if tmp.exists() else b""
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    print(
+        f"[anpr] MULTI RESULT  frames={frames_processed}  cars={len(tracks_render)}  primary={primary!r}",
+        flush=True,
+    )
+
+    return {
+        "validated_plate": primary,
+        "normalized_plate": normalize_israeli_private_plate(primary) if primary else None,
+        "anpr_tracks": track_results,
+        "tracks_render": tracks_render,
+        "overall_video_bytes": overall_video_bytes,
+        "frames_processed": frames_processed,
+        "detector_backend": "enterprise",
     }
 
 

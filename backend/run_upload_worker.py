@@ -28,7 +28,6 @@ from app.repositories import TicketRepository, UploadJobRepository
 from app.services.video_processor import (
     process_video,
     process_video_fast_hsv,
-    process_video_with_violation_pipeline,
     extract_license_plate,
     extract_video_params,
     extract_frames,
@@ -226,192 +225,98 @@ def process_one_job() -> bool:
             blur_size += 1
         blur_kw = {'blur_strength': blur_size}
 
-        # --- Step 1: process video (blur) + OCR via enterprise pipeline ---
+        # --- Step 1: multi-car detect + per-car OCR + per-car privacy videos ---
         t0 = time.monotonic()
-        plate_from_job = job.license_plate
-        skip_ocr = bool(plate_from_job and plate_from_job != "11111")
-        enterprise_plate: str | None = None
-        anpr_tracks: list = []
-        # When plate_pipeline succeeds, do not run extract_license_plate (different detector/OCR).
-        used_enterprise_pipeline = False
+        _backend_root = Path(__file__).resolve().parent
+        _plate_model = _backend_root / "models" / "license_plate_detector.pt"
+        _detector_backend = "enterprise"
+        _ocr_every = 5
+        _det_zoom = 1.60
+        _det_roi_y0 = 0.26
+        _max_frames = 150
+        _min_votes_stable = 1
+        if cfg:
+            _db_backend = str(getattr(cfg, "anpr_detector_backend", "enterprise") or "enterprise").lower()
+            if _db_backend in {"hsv", "yolo", "enterprise"}:
+                _detector_backend = _db_backend
+            _ocr_every = max(3, min(12, int(getattr(cfg, "anpr_ocr_every_n_frames", 5) or 5)))
+            _det_zoom = max(1.0, min(4.0, float(getattr(cfg, "enterprise_detection_zoom", 1.75) or 1.75)))
+            _det_roi_y0 = max(0.0, min(0.85, float(getattr(cfg, "enterprise_detection_roi_y_start", 0.26) or 0.26)))
+        _plate_yolo_path = str(_plate_model) if _plate_model.is_file() else "models/license_plate_detector.pt"
 
+        cars: list = []
+        anpr_tracks: list = []
+        overall_blurred: bytes = b""
+        import tempfile as _tf
         try:
-            import tempfile as _tf
-            from app.plate_pipeline.pipeline import run_pipeline
+            from app.plate_pipeline.pipeline import _run_pipeline_enterprise_multi
             from app.plate_pipeline.config import PipelineConfig
 
-            _backend_root = Path(__file__).resolve().parent
-            _plate_model = _backend_root / "models" / "license_plate_detector.pt"
-            _detector_backend = "enterprise"
-            _ocr_every = 5  # speed profile: OCR every 5th frame (was 2)
-            _det_zoom = 1.60  # lighter zoom reduces per-frame CPU
-            _det_roi_y0 = 0.26
-            _max_frames = 150  # cap per-job processing time on CPU
-            _min_votes_stable = 1  # reduce EasyOCR fallback invocations
-            if cfg:
-                _db_backend = str(getattr(cfg, "anpr_detector_backend", "enterprise") or "enterprise").lower()
-                if _db_backend in {"hsv", "yolo", "enterprise"}:
-                    _detector_backend = _db_backend
-                _ocr_every = max(3, min(12, int(getattr(cfg, "anpr_ocr_every_n_frames", 5) or 5)))
-                _det_zoom = max(1.0, min(4.0, float(getattr(cfg, "enterprise_detection_zoom", 1.75) or 1.75)))
-                _det_roi_y0 = max(0.0, min(0.85, float(getattr(cfg, "enterprise_detection_roi_y_start", 0.26) or 0.26)))
-            _plate_yolo_path = str(_plate_model) if _plate_model.is_file() else "models/license_plate_detector.pt"
             print(
-                f"[Job {job.id}] ENGINE: plate_pipeline  ocr={'skip' if skip_ocr else 'enabled'}  "
-                f"detector={_detector_backend}  ocr_every={_ocr_every}  "
-                f"det_zoom={_det_zoom:.2f}  det_roi_y0={_det_roi_y0:.2f}  "
-                f"max_frames={_max_frames}  min_votes={_min_votes_stable}",
+                f"[Job {job.id}] ENGINE: multi-car  detector={_detector_backend}  "
+                f"ocr_every={_ocr_every}  max_frames={_max_frames}",
                 flush=True,
             )
-
             with _tf.NamedTemporaryFile(suffix=".mp4", delete=False) as _tmp_in:
                 _tmp_in.write(video_bytes)
                 _in_path = Path(_tmp_in.name)
-            _out_path = Path(_tf.mktemp(suffix=".mp4"))
-
             _pipe_cfg = PipelineConfig(
                 input_path=_in_path,
-                output_path=_out_path,
+                output_path=Path(_tf.mktemp(suffix=".mp4")),
                 blur_kernel_size=blur_size,
                 max_frames=_max_frames,
                 output_json=False,
                 detector_backend=_detector_backend,
                 plate_yolo_model_path=_plate_yolo_path,
-                disable_ocr=skip_ocr,
+                disable_ocr=False,
                 ocr_every_n_frames=_ocr_every,
                 enterprise_detection_zoom=_det_zoom,
                 enterprise_detection_roi_y_start=_det_roi_y0,
                 anpr_min_votes_stable=_min_votes_stable,
             )
-            _result = run_pipeline(_pipe_cfg)
+            _result = _run_pipeline_enterprise_multi(_pipe_cfg)
             _in_path.unlink(missing_ok=True)
-
-            if _out_path.exists() and _out_path.stat().st_size > 1024:
-                blurred_bytes = _out_path.read_bytes()
-                _out_path.unlink(missing_ok=True)
-            else:
-                _out_path.unlink(missing_ok=True)
-                raise RuntimeError("Enterprise pipeline produced no output video")
-
-            enterprise_plate = _result.get("validated_plate") or None
+            cars = _result.get("tracks_render") or []
             anpr_tracks = _result.get("anpr_tracks") or []
-            if enterprise_plate:
-                print(f"[Job {job.id}] Enterprise pipeline plate: {enterprise_plate}", flush=True)
-                skip_ocr = True  # already have plate from enterprise pipeline
-            if anpr_tracks:
-                print(f"[Job {job.id}] ANPR tracks: {len(anpr_tracks)}", flush=True)
-
-            used_enterprise_pipeline = True
-
-            # Extract preview frame from processed video
-            try:
-                _frames = extract_frames(blurred_bytes, count=1)
-                ticket_jpeg = _frames[0][0] if _frames else b""
-            except Exception:
-                ticket_jpeg = b""
-
-            print(f"[Job {job.id}] Enterprise pipeline done in {time.monotonic()-t0:.1f}s", flush=True)
-
+            overall_blurred = _result.get("overall_video_bytes") or b""
+            print(f"[Job {job.id}] multi-car: {len(cars)} car(s) in {time.monotonic()-t0:.1f}s", flush=True)
         except Exception as _pipe_err:
-            print(f"[Job {job.id}] Enterprise pipeline failed ({_pipe_err}), falling back", flush=True)
-            if use_fast:
-                blurred_bytes, ticket_jpeg = process_video_fast_hsv(video_bytes, **blur_kw)
-            else:
-                blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
-            print(f"[Job {job.id}] Fallback video processed in {time.monotonic()-t0:.1f}s", flush=True)
+            print(f"[Job {job.id}] Multi-car pipeline failed ({_pipe_err}), falling back to single blur", flush=True)
+            traceback.print_exc()
+            try:
+                if use_fast:
+                    overall_blurred, _ = process_video_fast_hsv(video_bytes, **blur_kw)
+                else:
+                    overall_blurred, _ = process_video(video_bytes, **blur_kw)
+                overall_blurred = _ensure_h264(overall_blurred, job.id)
+            except Exception as _fb:
+                print(f"[Job {job.id}] Fallback blur failed: {_fb}", flush=True)
+                overall_blurred = b""
 
-        # Ensure the processed video is browser-playable H.264 (OpenCV writes mp4v, which browsers can't decode)
-        blurred_bytes = _ensure_h264(blurred_bytes, job.id)
-
-        # --- Step 2: OCR + violation analysis in parallel ---
-        if enterprise_plate:
-            plate_from_job = enterprise_plate
-
-        # Look up camera-specific rules and parking zones before dispatching parallel tasks
+        # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
         camera_allowed_rules: list | None = None
         camera_violation_zone: str | None = job.violation_zone
         if job.camera_id and job.camera_id not in ("", "mobile"):
             try:
-                from app.models import Camera as CameraModel, ParkingZone as ParkingZoneModel
-                cam_id = int(job.camera_id)
-                cam = db.query(CameraModel).filter(CameraModel.id == cam_id).first()
+                from app.models import Camera as CameraModel
+                cam = db.query(CameraModel).filter(CameraModel.id == int(job.camera_id)).first()
                 if cam:
                     if cam.violation_rules:
                         camera_allowed_rules = cam.violation_rules
                     if cam.violation_zone and not camera_violation_zone:
                         camera_violation_zone = cam.violation_zone
-                    # Use parking zones assigned to this camera (multi-zone support)
-                    if cam.zones:
+                    if getattr(cam, "zones", None):
                         zone_codes = [z.zone_code for z in cam.zones if z.is_active]
-                        if zone_codes and not camera_violation_zone:
-                            # Pass the first zone as the primary hint; analyzer sees all via allowed_rules
-                            camera_violation_zone = zone_codes[0]
-                        elif zone_codes:
-                            # If job already had a zone hint, prefer camera zones
+                        if zone_codes:
                             camera_violation_zone = zone_codes[0]
             except (ValueError, TypeError, Exception) as cam_err:
                 print(f"[Job {job.id}] Camera lookup skipped: {cam_err}", flush=True)
 
-        # Parallel video_processor OCR only when plate_pipeline did not run (fallback path).
-        skip_parallel_ocr = skip_ocr or used_enterprise_pipeline
-        if used_enterprise_pipeline and not skip_ocr:
-            print(
-                f"[Job {job.id}] Skipping extract_license_plate (plate_pipeline already processed video)",
-                flush=True,
-            )
+        violation_data: dict = _run_violation_analysis(
+            video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at
+        )
 
-        t1 = time.monotonic()
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = {}
-            if not skip_parallel_ocr:
-                futures["ocr"] = pool.submit(_run_ocr, video_bytes, job.id)
-            futures["violation"] = pool.submit(
-                _run_violation_analysis, video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at
-            )
-
-            ocr_result = (plate_from_job or "11111", None)
-            violation_data: dict = {}
-            for key, future in futures.items():
-                try:
-                    result = future.result()
-                    if key == "ocr":
-                        ocr_result = result
-                    else:
-                        violation_data = result
-                except Exception as e:
-                    print(f"[Job {job.id}] {key} future error: {e}", flush=True)
-
-        license_plate, plate_reason = ocr_result
-        print(f"[Job {job.id}] Parallel OCR+violation in {time.monotonic()-t1:.1f}s", flush=True)
-
-        # Registry validation (optional)
-        if getattr(settings, 'validate_plate_in_registry', False) and license_plate and license_plate != "11111":
-            from app.violation.services.registry import VehicleRegistryService
-            if not VehicleRegistryService().plate_exists(license_plate):
-                print(f"[Job {job.id}] Plate {license_plate} not in MoT registry", flush=True)
-                plate_reason = f"Detected {license_plate} — not in Ministry of Transport registry"
-
-        display_plate = "" if (not license_plate or license_plate == "11111") else license_plate
-
-        # --- Vehicle data lookup (non-blocking) ---
-        vehicle_data: dict = {}
-        if display_plate:
-            t_veh = time.monotonic()
-            vehicle_data = _lookup_vehicle(display_plate, job.id)
-            if vehicle_data:
-                print(
-                    f"[Job {job.id}] Vehicle: {vehicle_data.get('vehicle_make')} {vehicle_data.get('vehicle_model')} "
-                    f"{vehicle_data.get('vehicle_year')} in {time.monotonic()-t_veh:.1f}s",
-                    flush=True,
-                )
-
-        # --- Step 3: save files ---
-        proc_path = videos_dir / "processed" / f"job_{job.id}.mp4"
-        frame_path = videos_dir / "frames" / f"job_{job.id}.jpg"
-        proc_path.write_bytes(blurred_bytes)
-        frame_path.write_bytes(ticket_jpeg)
-
-        # Preserve original unblurred video
+        # Preserve the original unblurred video once (shared by all this job's tickets)
         original_video_rel: str | None = None
         try:
             orig_dir = videos_dir / "original"
@@ -419,136 +324,149 @@ def process_one_job() -> bool:
             orig_path = orig_dir / f"job_{job.id}.mp4"
             raw_path.rename(orig_path)
             original_video_rel = f"original/job_{job.id}.mp4"
-            print(f"[Job {job.id}] Original video preserved at {orig_path}", flush=True)
         except Exception as move_err:
             print(f"[Job {job.id}] Could not preserve original (non-fatal): {move_err}", flush=True)
-            # Fall back: delete to free disk space
             try:
                 raw_path.unlink(missing_ok=True)
             except Exception:
                 pass
 
-        # --- Digital signing ---
-        sig_hex: str | None = None
-        sig_key_fp: str | None = None
-        try:
-            from app.services.video_signing import sign_processed_video
-            sig_hex, _pubkey_pem, sig_key_fp = sign_processed_video(
-                blurred_bytes, job_id=job.id, ticket_id=0,  # ticket not yet created; 0 placeholder
-                captured_at=job.captured_at, keys_dir=videos_dir,
-            )
-            # Save sidecar signature file
-            sig_path = proc_path.with_suffix(".mp4.sig")
-            sig_path.write_text(sig_hex)
-            print(f"[Job {job.id}] Video signed (key:{sig_key_fp})", flush=True)
-        except Exception as sign_err:
-            print(f"[Job {job.id}] Video signing failed (non-fatal): {sign_err}", flush=True)
-
-        video_params = extract_video_params(str(proc_path))
-
-        # Plate format detection
-        plate_format = None
-        try:
-            import cv2
-            import numpy as np
-            from app.plate_pipeline.plate_format import classify_plate_format
-            frame = cv2.imdecode(np.frombuffer(ticket_jpeg, np.uint8), cv2.IMREAD_COLOR)
-            if frame is not None:
-                from app.services.video_processor import detect_plate_box
-                box = detect_plate_box(frame)
-                if box:
-                    _, _, w, h = box
-                    fmt = classify_plate_format(w, h)
-                    if fmt:
-                        plate_format = fmt.get("name")
-        except Exception:
-            pass
-
-        location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
-        ticket_kw = dict(
-            license_plate=display_plate,
-            camera_id="mobile",
-            location=location_str,
-            violation_zone=job.violation_zone or "red_white",
-            description=job.description or f"Mobile upload at {location_str}",
-            status="pending_review",
-            video_path=f"processed/job_{job.id}.mp4",
-            ticket_image_path=f"frames/job_{job.id}.jpg",
-            original_video_path=original_video_rel,
-            latitude=job.latitude,
-            longitude=job.longitude,
-            captured_at=job.captured_at,
-            video_params=video_params if video_params else None,
-        )
-        if plate_reason:
-            ticket_kw["plate_detection_reason"] = plate_reason
-        if plate_format:
-            ticket_kw["plate_format"] = plate_format
-        if sig_hex:
-            ticket_kw["video_signature"] = sig_hex
-            ticket_kw["video_signature_key"] = sig_key_fp
-            ticket_kw["video_signed_at"] = datetime.now(timezone.utc)
-        if vehicle_data:
-            ticket_kw.update(vehicle_data)
-
-        ticket = ticket_repo.create(**ticket_kw)
-
-        if anpr_tracks:
+        def _finalize_ticket(*, video_bytes_out: bytes, plate: str, anpr_track, suffix: str):
+            """Save one car's video + frame, sign it, create its ticket, attach violation/anpr/screenshots."""
+            display_plate = "" if (not plate or plate == "11111") else plate
+            proc_rel = f"processed/job_{job.id}{suffix}.mp4"
+            frame_rel = f"frames/job_{job.id}{suffix}.jpg"
+            proc_path = videos_dir / proc_rel
+            proc_path.write_bytes(video_bytes_out or b"")
             try:
-                from app.repositories.anpr_track_repo import AnprTrackRepository
-
-                AnprTrackRepository(db).replace_for_ticket(ticket.id, anpr_tracks)
-            except Exception as anpr_err:
-                print(f"[Job {job.id}] ANPR track DB log failed: {anpr_err}", flush=True)
-
-        # Apply violation analysis result
-        if violation_data:
-            try:
-                ticket_repo.update(ticket.id, **violation_data)
+                _f = extract_frames(video_bytes_out, count=1) if video_bytes_out else []
+                ticket_jpeg = _f[0][0] if _f else b""
             except Exception:
-                for k, v in violation_data.items():
-                    setattr(ticket, k, v)
-                db.commit()
+                ticket_jpeg = b""
+            (videos_dir / frame_rel).write_bytes(ticket_jpeg)
 
-        # --- Step 4: extract screenshots (non-blocking) ---
-        try:
-            frames = extract_frames(blurred_bytes, count=5, base_time=job.captured_at)
-            screenshots_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
-            screenshots_dir.mkdir(parents=True, exist_ok=True)
-            from sqlalchemy import text as _text
-            now_utc = datetime.now(timezone.utc)
-            for jpeg_bytes, frame_sec in frames:
-                fname = f"shot_{int(frame_sec * 1000):08d}ms.jpg"
-                (screenshots_dir / fname).write_bytes(jpeg_bytes)
-                rel = f"screenshots/ticket_{ticket.id}/{fname}"
+            sig_hex = sig_key_fp = None
+            try:
+                from app.services.video_signing import sign_processed_video
+                sig_hex, _pub, sig_key_fp = sign_processed_video(
+                    video_bytes_out, job_id=job.id, ticket_id=0,
+                    captured_at=job.captured_at, keys_dir=videos_dir,
+                )
+                proc_path.with_suffix(".mp4.sig").write_text(sig_hex)
+            except Exception as sign_err:
+                print(f"[Job {job.id}] signing failed (non-fatal): {sign_err}", flush=True)
+
+            plate_reason = None
+            if display_plate and getattr(settings, "validate_plate_in_registry", False):
                 try:
-                    db.execute(
-                        _text("""
-                            INSERT INTO ticket_screenshots
-                                (ticket_id, storage_path, frame_time_seconds, created_at, is_blurred_source)
-                            VALUES
-                                (:ticket_id, :storage_path, :frame_time_seconds, :created_at, true)
-                        """),
-                        {"ticket_id": ticket.id, "storage_path": rel,
-                         "frame_time_seconds": frame_sec, "created_at": now_utc},
-                    )
+                    from app.violation.services.registry import VehicleRegistryService
+                    if not VehicleRegistryService().plate_exists(display_plate):
+                        plate_reason = f"Detected {display_plate} — not in Ministry of Transport registry"
                 except Exception:
-                    db.rollback()
-            db.commit()
-            print(f"[Job {job.id}] Saved {len(frames)} screenshots for ticket {ticket.id}", flush=True)
-        except Exception as ss_err:
-            print(f"[Job {job.id}] Screenshot extraction failed (non-fatal): {ss_err}", flush=True)
+                    pass
+            vehicle_data = _lookup_vehicle(display_plate, job.id) if display_plate else {}
+            video_params = extract_video_params(str(proc_path))
+            location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
+            kw = dict(
+                upload_job_id=job.id,
+                license_plate=display_plate,
+                camera_id="mobile",
+                location=location_str,
+                violation_zone=job.violation_zone or "red_white",
+                description=job.description or f"Mobile upload at {location_str}",
+                status="pending_review",
+                video_path=proc_rel,
+                ticket_image_path=frame_rel,
+                original_video_path=original_video_rel,
+                latitude=job.latitude,
+                longitude=job.longitude,
+                captured_at=job.captured_at,
+                video_params=video_params if video_params else None,
+            )
+            if plate_reason:
+                kw["plate_detection_reason"] = plate_reason
+            if sig_hex:
+                kw["video_signature"] = sig_hex
+                kw["video_signature_key"] = sig_key_fp
+                kw["video_signed_at"] = datetime.now(timezone.utc)
+            if vehicle_data:
+                kw.update(vehicle_data)
+            ticket = ticket_repo.create(**kw)
 
+            if anpr_track:
+                try:
+                    from app.repositories.anpr_track_repo import AnprTrackRepository
+                    AnprTrackRepository(db).replace_for_ticket(ticket.id, [anpr_track])
+                except Exception as anpr_err:
+                    print(f"[Job {job.id}] ANPR log failed: {anpr_err}", flush=True)
+            if violation_data:
+                try:
+                    ticket_repo.update(ticket.id, **violation_data)
+                except Exception:
+                    for k, v in violation_data.items():
+                        setattr(ticket, k, v)
+                    db.commit()
+
+            try:
+                _ss = extract_frames(video_bytes_out, count=5, base_time=job.captured_at) if video_bytes_out else []
+                ss_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
+                ss_dir.mkdir(parents=True, exist_ok=True)
+                from sqlalchemy import text as _text
+                now_utc = datetime.now(timezone.utc)
+                for jb, fsec in _ss:
+                    fn = f"shot_{int(fsec * 1000):08d}ms.jpg"
+                    (ss_dir / fn).write_bytes(jb)
+                    try:
+                        db.execute(
+                            _text(
+                                "INSERT INTO ticket_screenshots (ticket_id, storage_path, frame_time_seconds, created_at, is_blurred_source)"
+                                " VALUES (:t, :p, :f, :c, true)"
+                            ),
+                            {"t": ticket.id, "p": f"screenshots/ticket_{ticket.id}/{fn}", "f": fsec, "c": now_utc},
+                        )
+                    except Exception:
+                        db.rollback()
+                db.commit()
+            except Exception as ss_err:
+                print(f"[Job {job.id}] screenshots failed (non-fatal): {ss_err}", flush=True)
+            return ticket, display_plate
+
+        # --- Step 3: one ticket per car (or a single 'not detected' ticket if none) ---
+        created: list = []
+        if cars:
+            cars_sorted = sorted(cars, key=lambda c: c.get("vote_count", 0), reverse=True)
+            for idx, car in enumerate(cars_sorted):
+                tid = car.get("track_id", idx + 1)
+                anpr_track = {k: car.get(k) for k in ("track_id", "raw_digits", "normalized_plate", "vote_count")}
+                created.append(_finalize_ticket(
+                    video_bytes_out=car.get("video_bytes") or b"",
+                    plate=car.get("raw_digits") or "",
+                    anpr_track=anpr_track,
+                    suffix=f"_car{tid}",
+                ))
+        else:
+            created.append(_finalize_ticket(
+                video_bytes_out=overall_blurred,
+                plate="",
+                anpr_track=None,
+                suffix="",
+            ))
+
+        primary_ticket, primary_plate = created[0]
         job_repo.update(
             job.id,
             status="completed",
-            ticket_id=ticket.id,
-            license_plate=display_plate,
+            ticket_id=primary_ticket.id,
+            license_plate=primary_plate,
             completed_at=datetime.now(timezone.utc),
             error_message=None,
         )
         s = job_repo.get_queue_status()
-        print(f"[{datetime.now().isoformat()}] Job {job.id} completed -> ticket {ticket.id} | {_fmt_queue(s)}", flush=True)
+        print(
+            f"[{datetime.now().isoformat()}] Job {job.id} completed -> {len(created)} ticket(s) "
+            f"(primary {primary_ticket.id}) | {_fmt_queue(s)}",
+            flush=True,
+        )
         return True
 
     except Exception as e:

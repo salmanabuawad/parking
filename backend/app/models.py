@@ -99,6 +99,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id = Column(Integer, primary_key=True, index=True)
+    upload_job_id = Column(Integer, nullable=True, index=True)  # links N tickets (one per car) to the source job/video
     license_plate = Column(String(20), nullable=False)
     plate_detection_reason = Column(Text, nullable=True)
     plate_format = Column(String(50), nullable=True)
@@ -206,6 +207,23 @@ class AppConfig(Base):
     anpr_ocr_every_n_frames = Column(Integer, default=2, nullable=False)
     enterprise_detection_zoom = Column(Float, default=1.75, nullable=False)
     enterprise_detection_roi_y_start = Column(Float, default=0.26, nullable=False)
+
+    # Israeli Ministry of Transport vehicle registry lookup (data.gov.il CKAN API)
+    vehicle_registry_api_enabled = Column(Boolean, default=True, nullable=False)
+    vehicle_registry_api_url = Column(
+        String(500),
+        default="https://data.gov.il/api/3/action/datastore_search",
+        nullable=False,
+    )
+    vehicle_registry_resource_id = Column(
+        String(80),
+        default="053cea08-09bc-40ec-8f7a-156f0677aff3",
+        nullable=False,
+    )
+    vehicle_registry_plate_field = Column(String(80), default="mispar_rechev", nullable=False)
+    vehicle_registry_timeout_seconds = Column(Integer, default=10, nullable=False)
+    vehicle_registry_cache_ttl_hours = Column(Integer, default=24, nullable=False)
+
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
