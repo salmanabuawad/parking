@@ -6,9 +6,24 @@ import { useTheme } from '../context/ThemeContext'
 
 export default function Settings() {
   const { brightness, setBrightness, fontSize, setFontSize } = useTheme()
-  const [settings, setSettings] = useState<{ blur_kernel_size: number; use_violation_pipeline: boolean } | null>(null)
+  const [settings, setSettings] = useState<{
+    blur_kernel_size: number
+    use_violation_pipeline: boolean
+    vehicle_registry_api_enabled: boolean
+    vehicle_registry_api_url: string
+    vehicle_registry_resource_id: string
+    vehicle_registry_plate_field: string
+    vehicle_registry_timeout_seconds: number
+    vehicle_registry_cache_ttl_hours: number
+  } | null>(null)
   const [blurSize, setBlurSize] = useState(3)
   const [usePipeline, setUsePipeline] = useState(false)
+  const [vehicleRegistryEnabled, setVehicleRegistryEnabled] = useState(true)
+  const [vehicleRegistryApiUrl, setVehicleRegistryApiUrl] = useState('')
+  const [vehicleRegistryResourceId, setVehicleRegistryResourceId] = useState('')
+  const [vehicleRegistryPlateField, setVehicleRegistryPlateField] = useState('mispar_rechev')
+  const [vehicleRegistryTimeoutSeconds, setVehicleRegistryTimeoutSeconds] = useState(10)
+  const [vehicleRegistryCacheTtlHours, setVehicleRegistryCacheTtlHours] = useState(24)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -16,13 +31,28 @@ export default function Settings() {
       setSettings(data)
       setBlurSize(data.blur_kernel_size)
       setUsePipeline(data.use_violation_pipeline)
+      setVehicleRegistryEnabled(data.vehicle_registry_api_enabled ?? true)
+      setVehicleRegistryApiUrl(data.vehicle_registry_api_url ?? '')
+      setVehicleRegistryResourceId(data.vehicle_registry_resource_id ?? '')
+      setVehicleRegistryPlateField(data.vehicle_registry_plate_field ?? 'mispar_rechev')
+      setVehicleRegistryTimeoutSeconds(data.vehicle_registry_timeout_seconds ?? 10)
+      setVehicleRegistryCacheTtlHours(data.vehicle_registry_cache_ttl_hours ?? 24)
     }).catch(() => {})
   }, [])
 
   const save = async () => {
     setSaving(true)
     try {
-      const { data } = await settingsApi.update({ blur_kernel_size: blurSize, use_violation_pipeline: usePipeline })
+      const { data } = await settingsApi.update({
+        blur_kernel_size: blurSize,
+        use_violation_pipeline: usePipeline,
+        vehicle_registry_api_enabled: vehicleRegistryEnabled,
+        vehicle_registry_api_url: vehicleRegistryApiUrl,
+        vehicle_registry_resource_id: vehicleRegistryResourceId,
+        vehicle_registry_plate_field: vehicleRegistryPlateField,
+        vehicle_registry_timeout_seconds: vehicleRegistryTimeoutSeconds,
+        vehicle_registry_cache_ttl_hours: vehicleRegistryCacheTtlHours,
+      })
       setSettings(data)
     } catch (err) {
       alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('failedToSave'))
@@ -103,6 +133,69 @@ export default function Settings() {
             />
             {t('useViolationPipeline')}
           </label>
+          <div className="border-t border-theme-card-border pt-4 mt-4">
+            <label className="flex items-center gap-2 mb-4 text-theme-text-primary">
+              <input
+                type="checkbox"
+                checked={vehicleRegistryEnabled}
+                onChange={(e) => setVehicleRegistryEnabled(e.target.checked)}
+              />
+              Enable Israeli vehicle registry lookup
+            </label>
+
+            <label className="label-base text-theme-text-primary font-semibold">data.gov.il API URL</label>
+            <input
+              type="url"
+              value={vehicleRegistryApiUrl}
+              onChange={(e) => setVehicleRegistryApiUrl(e.target.value)}
+              className="input-base mb-3"
+              dir="ltr"
+            />
+
+            <label className="label-base text-theme-text-primary font-semibold">Resource ID</label>
+            <input
+              type="text"
+              value={vehicleRegistryResourceId}
+              onChange={(e) => setVehicleRegistryResourceId(e.target.value)}
+              className="input-base mb-3"
+              dir="ltr"
+            />
+
+            <label className="label-base text-theme-text-primary font-semibold">Plate field</label>
+            <input
+              type="text"
+              value={vehicleRegistryPlateField}
+              onChange={(e) => setVehicleRegistryPlateField(e.target.value)}
+              className="input-base mb-3"
+              dir="ltr"
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className="label-base text-theme-text-primary font-semibold">Timeout seconds</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={vehicleRegistryTimeoutSeconds}
+                  onChange={(e) => setVehicleRegistryTimeoutSeconds(Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 10)))}
+                  className="input-base"
+                />
+              </div>
+              <div>
+                <label className="label-base text-theme-text-primary font-semibold">Cache TTL hours</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={720}
+                  value={vehicleRegistryCacheTtlHours}
+                  onChange={(e) => setVehicleRegistryCacheTtlHours(Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 24)))}
+                  className="input-base"
+                />
+              </div>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={save}
