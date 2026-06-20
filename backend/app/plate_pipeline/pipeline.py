@@ -646,9 +646,20 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
             # absolute plate bbox (xywh) for per-car privacy rendering
             vs["plate_by_frame"][fidx] = (x1 + bx1, py0 + by1, bx2 - bx1, by2 - by1)
 
-    # Final fallback OCR on each car's sharpest crop if it never produced a confident read.
+    # Higher-quality OCR pass per car on its sharpest crop: EasyOCR (stronger than Tesseract on
+    # small/angled plates) gets a weighted vote, plus a Tesseract fallback if still nothing. Votes
+    # accumulate so the most-agreed reading across the whole clip wins.
     for vs in veh.values():
-        if (not vs["ocr"]) and vs["best_crop"] is not None:
+        if vs["best_crop"] is None:
+            continue
+        try:
+            digits, _ = read_plate_crop(vs["best_crop"], use_easyocr=True)
+            cleaned = engine.clean_text(digits or "")
+            if engine.is_valid_plate(cleaned):
+                vs["ocr"][cleaned] += 2  # weight the high-quality EasyOCR read
+        except Exception as _easy_err:
+            print(f"[anpr] EasyOCR fallback failed: {_easy_err}", flush=True)
+        if not vs["ocr"]:
             for r in engine.ocr_crop(vs["best_crop"]):
                 cleaned = engine.clean_text(r)
                 if engine.is_valid_plate(cleaned):
@@ -667,14 +678,16 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
             continue
         rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc}
         track_results.append(rd)
-        out_frames = [
-            render_privacy_frame_tracks(
-                frame,
-                [vs["plate_by_frame"][fidx]] if fidx in vs["plate_by_frame"] else [],
-                kernel_size=cfg.blur_kernel_size,
-            )
-            for fidx, frame in enumerate(frames)
-        ]
+        out_frames = []
+        for fidx, frame in enumerate(frames):
+            boxes = [vs["plate_by_frame"][fidx]] if fidx in vs["plate_by_frame"] else []
+            of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size)
+            # Zoomed plate-preview window (top-left) so a reviewer can read the plate directly,
+            # plus the detected plate number overlaid at the bottom.
+            if vs["best_crop"] is not None:
+                of = engine.draw_preview(of, vs["best_crop"])
+            cv2.putText(of, norm, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+            out_frames.append(of)
         tmp = Path(tempfile.mktemp(suffix=".mp4"))
         try:
             write_video(out_frames, tmp, fps=fps)
