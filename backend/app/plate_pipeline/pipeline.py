@@ -578,6 +578,141 @@ def _run_pipeline_enterprise_multi(cfg: PipelineConfig) -> dict[str, Any]:
     }
 
 
+def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
+    """Vehicle-first multi-car with occlusion follow-up.
+
+    Tracks each CAR across the whole clip using YOLO persistent IDs (occlusion-robust:
+    a car keeps its id through a brief block), and accumulates that car's plate OCR reads
+    over the ENTIRE clip. So when a parked car's plate is hidden by another car, the plate
+    is captured the moment the car or the blocker moves and assigned to the right car — one
+    ticket + one privacy video per car.
+
+    Returns anpr_tracks + per-car `tracks_render` (with H.264 video bytes), plus
+    `overall_video_bytes` for the no-car case.
+    """
+    import tempfile
+    from collections import Counter
+
+    engine = EnterprisePlateEngine(
+        blur_kernel=cfg.blur_kernel_size,
+        ocr_every_n_frames=cfg.ocr_every_n_frames,
+    )
+    vehicle_det = VehicleDetector(model_path=cfg.vehicle_model_path, imgsz=cfg.vehicle_imgsz)
+    ocr_every = max(1, cfg.ocr_every_n_frames)
+    yolo_every = max(1, cfg.yolo_every_n_frames)
+
+    # Per-vehicle accumulation keyed by YOLO track id.
+    veh: dict[int, dict] = {}
+    frames: list[np.ndarray] = []
+    last_vdets: list = []
+
+    for fidx, frame in read_frames(cfg.input_path, cfg.max_frames):
+        frames.append(frame)
+        if fidx % yolo_every == 0:
+            last_vdets = [
+                v for v in vehicle_det.detect_and_track(frame)
+                if v.confidence >= VEHICLE_MIN_CONFIDENCE and v.track_id is not None
+            ]
+        for v in last_vdets:
+            vs = veh.get(v.track_id)
+            if vs is None:
+                vs = {"tid": v.track_id, "ocr": Counter(), "best_crop": None, "best_sharp": -1.0,
+                      "seen": 0, "first_bbox": v.bbox, "last_bbox": v.bbox, "plate_by_frame": {}}
+                veh[v.track_id] = vs
+            vs["seen"] += 1
+            vs["last_bbox"] = v.bbox
+            if cfg.disable_ocr or (fidx % ocr_every != 0):
+                continue
+            x1, y1, x2, y2 = v.bbox
+            py0 = max(0, y1 + int((y2 - y1) * 0.40))  # plate sits on the lower part of the car
+            roi = frame[py0:max(0, y2), max(0, x1):max(0, x2)]
+            if roi.size == 0:
+                continue
+            cands = engine.detect_candidates(roi)
+            if not cands:
+                continue
+            bx1, by1, bx2, by2 = cands[0]["bbox"]  # relative to roi
+            crop = roi[by1:by2, bx1:bx2]
+            if crop.size == 0:
+                continue
+            sharp = engine.laplacian_var(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY))
+            if sharp > vs["best_sharp"]:
+                vs["best_sharp"] = sharp
+                vs["best_crop"] = crop.copy()
+            for r in engine.ocr_crop(crop):
+                cleaned = engine.clean_text(r)
+                if engine.is_valid_plate(cleaned):
+                    vs["ocr"][cleaned] += 1
+            # absolute plate bbox (xywh) for per-car privacy rendering
+            vs["plate_by_frame"][fidx] = (x1 + bx1, py0 + by1, bx2 - bx1, by2 - by1)
+
+    # Final fallback OCR on each car's sharpest crop if it never produced a confident read.
+    for vs in veh.values():
+        if (not vs["ocr"]) and vs["best_crop"] is not None:
+            for r in engine.ocr_crop(vs["best_crop"]):
+                cleaned = engine.clean_text(r)
+                if engine.is_valid_plate(cleaned):
+                    vs["ocr"][cleaned] += 1
+
+    fps = (get_video_info(cfg.input_path) or {}).get("fps", 25) or 25
+
+    tracks_render: list[dict[str, Any]] = []
+    track_results: list[dict[str, Any]] = []
+    for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
+        if not vs["ocr"]:
+            continue  # car tracked but plate never became readable — cannot issue a ticket
+        raw, vc = vs["ocr"].most_common(1)[0]
+        norm = normalize_israeli_private_plate(raw)
+        if not norm:
+            continue
+        rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc}
+        track_results.append(rd)
+        out_frames = [
+            render_privacy_frame_tracks(
+                frame,
+                [vs["plate_by_frame"][fidx]] if fidx in vs["plate_by_frame"] else [],
+                kernel_size=cfg.blur_kernel_size,
+            )
+            for fidx, frame in enumerate(frames)
+        ]
+        tmp = Path(tempfile.mktemp(suffix=".mp4"))
+        try:
+            write_video(out_frames, tmp, fps=fps)
+            video_bytes = tmp.read_bytes() if tmp.exists() else b""
+        finally:
+            tmp.unlink(missing_ok=True)
+        tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"]})
+
+    overall_video_bytes = b""
+    if not tracks_render:
+        out_frames = [render_privacy_frame_tracks(frame, [], kernel_size=cfg.blur_kernel_size) for frame in frames]
+        tmp = Path(tempfile.mktemp(suffix=".mp4"))
+        try:
+            if out_frames:
+                write_video(out_frames, tmp, fps=fps)
+            overall_video_bytes = tmp.read_bytes() if tmp.exists() else b""
+        finally:
+            tmp.unlink(missing_ok=True)
+
+    primary = (
+        max(tracks_render, key=lambda t: (t["vote_count"], t.get("frames_seen", 0)))["raw_digits"]
+        if tracks_render else None
+    )
+    print(
+        f"[anpr] VEHICLE-MULTI  frames={len(frames)}  vehicles={len(veh)}  cars_with_plate={len(tracks_render)}  primary={primary!r}",
+        flush=True,
+    )
+    return {
+        "validated_plate": primary,
+        "normalized_plate": normalize_israeli_private_plate(primary) if primary else None,
+        "anpr_tracks": track_results,
+        "tracks_render": tracks_render,
+        "overall_video_bytes": overall_video_bytes,
+        "frames_processed": len(frames),
+        "detector_backend": "vehicle",
+    }
+
+
 def run_pipeline(cfg: PipelineConfig) -> dict[str, Any]:
     if cfg.detector_backend == "enterprise":
         return _run_pipeline_enterprise_engine(cfg)

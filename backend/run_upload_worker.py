@@ -249,11 +249,11 @@ def process_one_job() -> bool:
         overall_blurred: bytes = b""
         import tempfile as _tf
         try:
-            from app.plate_pipeline.pipeline import _run_pipeline_enterprise_multi
+            from app.plate_pipeline.pipeline import _run_pipeline_vehicle_multi, _run_pipeline_enterprise_multi
             from app.plate_pipeline.config import PipelineConfig
 
             print(
-                f"[Job {job.id}] ENGINE: multi-car  detector={_detector_backend}  "
+                f"[Job {job.id}] ENGINE: vehicle-first multi-car  "
                 f"ocr_every={_ocr_every}  max_frames={_max_frames}",
                 flush=True,
             )
@@ -274,11 +274,23 @@ def process_one_job() -> bool:
                 enterprise_detection_roi_y_start=_det_roi_y0,
                 anpr_min_votes_stable=_min_votes_stable,
             )
-            _result = _run_pipeline_enterprise_multi(_pipe_cfg)
-            _in_path.unlink(missing_ok=True)
+            # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
+            try:
+                _result = _run_pipeline_vehicle_multi(_pipe_cfg)
+            except Exception as _veh_err:
+                print(f"[Job {job.id}] vehicle-first failed ({_veh_err}); falling back to plate-first", flush=True)
+                _result = {}
             cars = _result.get("tracks_render") or []
             anpr_tracks = _result.get("anpr_tracks") or []
             overall_blurred = _result.get("overall_video_bytes") or b""
+            # Fallback: if no car was found, try plate-first detection (no vehicle model).
+            if not cars:
+                print(f"[Job {job.id}] vehicle-first found no car; trying plate-first", flush=True)
+                _result2 = _run_pipeline_enterprise_multi(_pipe_cfg)
+                cars = _result2.get("tracks_render") or []
+                anpr_tracks = _result2.get("anpr_tracks") or anpr_tracks
+                overall_blurred = _result2.get("overall_video_bytes") or overall_blurred
+            _in_path.unlink(missing_ok=True)
             print(f"[Job {job.id}] multi-car: {len(cars)} car(s) in {time.monotonic()-t0:.1f}s", flush=True)
         except Exception as _pipe_err:
             print(f"[Job {job.id}] Multi-car pipeline failed ({_pipe_err}), falling back to single blur", flush=True)
