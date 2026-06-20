@@ -1196,19 +1196,3 @@ def _process_video_with_yolo(
             preview_jpeg = buf.tobytes()
 
     return processed_video, preview_jpeg
-
-
-def process_video_with_violation_pipeline(
-    video_bytes: bytes,
-    output_dir: Optional[str] = None,
-    extract_frame_at: float = 0.5,
-    blur_kernel_size: Optional[int] = None,
-):
-    # OCR first on the original unblurred video, then blur.
-    best_plate, _ = extract_license_plate(video_bytes=video_bytes)
-    processed_video_bytes, ticket_frame_jpeg = process_video(
-        video_bytes=video_bytes,
-        blur_strength=int(blur_kernel_size or BLUR_KERNEL),
-        extract_frame_at=extract_frame_at,
-    )
-    return processed_video_bytes, ticket_frame_jpeg, best_plate

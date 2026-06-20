@@ -132,8 +132,6 @@ class ParkingViolationPipeline:
 
         self._cached_keep_boxes = keep_boxes
         self._cached_decisions = decisions
-        self._cached_keep_boxes = keep_boxes
-        self._cached_decisions = decisions
         output = self.blur.selectively_unblur(frame, keep_boxes)
 
         if getattr(settings, 'debug_draw', False):

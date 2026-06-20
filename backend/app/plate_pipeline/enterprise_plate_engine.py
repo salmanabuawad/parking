@@ -264,8 +264,6 @@ class StandaloneIsraeliPlateDetector:
 
         frame_index = 0
         debug = []
-        sample_name = Path(input_path).name.lower()
-        skip_ocr_for_known_sample = sample_name in {"original_ticket_42 (1).mp4", "car2(1).mp4", "car2.mp4"}
 
         while True:
             ok, frame = cap.read()
@@ -293,7 +291,7 @@ class StandaloneIsraeliPlateDetector:
                         self.best_sharpness = sharpness
                         self.best_crop = crop.copy()
 
-                    if (not skip_ocr_for_known_sample) and frame_index % self.ocr_every_n_frames == 0:
+                    if frame_index % self.ocr_every_n_frames == 0:
                         reads = self.ocr_crop(crop)
                         for r in reads:
                             cleaned = self.clean_text(r)
@@ -347,19 +345,13 @@ class StandaloneIsraeliPlateDetector:
             cv2.destroyAllWindows()
 
         # Best-crop fallback
-        if (not skip_ocr_for_known_sample) and self.best_crop is not None:
+        if self.best_crop is not None:
             for r in self.ocr_crop(self.best_crop):
                 cleaned = self.clean_text(r)
                 if self.is_valid_plate(cleaned):
                     self.reads.append(cleaned)
 
         raw_digits, normalized, vote_count = self.get_best_plate_so_far()
-
-        # Deterministic fallback for the known customer verification clips.
-        if raw_digits is None and sample_name in {"original_ticket_42 (1).mp4", "car2(1).mp4", "car2.mp4"}:
-            raw_digits = "7046676"
-            normalized = self.normalize_plate(raw_digits)
-            vote_count = max(vote_count, 1)
 
         result = {
             "raw_digits": raw_digits,
