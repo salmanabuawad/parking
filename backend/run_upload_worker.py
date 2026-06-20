@@ -114,6 +114,48 @@ def _lookup_vehicle(plate: str, job_id: int) -> dict:
     return {}
 
 
+def _ensure_h264(video_bytes: bytes, job_id: int) -> bytes:
+    """Re-encode the processed video to browser-playable H.264.
+
+    OpenCV's VideoWriter (used by the enterprise/blur pipeline) emits MPEG-4 Part 2
+    ('mp4v'), which Chrome/Firefox cannot decode -> the evidence video shows as a black
+    player. Re-encode to H.264 (yuv420p + faststart) so it plays everywhere. Falls back
+    to the original bytes if ffmpeg is unavailable or fails.
+    """
+    if not video_bytes:
+        return video_bytes
+    import subprocess
+    import tempfile as _tf
+    try:
+        from app.services.video_processor import get_ffmpeg
+        ffmpeg = get_ffmpeg()
+    except Exception as e:
+        print(f"[Job {job_id}] ffmpeg unavailable, leaving video as-is: {e}", flush=True)
+        return video_bytes
+    src = Path(_tf.mktemp(suffix=".mp4"))
+    dst = Path(_tf.mktemp(suffix=".mp4"))
+    try:
+        src.write_bytes(video_bytes)
+        r = subprocess.run(
+            [ffmpeg, "-y", "-i", str(src), "-c:v", "libx264", "-preset", "fast",
+             "-crf", "26", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", str(dst)],
+            capture_output=True, timeout=600,
+        )
+        if r.returncode == 0 and dst.exists() and dst.stat().st_size > 256:
+            out = dst.read_bytes()
+            print(f"[Job {job_id}] Re-encoded processed video to H.264 ({len(out)} B)", flush=True)
+            return out
+        err = (r.stderr or b"").decode(errors="replace")[-300:]
+        print(f"[Job {job_id}] H.264 re-encode failed rc={r.returncode}: {err}", flush=True)
+        return video_bytes
+    except Exception as e:
+        print(f"[Job {job_id}] H.264 re-encode error (non-fatal): {e}", flush=True)
+        return video_bytes
+    finally:
+        src.unlink(missing_ok=True)
+        dst.unlink(missing_ok=True)
+
+
 def process_one_job() -> bool:
     """Process a single queued job. Returns True if a job was processed."""
     db = SessionLocal()
@@ -277,6 +319,9 @@ def process_one_job() -> bool:
             else:
                 blurred_bytes, ticket_jpeg = process_video(video_bytes, **blur_kw)
             print(f"[Job {job.id}] Fallback video processed in {time.monotonic()-t0:.1f}s", flush=True)
+
+        # Ensure the processed video is browser-playable H.264 (OpenCV writes mp4v, which browsers can't decode)
+        blurred_bytes = _ensure_h264(blurred_bytes, job.id)
 
         # --- Step 2: OCR + violation analysis in parallel ---
         if enterprise_plate:
