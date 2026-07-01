@@ -52,10 +52,37 @@ class Camera(Base):
     violation_rules = Column(JSON, nullable=True)
     # Legacy single zone hint (kept for upload jobs / backward compat)
     violation_zone = Column(String(20), nullable=True)
+    assigned_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True)  # handling inspector (#8)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)
     zones = relationship("ParkingZone", secondary="camera_zones", back_populates="cameras")
+    segments = relationship(
+        "CameraSegment",
+        back_populates="camera",
+        cascade="all, delete-orphan",
+        order_by="CameraSegment.display_order",
+    )
+
+
+class CameraSegment(Base):
+    """A labeled segment (מקטע) of a camera station's coverage, with its own violation types.
+
+    Per-segment violation types replace the flat camera-level violation_rules list.
+    """
+
+    __tablename__ = "camera_segments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    camera_id = Column(Integer, ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False, index=True)
+    label = Column(String(200), nullable=False)          # מלל ליד כל מקטע (free text)
+    violation_rule_ids = Column(JSON, nullable=True)     # סוגי עבירה — list of ViolationRule.rule_id strings
+    display_order = Column(Integer, default=0, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    camera = relationship("Camera", back_populates="segments")
 
 
 class CameraVideo(Base):
@@ -81,6 +108,24 @@ class Admin(Base):
     username = Column(String(50), unique=True, nullable=False, index=True)
     hashed_password = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Inspector(Base):
+    """Field enforcement officer (פקח). Logs in to review and approve reports."""
+
+    __tablename__ = "inspectors"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    full_name = Column(String(120), nullable=False)
+    badge_number = Column(String(40), nullable=True)
+    phone = Column(String(40), nullable=True)
+    email = Column(String(120), nullable=True)
+    role = Column(String(20), default="inspector", nullable=False)  # inspector | supervisor
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class TicketStatus(str, enum.Enum):
@@ -138,6 +183,15 @@ class Ticket(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     finalized_at = Column(DateTime(timezone=True), nullable=True)
+    # --- Violation window (auto-filled from the clip; inspector-editable) ---
+    violation_start_at = Column(DateTime(timezone=True), nullable=True)
+    violation_end_at = Column(DateTime(timezone=True), nullable=True)
+    # --- Inspector approval fields ---
+    approved_by_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True, index=True)
+    assigned_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True, index=True)  # inbox owner / handler (#9)
+    inspector_approved_at = Column(DateTime(timezone=True), nullable=True)
+    inspector_violation_rule_id = Column(String(30), nullable=True)   # violation type chosen by the inspector
+    inspector_plate = Column(String(20), nullable=True)               # plate confirmed by the inspector (must match detected)
 
     anpr_track_results = relationship(
         "AnprTrackResult",
@@ -177,6 +231,7 @@ class TicketScreenshot(Base):
     source_video_hash = Column(String(128), nullable=True)
     captured_by = Column(String(100), nullable=True)
     capture_note = Column(Text, nullable=True)
+    role = Column(String(40), nullable=True)  # violation_start | violation_end | plate_clear | violation_evidence (#7.4)
     frame_width = Column(Integer, nullable=True)
     frame_height = Column(Integer, nullable=True)
     is_blurred_source = Column(Boolean, nullable=True, default=True)
@@ -223,6 +278,12 @@ class AppConfig(Base):
     vehicle_registry_plate_field = Column(String(80), default="mispar_rechev", nullable=False)
     vehicle_registry_timeout_seconds = Column(Integer, default=10, nullable=False)
     vehicle_registry_cache_ttl_hours = Column(Integer, default=24, nullable=False)
+
+    # --- Enforcement / system settings (editable from UI) ---
+    violation_dwell_seconds = Column(Integer, default=300, nullable=False)    # standing time that counts as a violation
+    required_video_seconds = Column(Integer, default=10, nullable=False)      # required clip length for a valid report
+    video_retention_days = Column(Integer, default=90, nullable=False)        # how long processed videos are kept
+    video_timestamp_overlay = Column(Boolean, default=True, nullable=False)   # burn a real-time clock into result videos
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

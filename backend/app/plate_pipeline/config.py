@@ -132,3 +132,8 @@ class PipelineConfig:
     anpr_preview_max_tracks: int = ANPR_PREVIEW_MAX_TRACKS
     enterprise_detection_zoom: float = ENTERPRISE_DETECTION_ZOOM
     enterprise_detection_roi_y_start: float = ENTERPRISE_DETECTION_ROI_Y_START
+    # Real-time clock burned into the result video (date/time advancing with the clip)
+    clock_start_epoch: float | None = None
+    video_timestamp_overlay: bool = False
+    # Subject-car box colour (BGR): green while pending, red once the report is approved (#10)
+    box_color_bgr: tuple[int, int, int] = (0, 255, 0)

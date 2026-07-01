@@ -27,6 +27,7 @@ class ScreenshotCreate(BaseModel):
     image_base64: str
     frame_time_sec: Optional[float] = None
     captured_at: Optional[str] = None
+    role: Optional[str] = None   # violation_start | violation_end | plate_clear | violation_evidence (#7.4)
 
 
 class ScreenshotResponse(BaseModel):
@@ -38,6 +39,7 @@ class ScreenshotResponse(BaseModel):
     captured_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     created_by: Optional[str] = None
+    role: Optional[str] = None
 
 
 class ScreenshotListItem(ScreenshotResponse):
@@ -101,6 +103,22 @@ def save_ticket_screenshot(
         username = getattr(admin, "username", None)
         now = datetime.now(timezone.utc)
         frame_ms = int(frame_time_sec * 1000)
+        role = (payload.role or "").strip() or None
+
+        # One image per role (#7.4): a new image for a role replaces the previous one.
+        if role:
+            for ex in db.query(TicketScreenshot).filter(
+                TicketScreenshot.ticket_id == ticket_id, TicketScreenshot.role == role
+            ).all():
+                ep = ex.storage_path or ex.image_path
+                if ep:
+                    efp = Path(settings.videos_dir) / ep
+                    if efp.exists():
+                        try:
+                            efp.unlink()
+                        except OSError:
+                            pass
+                db.delete(ex)
 
         # Schema (from DB): NOT NULL = image_path, frame_timestamp_ms, video_timestamp_text, is_blurred_source(default true)
         params = {
@@ -112,6 +130,7 @@ def save_ticket_screenshot(
             "frame_time_sec": frame_time_sec,
             "captured_at": captured_at,
             "created_by": username,
+            "role": role,
         }
         try:
             row = db.execute(
@@ -120,11 +139,11 @@ def save_ticket_screenshot(
                     INSERT INTO ticket_screenshots (
                         ticket_id, storage_path, image_path,
                         frame_timestamp_ms, video_timestamp_text,
-                        frame_time_sec, captured_at, created_by, is_blurred_source
+                        frame_time_sec, captured_at, created_by, role, is_blurred_source
                     ) VALUES (
                         :ticket_id, :storage_path, :image_path,
                         :frame_timestamp_ms, :video_timestamp_text,
-                        :frame_time_sec, :captured_at, :created_by, true
+                        :frame_time_sec, :captured_at, :created_by, :role, true
                     )
                     RETURNING id, created_at
                     """
@@ -153,6 +172,7 @@ def save_ticket_screenshot(
             captured_at=captured_at,
             created_at=created_at_val,
             created_by=username,
+            role=role,
         )
     except HTTPException:
         raise
@@ -201,6 +221,7 @@ def list_ticket_screenshots(
             captured_at=_captured_at(row),
             created_at=row.created_at,
             created_by=row.captured_by or row.created_by,
+            role=getattr(row, "role", None),
         )
         for row in rows
     ]

@@ -105,10 +105,11 @@ def render_privacy_frame_tracks(
     frame: np.ndarray,
     plate_bboxes: list[BBox],
     kernel_size: int = BLUR_KERNEL_SIZE,
+    box_color: tuple[int, int, int] = (0, 255, 0),
 ) -> np.ndarray:
     """
-    Privacy frame: blur background, restore plate bbox(s) in-place.
-    Plate number is drawn once in overlay_track_plate_labels (final pass), not here.
+    Privacy frame: blur background, restore plate/car bbox(s) in-place, outline the subject box.
+    box_color (BGR) marks the subject vehicle — green while pending, red once approved (#10).
     """
     out = blur_frame(frame, kernel_size)
     plate_bboxes = plate_bboxes or []
@@ -120,8 +121,25 @@ def render_privacy_frame_tracks(
         x0, x1 = max(0, x), max(0, x) + w
         crop = frame[y0:y1, x0:x1].copy()
         out = restore_plate_region(out, crop, (x, y, w, h))
-        cv2.rectangle(out, (x, y), (x + w, y + h), (255, 255, 255), 1)
+        cv2.rectangle(out, (x, y), (x + w, y + h), box_color, 3)
 
+    return out
+
+
+def overlay_timestamp(frame: np.ndarray, text: str) -> np.ndarray:
+    """Burn a real-time clock (top-right) with a dark backing strip so it stays legible.
+
+    Placed top-right to avoid the plate-preview window (top-left) and plate label (bottom).
+    """
+    out = frame
+    h, w = out.shape[:2]
+    scale = max(0.5, min(1.0, w / 900.0))
+    thick = 2 if w >= 640 else 1
+    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+    x = max(4, w - tw - 14)
+    y = 8
+    cv2.rectangle(out, (x - 6, y), (min(w, x + tw + 8), y + th + 12), (0, 0, 0), -1)
+    cv2.putText(out, text, (x, y + th + 4), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 255, 255), thick, cv2.LINE_AA)
     return out
 
 

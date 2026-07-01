@@ -17,6 +17,7 @@ class CameraBase(BaseModel):
     is_active: bool = True
     violation_rules: Optional[list[str]] = None   # e.g. ["IL-STATIC-001", "IL-STATIC-005"]
     violation_zone: Optional[str] = None           # "red_white" | "blue_white" | None
+    assigned_inspector_id: Optional[int] = None    # handling inspector (#8)
 
 
 class CameraCreate(CameraBase):
@@ -74,3 +75,66 @@ class FieldConfigurationResponse(FieldConfigurationBase):
 
 class FieldConfigurationBulkUpsert(BaseModel):
     items: list[FieldConfigurationUpsert]
+
+
+# Inspector (פקח) schemas
+class InspectorBase(BaseModel):
+    username: str
+    full_name: str
+    badge_number: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    role: str = "inspector"            # "inspector" | "supervisor"
+    is_active: bool = True
+
+
+class InspectorCreate(InspectorBase):
+    password: str
+
+
+class InspectorUpdate(BaseModel):
+    full_name: Optional[str] = None
+    badge_number: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None     # provide to change the password
+
+
+class InspectorResponse(InspectorBase):
+    id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# Camera segment (מקטע) schemas
+class CameraSegmentBase(BaseModel):
+    label: str
+    violation_rule_ids: Optional[list[str]] = None   # e.g. ["IL-STATIC-001", "IL-STATIC-005"]
+    display_order: int = 0
+    is_active: bool = True
+
+
+class CameraSegmentCreate(CameraSegmentBase):
+    pass
+
+
+class CameraSegmentUpdate(BaseModel):
+    label: Optional[str] = None
+    violation_rule_ids: Optional[list[str]] = None
+    display_order: Optional[int] = None
+    is_active: Optional[bool] = None
+
+
+class CameraSegmentResponse(CameraSegmentBase):
+    id: int
+    camera_id: int
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

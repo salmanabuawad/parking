@@ -23,7 +23,7 @@ from .anpr_multi import (
     raw_digits_only,
     xywh_to_xyxy,
 )
-from .blur_pipeline import overlay_track_plate_labels, render_privacy_frame_tracks
+from .blur_pipeline import overlay_timestamp, overlay_track_plate_labels, render_privacy_frame_tracks
 from .config import PipelineConfig, VEHICLE_MIN_CONFIDENCE
 from .enterprise_plate_engine import EnterprisePlateEngine
 from .debug import save_debug_frame
@@ -37,6 +37,20 @@ from .vehicle_detector import VehicleDetector
 from .video_io import get_video_info, read_frames
 
 BBox = tuple[int, int, int, int]
+
+
+def _clock_text(epoch: float, frame_idx: int, fps: float) -> str:
+    """Wall-clock time for a frame: clip start + frame_idx/fps, shown in Israel local time."""
+    import datetime as _dt
+
+    base = epoch + (frame_idx / (fps or 25.0))
+    try:
+        from zoneinfo import ZoneInfo
+
+        t = _dt.datetime.fromtimestamp(base, tz=_dt.timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem"))
+    except Exception:
+        t = _dt.datetime.fromtimestamp(base)
+    return t.strftime("%d/%m/%Y %H:%M:%S")
 
 
 def _dedupe_boxes(detections: list[PlateDetection], max_count: int) -> list[PlateDetection]:
@@ -578,8 +592,12 @@ def _run_pipeline_enterprise_multi(cfg: PipelineConfig) -> dict[str, Any]:
     }
 
 
-def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
+def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str | None = None) -> dict[str, Any]:
     """Vehicle-first multi-car with occlusion follow-up.
+
+    `overlay_plate_override` (optional): force the on-video plate label to this value instead of
+    the per-car OCR read. Used only when re-rendering an existing ticket's video, so the video
+    always shows the plate the ticket already records (OCR on soft footage isn't run-to-run stable).
 
     Tracks each CAR across the whole clip using YOLO persistent IDs (occlusion-robust:
     a car keeps its id through a brief block), and accumulates that car's plate OCR reads
@@ -617,10 +635,15 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
             vs = veh.get(v.track_id)
             if vs is None:
                 vs = {"tid": v.track_id, "ocr": Counter(), "best_crop": None, "best_sharp": -1.0,
-                      "seen": 0, "first_bbox": v.bbox, "last_bbox": v.bbox, "plate_by_frame": {}}
+                      "seen": 0, "first_bbox": v.bbox, "last_bbox": v.bbox,
+                      "plate_by_frame": {}, "car_by_frame": {}}
                 veh[v.track_id] = vs
             vs["seen"] += 1
             vs["last_bbox"] = v.bbox
+            _cx1, _cy1, _cx2, _cy2 = v.bbox
+            # Keep the WHOLE violating car sharp in every frame so its plate number is never
+            # blurred (the rest of the scene stays blurred for bystander privacy).
+            vs["car_by_frame"][fidx] = (max(0, _cx1), max(0, _cy1), max(0, _cx2 - _cx1), max(0, _cy2 - _cy1))
             if cfg.disable_ocr or (fidx % ocr_every != 0):
                 continue
             x1, y1, x2, y2 = v.bbox
@@ -666,6 +689,7 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
                     vs["ocr"][cleaned] += 1
 
     fps = (get_video_info(cfg.input_path) or {}).get("fps", 25) or 25
+    _clock_on = bool(getattr(cfg, "video_timestamp_overlay", False)) and getattr(cfg, "clock_start_epoch", None) is not None
 
     tracks_render: list[dict[str, Any]] = []
     track_results: list[dict[str, Any]] = []
@@ -678,15 +702,21 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
             continue
         rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc}
         track_results.append(rd)
+        overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
         out_frames = []
         for fidx, frame in enumerate(frames):
-            boxes = [vs["plate_by_frame"][fidx]] if fidx in vs["plate_by_frame"] else []
-            of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size)
+            # Restore the whole violating car (not just the plate box) so the plate number stays
+            # sharp/readable even when the plate box is loose or OCR pinned it imperfectly.
+            boxes = [vs["car_by_frame"][fidx]] if fidx in vs["car_by_frame"] else []
+            of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size,
+                                             box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
             # Zoomed plate-preview window (top-left) so a reviewer can read the plate directly,
             # plus the detected plate number overlaid at the bottom.
             if vs["best_crop"] is not None:
                 of = engine.draw_preview(of, vs["best_crop"])
-            cv2.putText(of, norm, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(of, overlay_text, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+            if _clock_on:
+                of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps))
             out_frames.append(of)
         tmp = Path(tempfile.mktemp(suffix=".mp4"))
         try:
@@ -698,7 +728,12 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig) -> dict[str, Any]:
 
     overall_video_bytes = b""
     if not tracks_render:
-        out_frames = [render_privacy_frame_tracks(frame, [], kernel_size=cfg.blur_kernel_size) for frame in frames]
+        out_frames = []
+        for fidx, frame in enumerate(frames):
+            of = render_privacy_frame_tracks(frame, [], kernel_size=cfg.blur_kernel_size)
+            if _clock_on:
+                of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps))
+            out_frames.append(of)
         tmp = Path(tempfile.mktemp(suffix=".mp4"))
         try:
             if out_frames:

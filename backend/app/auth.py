@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.database import get_db
 from app.repositories import AdminRepository
-from app.dependencies import get_admin_repo
+from app.repositories.inspector_repo import InspectorRepository
+from app.dependencies import get_admin_repo, get_inspector_repo
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login", auto_error=False)
 
@@ -75,3 +76,31 @@ def get_current_user_for_media(
     if not token:
         token = request.query_params.get("token")
     return _validate_token(token, admin_repo)
+
+
+def _validate_inspector_token(token: str, inspector_repo: InspectorRepository):
+    """Validate a JWT and require it to be an active inspector's token."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+    )
+    if not token:
+        raise credentials_exception
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username or payload.get("type") != "inspector":
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    insp = inspector_repo.get_by_username(username)
+    if not insp or not insp.is_active:
+        raise credentials_exception
+    return insp
+
+
+def get_current_inspector(
+    token: str = Depends(oauth2_scheme),
+    inspector_repo: InspectorRepository = Depends(get_inspector_repo),
+):
+    return _validate_inspector_token(token, inspector_repo)

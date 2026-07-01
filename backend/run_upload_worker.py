@@ -14,7 +14,7 @@ import sys
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -273,6 +273,8 @@ def process_one_job() -> bool:
                 enterprise_detection_zoom=_det_zoom,
                 enterprise_detection_roi_y_start=_det_roi_y0,
                 anpr_min_votes_stable=_min_votes_stable,
+                clock_start_epoch=(job.captured_at.timestamp() if job.captured_at else None),
+                video_timestamp_overlay=bool(getattr(cfg, "video_timestamp_overlay", True)) if cfg else True,
             )
             # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
             try:
@@ -308,11 +310,13 @@ def process_one_job() -> bool:
         # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
         camera_allowed_rules: list | None = None
         camera_violation_zone: str | None = job.violation_zone
+        camera_assigned_inspector: int | None = None
         if job.camera_id and job.camera_id not in ("", "mobile"):
             try:
                 from app.models import Camera as CameraModel
                 cam = db.query(CameraModel).filter(CameraModel.id == int(job.camera_id)).first()
                 if cam:
+                    camera_assigned_inspector = getattr(cam, "assigned_inspector_id", None)
                     if cam.violation_rules:
                         camera_allowed_rules = cam.violation_rules
                     if cam.violation_zone and not camera_violation_zone:
@@ -379,6 +383,19 @@ def process_one_job() -> bool:
             vehicle_data = _lookup_vehicle(display_plate, job.id) if display_plate else {}
             video_params = extract_video_params(str(proc_path))
             location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
+            # Violation window: start = recording time, end = start + clip length (inspector-editable)
+            v_start = job.captured_at
+            v_end = None
+            if v_start is not None:
+                dur = None
+                if isinstance(video_params, dict):
+                    for _k in ("duration", "duration_sec", "duration_seconds"):
+                        if video_params.get(_k):
+                            dur = float(video_params[_k])
+                            break
+                if dur is None:
+                    dur = float(getattr(cfg, "required_video_seconds", 10) or 10) if cfg else 10.0
+                v_end = v_start + timedelta(seconds=dur)
             kw = dict(
                 upload_job_id=job.id,
                 license_plate=display_plate,
@@ -393,6 +410,9 @@ def process_one_job() -> bool:
                 latitude=job.latitude,
                 longitude=job.longitude,
                 captured_at=job.captured_at,
+                violation_start_at=v_start,
+                violation_end_at=v_end,
+                assigned_inspector_id=camera_assigned_inspector,
                 video_params=video_params if video_params else None,
             )
             if plate_reason:

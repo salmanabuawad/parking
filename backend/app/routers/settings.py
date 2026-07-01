@@ -29,38 +29,24 @@ class SettingsUpdate(BaseModel):
     vehicle_registry_plate_field: Optional[str] = None
     vehicle_registry_timeout_seconds: Optional[int] = None
     vehicle_registry_cache_ttl_hours: Optional[int] = None
+    # --- enforcement / system settings ---
+    violation_dwell_seconds: Optional[int] = None
+    required_video_seconds: Optional[int] = None
+    video_retention_days: Optional[int] = None
+    video_timestamp_overlay: Optional[bool] = None
 
 
 def _get_config(db: Session) -> AppConfig:
     cfg = db.query(AppConfig).first()
     if not cfg:
-        cfg = AppConfig(
-            id=1,
-            blur_kernel_size=15,
-            blur_expand_ratio=0.18,
-            temporal_blur_enabled=True,
-            temporal_blur_max_misses=6,
-            use_violation_pipeline=True,
-            anpr_detector_backend="enterprise",
-            anpr_ocr_every_n_frames=2,
-            enterprise_detection_zoom=1.75,
-            enterprise_detection_roi_y_start=0.26,
-            vehicle_registry_api_enabled=True,
-            vehicle_registry_api_url="https://data.gov.il/api/3/action/datastore_search",
-            vehicle_registry_resource_id="053cea08-09bc-40ec-8f7a-156f0677aff3",
-            vehicle_registry_plate_field="mispar_rechev",
-            vehicle_registry_timeout_seconds=10,
-            vehicle_registry_cache_ttl_hours=24,
-        )
+        cfg = AppConfig(id=1)  # column defaults fill the rest
         db.add(cfg)
         db.commit()
         db.refresh(cfg)
     return cfg
 
 
-@router.get("")
-def get_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
-    cfg = _get_config(db)
+def _serialize(cfg: AppConfig) -> dict:
     return {
         "blur_kernel_size": cfg.blur_kernel_size,
         "blur_expand_ratio": cfg.blur_expand_ratio,
@@ -77,7 +63,16 @@ def get_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
         "vehicle_registry_plate_field": cfg.vehicle_registry_plate_field,
         "vehicle_registry_timeout_seconds": cfg.vehicle_registry_timeout_seconds,
         "vehicle_registry_cache_ttl_hours": cfg.vehicle_registry_cache_ttl_hours,
+        "violation_dwell_seconds": cfg.violation_dwell_seconds,
+        "required_video_seconds": cfg.required_video_seconds,
+        "video_retention_days": cfg.video_retention_days,
+        "video_timestamp_overlay": cfg.video_timestamp_overlay,
     }
+
+
+@router.get("")
+def get_settings(db: Session = Depends(get_db), _=Depends(get_current_user)):
+    return _serialize(_get_config(db))
 
 
 @router.patch("")
@@ -144,26 +139,21 @@ def update_settings(
     if body.vehicle_registry_cache_ttl_hours is not None:
         cfg.vehicle_registry_cache_ttl_hours = max(1, min(24 * 30, int(body.vehicle_registry_cache_ttl_hours)))
 
+    if body.violation_dwell_seconds is not None:
+        cfg.violation_dwell_seconds = max(0, min(86400, int(body.violation_dwell_seconds)))
+
+    if body.required_video_seconds is not None:
+        cfg.required_video_seconds = max(0, min(3600, int(body.required_video_seconds)))
+
+    if body.video_retention_days is not None:
+        cfg.video_retention_days = max(0, min(3650, int(body.video_retention_days)))
+
+    if body.video_timestamp_overlay is not None:
+        cfg.video_timestamp_overlay = bool(body.video_timestamp_overlay)
+
     db.commit()
     db.refresh(cfg)
-
-    return {
-        "blur_kernel_size": cfg.blur_kernel_size,
-        "blur_expand_ratio": cfg.blur_expand_ratio,
-        "temporal_blur_enabled": cfg.temporal_blur_enabled,
-        "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
-        "use_violation_pipeline": cfg.use_violation_pipeline,
-        "anpr_detector_backend": cfg.anpr_detector_backend,
-        "anpr_ocr_every_n_frames": cfg.anpr_ocr_every_n_frames,
-        "enterprise_detection_zoom": cfg.enterprise_detection_zoom,
-        "enterprise_detection_roi_y_start": cfg.enterprise_detection_roi_y_start,
-        "vehicle_registry_api_enabled": cfg.vehicle_registry_api_enabled,
-        "vehicle_registry_api_url": cfg.vehicle_registry_api_url,
-        "vehicle_registry_resource_id": cfg.vehicle_registry_resource_id,
-        "vehicle_registry_plate_field": cfg.vehicle_registry_plate_field,
-        "vehicle_registry_timeout_seconds": cfg.vehicle_registry_timeout_seconds,
-        "vehicle_registry_cache_ttl_hours": cfg.vehicle_registry_cache_ttl_hours,
-    }
+    return _serialize(cfg)
 
 
 @router.put("")

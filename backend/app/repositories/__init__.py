@@ -6,6 +6,7 @@ from app.repositories.camera_video_repo import CameraVideoRepository
 from app.repositories.ticket_repo import TicketRepository
 from app.repositories.upload_job_repo import UploadJobRepository
 from app.repositories.anpr_track_repo import AnprTrackRepository
+from app.repositories.inspector_repo import CameraSegmentRepository, InspectorRepository
 
 __all__ = [
     "BaseRepository",
@@ -15,4 +16,6 @@ __all__ = [
     "TicketRepository",
     "UploadJobRepository",
     "AnprTrackRepository",
+    "InspectorRepository",
+    "CameraSegmentRepository",
 ]

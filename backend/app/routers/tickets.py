@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_inspector
 from app.database import get_db
 from app.dependencies import get_camera_video_repo, get_ticket_repo, get_upload_job_repo
 from app.models import AppConfig
@@ -55,6 +57,15 @@ def _ticket_dict(t) -> dict:
         "vehicle_year":  getattr(t, "vehicle_year", None),
         "vehicle_make":  getattr(t, "vehicle_make", None),
         "vehicle_model": getattr(t, "vehicle_model", None),
+        # Violation window (auto-filled, inspector-editable)
+        "violation_start_at": t.violation_start_at.isoformat() if getattr(t, "violation_start_at", None) else None,
+        "violation_end_at": t.violation_end_at.isoformat() if getattr(t, "violation_end_at", None) else None,
+        # Inspector approval
+        "approved_by_inspector_id": getattr(t, "approved_by_inspector_id", None),
+        "assigned_inspector_id": getattr(t, "assigned_inspector_id", None),
+        "inspector_approved_at": t.inspector_approved_at.isoformat() if getattr(t, "inspector_approved_at", None) else None,
+        "inspector_violation_rule_id": getattr(t, "inspector_violation_rule_id", None),
+        "inspector_plate": getattr(t, "inspector_plate", None),
     }
 
 
@@ -358,6 +369,116 @@ def update_ticket(
 
     ticket = ticket_repo.get(ticket_id)
     return _ticket_dict(ticket)
+
+
+class InspectorApprovalBody(BaseModel):
+    inspector_plate: str                                   # vehicle number typed by the inspector
+    inspector_violation_rule_id: Optional[str] = None      # chosen from the violation-types list
+    violation_start_at: Optional[datetime] = None
+    violation_end_at: Optional[datetime] = None
+    vehicle_color: Optional[str] = None                    # inspector-entered (#7.3)
+    vehicle_type: Optional[str] = None                     # inspector-entered (#7.3)
+    admin_notes: Optional[str] = None
+    fine_amount: Optional[int] = None
+
+
+@router.patch("/{ticket_id}/approve")
+def approve_ticket_as_inspector(
+    ticket_id: int,
+    body: InspectorApprovalBody,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    inspector=Depends(get_current_inspector),
+):
+    """Inspector approval: pick the violation type and confirm the vehicle number. The typed
+    number must match the auto-detected plate (#7.2). Records the approving inspector."""
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    def _digits(p: Optional[str]) -> str:
+        return "".join(ch for ch in (p or "") if ch.isdigit())
+
+    typed = _digits(body.inspector_plate)
+    if not typed:
+        raise HTTPException(status_code=422, detail="יש להזין מספר רכב")
+    detected = _digits(ticket.license_plate)
+    has_detected = bool(detected) and detected != "11111"
+    if has_detected and typed != detected:
+        raise HTTPException(
+            status_code=422,
+            detail=f"מספר הרכב שהוקלד ({typed}) אינו תואם את המספר שזוהה ({detected})",
+        )
+
+    now = datetime.now(timezone.utc)
+    update_kw = {
+        "status": "approved",
+        "approved_by_inspector_id": inspector.id,
+        "inspector_approved_at": now,
+        "reviewed_at": now,
+        "inspector_plate": body.inspector_plate.strip(),
+        "inspector_violation_rule_id": body.inspector_violation_rule_id,
+    }
+    if not has_detected:
+        update_kw["license_plate"] = body.inspector_plate.strip()  # OCR failed → use the confirmed plate
+    if body.violation_start_at is not None:
+        update_kw["violation_start_at"] = body.violation_start_at
+    if body.violation_end_at is not None:
+        update_kw["violation_end_at"] = body.violation_end_at
+    if body.vehicle_color is not None:
+        update_kw["vehicle_color"] = body.vehicle_color
+    if body.vehicle_type is not None:
+        update_kw["vehicle_type"] = body.vehicle_type
+    if body.admin_notes is not None:
+        update_kw["admin_notes"] = body.admin_notes
+    if body.fine_amount is not None:
+        update_kw["fine_amount"] = body.fine_amount
+
+    ticket_repo.update(ticket_id, **update_kw)
+
+    # #10 — the subject-car box turns red once the report is approved.
+    try:
+        from app.services.video_rerender import rerender_ticket_video
+        updated = ticket_repo.get(ticket_id)
+        rerender_ticket_video(
+            ticket_repo.db, updated, box_color=(0, 0, 255),
+            plate_override=update_kw.get("inspector_plate") or updated.license_plate,
+        )
+    except Exception as _rr:
+        logging.getLogger(__name__).warning("approve re-render (red box) failed for ticket %s: %s", ticket_id, _rr)
+
+    return _ticket_dict(ticket_repo.get(ticket_id))
+
+
+@router.get("/inbox")
+def inspector_inbox(
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    inspector=Depends(get_current_inspector),
+):
+    """Reports currently in the signed-in inspector's inbox (assigned to them) — #9."""
+    return [
+        _ticket_dict(t)
+        for t in ticket_repo.list_all()
+        if getattr(t, "assigned_inspector_id", None) == inspector.id
+    ]
+
+
+class TransferBody(BaseModel):
+    to_inspector_id: int
+
+
+@router.patch("/{ticket_id}/transfer")
+def transfer_ticket(
+    ticket_id: int,
+    body: TransferBody,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    inspector=Depends(get_current_inspector),
+):
+    """Transfer a report to another inspector's inbox (#9)."""
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket_repo.update(ticket_id, assigned_inspector_id=body.to_inspector_id)
+    return _ticket_dict(ticket_repo.get(ticket_id))
 
 
 @router.get("/{ticket_id}/screenshots")
