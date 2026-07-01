@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Camera as CameraIcon } from 'lucide-react'
-import { camerasApi, violationRulesApi, parkingZonesApi, getApiBase } from '../api'
+import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, getApiBase } from '../api'
+import CameraSegmentsEditor from '../components/CameraSegmentsEditor'
 import { t } from '../i18n'
 
 const CONNECTION_TYPES = ['ip', 'bluetooth', 'wifi', 'rtsp', 'usb', 'other'] as const
@@ -19,6 +20,7 @@ interface Camera {
   is_active: boolean
   violation_rules?: string[] | null
   violation_zone?: string | null
+  assigned_inspector_id?: number | null
   zone_ids?: number[]      // active parking zone IDs for this camera
 }
 
@@ -34,6 +36,7 @@ interface CameraForm {
   is_active: boolean
   violation_rules: string[]
   selected_zone_ids: number[]   // multi-select parking zones
+  assigned_inspector_id: number | null
 }
 
 interface ParkingZone {
@@ -54,7 +57,7 @@ const EMPTY_FORM: CameraForm = {
   name: '', location: '', connection_type: 'ip',
   connection_config: {}, param_source: 'manual', params: {},
   manufacturer: '', model: '', is_active: true,
-  violation_rules: [], selected_zone_ids: [],
+  violation_rules: [], selected_zone_ids: [], assigned_inspector_id: null,
 }
 
 export default function Cameras() {
@@ -64,19 +67,23 @@ export default function Cameras() {
   const [form, setForm] = useState<CameraForm>(EMPTY_FORM)
   const [availableRules, setAvailableRules] = useState<ViolationRuleOption[]>([])
   const [availableZones, setAvailableZones] = useState<ParkingZone[]>([])
+  const [inspectors, setInspectors] = useState<{ id: number; full_name: string }[]>([])
+  const [expandedSegments, setExpandedSegments] = useState<number | null>(null)
   // camera zone map: cameraId → zoneId[]
   const [cameraZoneMap, setCameraZoneMap] = useState<Record<number, number[]>>({})
 
   const load = async () => {
     setLoading(true)
     try {
-      const [camsResult, rulesResult, zonesResult] = await Promise.all([
+      const [camsResult, rulesResult, zonesResult, inspectorsResult] = await Promise.all([
         camerasApi.list(),
         violationRulesApi.list(),
         parkingZonesApi.list(),
+        inspectorsApi.list(true).catch(() => []),
       ])
       const cams: Camera[] = camsResult.data
       setCameras(cams)
+      setInspectors(inspectorsResult as { id: number; full_name: string }[])
       setAvailableRules(
         rulesResult.data
           .filter((r: any) => r.is_active)
@@ -160,6 +167,7 @@ export default function Cameras() {
       is_active: c.is_active ?? true,
       violation_rules: c.violation_rules || [],
       selected_zone_ids: cameraZoneMap[c.id] || [],
+      assigned_inspector_id: c.assigned_inspector_id ?? null,
     })
   }
 
@@ -230,6 +238,20 @@ export default function Cameras() {
             <label className="label-base">{t('model')}</label>
             <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-base" />
           </div>
+        </div>
+
+        {/* Handling inspector (#8) */}
+        <div className="mb-3">
+          <label className="label-base block mb-1">פקח מטפל</label>
+          <select
+            className="input-base w-64"
+            value={form.assigned_inspector_id ?? ''}
+            onChange={e => setForm({ ...form, assigned_inspector_id: e.target.value ? parseInt(e.target.value, 10) : null })}
+          >
+            <option value="">— ללא —</option>
+            {inspectors.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
+          </select>
+          <p className="text-theme-xs text-theme-text-muted mt-1">דוחות מהמצלמה יוקצו אוטומטית לפקח זה</p>
         </div>
 
         {/* Parking zones (multi-select) */}
@@ -323,12 +345,16 @@ export default function Cameras() {
                     {hasSample && (
                       <a href={videoUrl} target="_blank" rel="noreferrer" className="btn-ghost">{t('watchSample')}</a>
                     )}
+                    <button onClick={() => setExpandedSegments(expandedSegments === c.id ? null : c.id)} className="btn-ghost">מקטעים</button>
                     <button onClick={() => startEdit(c)} className="btn-secondary">{t('edit')}</button>
                     <button onClick={() => remove(c.id)} className="btn-danger">{t('delete')}</button>
                   </div>
                 </div>
                 {hasSample && (
                   <video src={videoUrl} controls className="w-full max-w-[400px] mt-2 rounded" />
+                )}
+                {expandedSegments === c.id && (
+                  <CameraSegmentsEditor cameraId={c.id} rules={availableRules} />
                 )}
               </li>
             )

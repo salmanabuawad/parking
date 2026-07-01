@@ -9,6 +9,7 @@ import { ticketsApi } from '../api'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
+import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -188,7 +189,7 @@ export default function Tickets() {
             pagination={true}
             paginationPageSize={20}
             rowHeight={48}
-            defaultColDef={{ sortable: true, filter: true, resizable: true }}
+            defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
             style={{ width: '100%', height: '100%' }}
           />
         </div>

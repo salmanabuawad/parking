@@ -3,12 +3,14 @@ import api from '../api'
 
 interface User {
   username: string
+  user_type?: string        // "admin" | "inspector"
+  full_name?: string | null
 }
 
 interface AuthContextValue {
   token: string | null
   user: User | null
-  login: (username: string, password: string) => Promise<{ access_token: string; username: string }>
+  login: (username: string, password: string) => Promise<{ access_token: string; username: string; user_type?: string; full_name?: string | null }>
   logout: () => void
   isLoggedIn: boolean
   loading: boolean
@@ -68,12 +70,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = async (username: string, password: string) => {
-    const { data } = await api.post<{ access_token: string; username: string }>('/login', {
+    const { data } = await api.post<{ access_token: string; username: string; user_type?: string; full_name?: string | null }>('/login', {
       username,
       password,
     })
     const t = data.access_token
-    const u = { username: data.username }
+    const u = { username: data.username, user_type: data.user_type || 'admin', full_name: data.full_name ?? null }
     localStorage.setItem(TOKEN_KEY, t)
     localStorage.setItem(USER_KEY, JSON.stringify(u))
     setToken(t)

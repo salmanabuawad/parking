@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardCheck, Camera, Download, Check, X, Pencil } from "lucide-react";
-import { ticketsApi } from "../api";
+import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck } from "lucide-react";
+import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
+import { useAuth } from "../context/AuthContext";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -23,6 +24,13 @@ interface TicketDetail {
   violation_description_he?: string;
   violation_description_en?: string;
   has_original_video?: boolean;
+  violation_start_at?: string;
+  violation_end_at?: string;
+  inspector_violation_rule_id?: string;
+  inspector_plate?: string;
+  vehicle_color?: string;
+  vehicle_type?: string;
+  assigned_inspector_id?: number | null;
 }
 
 interface Screenshot {
@@ -30,9 +38,30 @@ interface Screenshot {
   storage_path: string;
   frame_time_seconds: number | null;
   created_at: string | null;
+  role?: string | null;
 }
 
 const PLATE_UNKNOWN = "11111";
+
+const ROLES = [
+  { key: "violation_start", label: "תחילת עבירה" },
+  { key: "violation_end", label: "סיום עבירה" },
+  { key: "plate_clear", label: "מספר רכב ברור" },
+  { key: "violation_evidence", label: "תמונת העבירה" },
+];
+
+function toLocalInput(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fromLocalInput(v: string): string | undefined {
+  if (!v) return undefined;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -80,6 +109,25 @@ export default function TicketReview() {
   const [editPlate, setEditPlate] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Inspector approval state
+  const { user } = useAuth();
+  const isInspector = user?.user_type === "inspector";
+  const [rules, setRules] = useState<{ rule_id: string; title_he: string }[]>([]);
+  const [inspectors, setInspectors] = useState<{ id: number; full_name: string }[]>([]);
+  const [aRule, setARule] = useState("");
+  const [aPlate, setAPlate] = useState("");
+  const [aColor, setAColor] = useState("");
+  const [aType, setAType] = useState("");
+  const [aStart, setAStart] = useState("");
+  const [aEnd, setAEnd] = useState("");
+  const [transferTo, setTransferTo] = useState("");
+  const [approveMsg, setApproveMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    violationRulesApi.list().then(({ data }) => setRules(data.filter((r: any) => r.is_active !== false))).catch(() => {});
+    inspectorsApi.list(true).then(setInspectors).catch(() => {});
+  }, []);
+
   useEffect(() => {
     let currentUrl = "";
     let cancelled = false;
@@ -98,6 +146,12 @@ export default function TicketReview() {
           setEditNotes(detail.admin_notes || "");
           setEditFine(detail.fine_amount != null ? String(detail.fine_amount) : "");
           setEditPlate(detail.license_plate || "");
+          setARule(detail.inspector_violation_rule_id || detail.violation_rule_id || "");
+          setAPlate(detail.license_plate && detail.license_plate !== PLATE_UNKNOWN ? detail.license_plate : "");
+          setAColor(detail.vehicle_color || "");
+          setAType(detail.vehicle_type || "");
+          setAStart(toLocalInput(detail.violation_start_at));
+          setAEnd(toLocalInput(detail.violation_end_at));
         }
         const url = URL.createObjectURL(blob);
         currentUrl = url;
@@ -173,6 +227,78 @@ export default function TicketReview() {
       setCaptureMsg(`✗ ${err?.message || "שגיאה"}`);
     } finally {
       setCapturing(false);
+    }
+  }
+
+  async function captureScreenshotRole(role: string) {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    setCapturing(true);
+    setCaptureMsg(null);
+    try {
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext("2d")?.drawImage(video, 0, 0);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
+      await ticketsApi.saveScreenshot(ticketId, dataUrl, video.currentTime, role);
+      setScreenshots(await ticketsApi.listScreenshots(ticketId));
+      setCaptureMsg("✓ נשמר");
+    } catch (err: any) {
+      setCaptureMsg(`✗ ${err?.message || "שגיאה"}`);
+    } finally {
+      setCapturing(false);
+    }
+  }
+
+  async function reloadVideo() {
+    try {
+      const blob = await ticketsApi.getProcessedVideo(ticketId);
+      setVideoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(blob);
+      });
+    } catch { /* ignore */ }
+  }
+
+  async function handleApprove() {
+    if (!ticket) return;
+    if (!aPlate.trim()) { setApproveMsg("✗ יש להזין מספר רכב"); return; }
+    setSaving(true);
+    setApproveMsg(null);
+    try {
+      const payload: Record<string, unknown> = {
+        inspector_plate: aPlate.trim(),
+        inspector_violation_rule_id: aRule || null,
+        vehicle_color: aColor || null,
+        vehicle_type: aType || null,
+      };
+      const s = fromLocalInput(aStart); if (s) payload.violation_start_at = s;
+      const e = fromLocalInput(aEnd); if (e) payload.violation_end_at = e;
+      const updated = await ticketsApi.approve(ticketId, payload);
+      setTicket(updated);
+      setApproveMsg("✓ הדוח אושר");
+      reloadVideo();
+    } catch (err: any) {
+      setApproveMsg(`✗ ${err?.message || "שגיאה באישור"}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleTransfer() {
+    if (!transferTo) return;
+    setSaving(true);
+    setApproveMsg(null);
+    try {
+      const updated = await ticketsApi.transfer(ticketId, parseInt(transferTo, 10));
+      setTicket(updated);
+      setTransferTo("");
+      setApproveMsg("✓ הדוח הועבר");
+    } catch (err: any) {
+      setApproveMsg(`✗ ${err?.message || "שגיאה בהעברה"}`);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -460,6 +586,87 @@ export default function TicketReview() {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Inspector approval panel */}
+          {ticket && isInspector && (
+            <div className="app-card grow basis-[280px] p-4">
+              <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-green-600" /> אישור פקח
+              </h3>
+
+              <Field label="סוג עבירה">
+                <select className="input-base" value={aRule} onChange={(e) => setARule(e.target.value)}>
+                  <option value="">— בחר —</option>
+                  {rules.map((r) => (
+                    <option key={r.rule_id} value={r.rule_id}>{r.title_he} ({r.rule_id})</option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="מספר רכב (לאימות)">
+                <input
+                  className="input-base font-mono tracking-widest"
+                  value={aPlate}
+                  onChange={(e) => setAPlate(e.target.value)}
+                  placeholder="הקלד מספר רכב"
+                />
+                <div className="text-[11px] text-theme-text-muted mt-0.5">חייב להתאים למספר שזוהה אוטומטית</div>
+              </Field>
+
+              <div className="flex gap-2">
+                <div className="flex-1"><Field label="צבע רכב"><input className="input-base" value={aColor} onChange={(e) => setAColor(e.target.value)} /></Field></div>
+                <div className="flex-1"><Field label="סוג רכב"><input className="input-base" value={aType} onChange={(e) => setAType(e.target.value)} /></Field></div>
+              </div>
+
+              <div className="flex gap-2">
+                <div className="flex-1"><Field label="תחילת עבירה"><input type="datetime-local" className="input-base" value={aStart} onChange={(e) => setAStart(e.target.value)} /></Field></div>
+                <div className="flex-1"><Field label="סיום עבירה"><input type="datetime-local" className="input-base" value={aEnd} onChange={(e) => setAEnd(e.target.value)} /></Field></div>
+              </div>
+
+              {/* 4 tagged images */}
+              <div className="border-t border-theme-card-border my-2 pt-2">
+                <div className="text-[11px] text-theme-text-muted mb-1">4 תמונות לדוח (עצור את הוידאו ולחץ):</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {ROLES.map((role) => {
+                    const has = screenshots.some((s) => s.role === role.key);
+                    return (
+                      <button
+                        key={role.key}
+                        type="button"
+                        onClick={() => captureScreenshotRole(role.key)}
+                        disabled={capturing || state !== "ready"}
+                        className={`text-xs px-2 py-1.5 rounded-md border flex items-center justify-center gap-1 ${has ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-theme-card-border text-theme-text-primary hover:bg-black/5"}`}
+                      >
+                        {has ? <Check className="w-3 h-3" /> : <Camera className="w-3 h-3" />}
+                        {role.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {approveMsg && (
+                <div className={`text-theme-sm mt-2 ${approveMsg.startsWith("✓") ? "text-green-600" : "text-red-600"}`}>{approveMsg}</div>
+              )}
+
+              <button onClick={handleApprove} disabled={saving} className="btn-success w-full justify-center mt-2">
+                <Check className="w-4 h-4" /> <span>{saving ? "מאשר…" : "אשר דוח"}</span>
+              </button>
+
+              {/* Transfer */}
+              <div className="border-t border-theme-card-border mt-2 pt-2">
+                <Field label="העבר לפקח אחר">
+                  <div className="flex gap-2">
+                    <select className="input-base flex-1" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}>
+                      <option value="">— בחר פקח —</option>
+                      {inspectors.map((i) => (<option key={i.id} value={i.id}>{i.full_name}</option>))}
+                    </select>
+                    <button onClick={handleTransfer} disabled={saving || !transferTo} className="btn-secondary" title="העבר"><Send className="w-4 h-4" /></button>
+                  </div>
+                </Field>
               </div>
             </div>
           )}

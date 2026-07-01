@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
 import { LayoutDashboard, RefreshCw } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
@@ -185,7 +186,7 @@ export default function Home() {
               pagination={true}
               paginationPageSize={15}
               rowHeight={46}
-              defaultColDef={{ sortable: true, filter: true, resizable: true }}
+              defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
               overlayNoRowsTemplate={`<span style="color:#94a3b8">${he.home.empty}</span>`}
               style={{ width: '100%', height: '100%' }}
             />

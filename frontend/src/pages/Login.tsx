@@ -22,8 +22,8 @@ export default function Login() {
     setError(null)
     setLoading(true)
     try {
-      await login(username.trim(), password)
-      navigate('/', { replace: true })
+      const res = await login(username.trim(), password)
+      navigate(res.user_type === 'inspector' ? '/inbox' : '/', { replace: true })
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } } }
       setError(ax.response?.data?.detail || t('loginFailed'))

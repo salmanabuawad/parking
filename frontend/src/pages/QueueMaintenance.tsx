@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
+import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
 import { ListOrdered } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
@@ -250,7 +251,7 @@ export default function QueueMaintenance() {
             pagination={true}
             paginationPageSize={20}
             rowHeight={48}
-            defaultColDef={{ sortable: true, filter: true, resizable: true }}
+            defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
             style={{ width: '100%', height: '100%' }}
           />
         </div>

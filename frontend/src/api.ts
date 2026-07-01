@@ -167,14 +167,32 @@ export const ticketsApi = {
   screenshotImageUrl(ticketId: number | string, screenshotId: number): string {
     return buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
   },
-  saveScreenshot(ticketId: number | string, imageBase64: string, frameTimeSec: number): Promise<any> {
+  saveScreenshot(ticketId: number | string, imageBase64: string, frameTimeSec: number, role?: string): Promise<any> {
     return fetchJson(`/tickets/${ticketId}/screenshots`, {
       method: "POST",
-      body: JSON.stringify({ image_base64: imageBase64, frame_time_sec: frameTimeSec }),
+      body: JSON.stringify({ image_base64: imageBase64, frame_time_sec: frameTimeSec, ...(role ? { role } : {}) }),
     });
+  },
+  deleteScreenshot(ticketId: number | string, screenshotId: number): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/screenshots/${screenshotId}`, { method: "DELETE" });
   },
   updateTicket(ticketId: number | string, payload: Record<string, unknown>): Promise<any> {
     return fetchJson(`/tickets/${ticketId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+  inbox(): Promise<any[]> {
+    return fetchJson(`/tickets/inbox`);
+  },
+  transfer(ticketId: number | string, toInspectorId: number): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/transfer`, {
+      method: "PATCH",
+      body: JSON.stringify({ to_inspector_id: toInspectorId }),
+    });
+  },
+  approve(ticketId: number | string, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/approve`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     });
@@ -302,5 +320,35 @@ export const fieldConfigApi = {
     return fetchJson(`/field-configurations/${encodeURIComponent(gridName)}/${encodeURIComponent(fieldName)}`, {
       method: 'DELETE',
     })
+  },
+}
+
+export const inspectorsApi = {
+  list(activeOnly = false): Promise<any[]> {
+    return fetchJson(`/inspectors${activeOnly ? '?active_only=true' : ''}`)
+  },
+  create(payload: Record<string, unknown>): Promise<any> {
+    return fetchJson('/inspectors', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  update(id: number, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/inspectors/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+  },
+  delete(id: number): Promise<void> {
+    return fetchJson(`/inspectors/${id}`, { method: 'DELETE' })
+  },
+}
+
+export const cameraSegmentsApi = {
+  list(cameraId: number): Promise<any[]> {
+    return fetchJson(`/cameras/${cameraId}/segments`)
+  },
+  create(cameraId: number, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/cameras/${cameraId}/segments`, { method: 'POST', body: JSON.stringify(payload) })
+  },
+  update(cameraId: number, segmentId: number, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/cameras/${cameraId}/segments/${segmentId}`, { method: 'PATCH', body: JSON.stringify(payload) })
+  },
+  delete(cameraId: number, segmentId: number): Promise<void> {
+    return fetchJson(`/cameras/${cameraId}/segments/${segmentId}`, { method: 'DELETE' })
   },
 }
