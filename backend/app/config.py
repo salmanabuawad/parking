@@ -23,9 +23,9 @@ class Settings(BaseSettings):
     validate_plate_in_registry: bool = True
     data_gov_il_resource_id: str = "053cea08-09bc-40ec-8f7a-156f0677aff3"  # MoT private/commercial vehicles; empty = local CSV only
     # Require the 4 evidence images (start/end/clear-plate/context) before an inspector can approve a
-    # ticket (#7.4). OFF by default until the frontend wires the screenshot-role -> ticket FKs, so
-    # enabling the snapshot layer never blocks existing approvals.
-    require_evidence_images: bool = False
+    # ticket (#7.4). The approve flow resolves the role-tagged screenshots to the ticket FKs and the
+    # inspector UI blocks approval until all 4 are captured. Set False to disable enforcement.
+    require_evidence_images: bool = True
     max_car_curb_distance_m: float = 0.50
     min_stationary_frames: int = 6  # ~0.25s at 25fps; used when no 10s-interval data
     parking_check_interval_sec: float = 10.0  # Sample at this interval; if car unchanged = parked

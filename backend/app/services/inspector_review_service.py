@@ -14,6 +14,29 @@ from app.services.israeli_plate import normalize_israeli_plate
 from app.services.ticket_workflow_service import validate_ticket_before_approval
 from app.services.vehicle_registry_api import lookup_vehicle_by_plate
 
+# The 4 evidence-image roles (#7.4) map to these ticket FK columns; the ticket_screenshots router
+# keeps one image per role, so resolution is unambiguous.
+_ROLE_TO_FK = {
+    "violation_start": "start_violation_screenshot_id",
+    "violation_end": "end_violation_screenshot_id",
+    "plate_clear": "clear_plate_screenshot_id",
+    "violation_evidence": "violation_context_screenshot_id",
+}
+
+
+def _resolve_evidence_screenshots(db: Session, ticket: Ticket) -> None:
+    """Populate the 4 evidence-image FK columns from the ticket's role-tagged screenshots (#7.4)."""
+    from app.models import TicketScreenshot
+    by_role: dict[str, int] = {}
+    for s in db.query(TicketScreenshot).filter(TicketScreenshot.ticket_id == ticket.id).all():
+        r = getattr(s, "role", None)
+        if r in _ROLE_TO_FK:
+            by_role[r] = s.id
+    for role, fk in _ROLE_TO_FK.items():
+        sid = by_role.get(role)
+        if sid and hasattr(ticket, fk):
+            setattr(ticket, fk, sid)
+
 
 def _review_fields(t: Ticket) -> dict:
     return {
@@ -91,8 +114,8 @@ def update_ticket_by_inspector(
             ticket.review_status = "manual_review_required"
 
     if data.get("approve") is True:
-        # 4-image evidence gate — opt-in (default off) so enabling the snapshot layer doesn't block
-        # approvals before the frontend wires the screenshot roles to the ticket FKs (#7.4).
+        # Resolve the 4 role-tagged evidence screenshots to the ticket FK columns (#7.4), then gate.
+        _resolve_evidence_screenshots(db, ticket)
         from app.config import settings
         if getattr(settings, "require_evidence_images", False):
             validate_ticket_before_approval(ticket)

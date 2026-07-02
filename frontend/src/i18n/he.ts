@@ -103,6 +103,8 @@ export const he = {
     pending_review: 'ממתין לאישור',
     approved: 'אושר',
     rejected: 'נדחה',
+    exempt: 'פטור',
+    duplicate: 'כפול',
     loading: 'טוען דוחות...',
     empty: 'לא נמצאו דוחות',
     review: 'פתח דוח',

@@ -28,6 +28,8 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
   approved:       { cls: 'badge-success', label: 'אושר' },
   final:          { cls: 'badge-success', label: 'סופי' },
   rejected:       { cls: 'badge-danger',  label: 'נדחה' },
+  exempt:         { cls: 'badge-neutral', label: 'פטור' },
+  duplicate:      { cls: 'badge-neutral', label: 'כפול' },
 }
 
 function StatusBadge({ value }: { value: string }) {
@@ -53,6 +55,8 @@ const FILTER_BUTTONS = [
   { key: 'pending_review', label: 'ממתין' },
   { key: 'approved', label: 'אושר' },
   { key: 'rejected', label: 'נדחה' },
+  { key: 'exempt', label: 'פטור' },
+  { key: 'duplicate', label: 'כפול' },
 ]
 
 export default function Tickets() {

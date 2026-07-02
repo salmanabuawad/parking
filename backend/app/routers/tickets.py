@@ -25,6 +25,11 @@ except Exception:
 router = APIRouter(prefix="/tickets", tags=["tickets"])
 
 
+def _require_evidence_images() -> bool:
+    from app.config import settings
+    return bool(getattr(settings, "require_evidence_images", False))
+
+
 def _ticket_dict(t) -> dict:
     return {
         "id": t.id,
@@ -81,6 +86,7 @@ def _ticket_dict(t) -> dict:
         "end_violation_screenshot_id": getattr(t, "end_violation_screenshot_id", None),
         "clear_plate_screenshot_id": getattr(t, "clear_plate_screenshot_id", None),
         "violation_context_screenshot_id": getattr(t, "violation_context_screenshot_id", None),
+        "require_evidence_images": _require_evidence_images(),
     }
 
 

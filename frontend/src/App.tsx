@@ -1,7 +1,7 @@
 import { Component, type ReactNode, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert, Inbox, Users,
+  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert, Inbox, Users, ShieldCheck,
 } from 'lucide-react'
 
 const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
@@ -31,6 +31,7 @@ import QueueMaintenance from './pages/QueueMaintenance'
 import ViolationRules   from './pages/ViolationRules'
 import InboxPage        from './pages/Inbox'
 import Inspectors       from './pages/Inspectors'
+import Exemptions       from './pages/Exemptions'
 import Login            from './pages/Login'
 import { he }           from './i18n/he'
 
@@ -81,6 +82,7 @@ function buildNavItems(userType?: string): NavItem[] {
       ],
     },
     { id: 'inspectors', label: 'פקחים', icon: <Users className="w-4 h-4" /> },
+    { id: 'exemptions', label: 'פטורים', icon: <ShieldCheck className="w-4 h-4" /> },
     { id: 'settings', label: he.app.settings, icon: <Settings className="w-4 h-4" /> },
   ]
 }
@@ -94,6 +96,7 @@ const ID_TO_PATH: Record<string, string> = {
   cameras:          '/cameras',
   'violation-rules':'/violation-rules',
   inspectors:       '/inspectors',
+  exemptions:       '/exemptions',
   settings:         '/settings',
 }
 
@@ -106,6 +109,7 @@ function pathnameToActiveId(pathname: string): string {
   if (pathname.startsWith('/cameras'))          return 'cameras'
   if (pathname.startsWith('/violation-rules'))  return 'violation-rules'
   if (pathname.startsWith('/inspectors'))       return 'inspectors'
+  if (pathname.startsWith('/exemptions'))       return 'exemptions'
   if (pathname.startsWith('/settings'))         return 'settings'
   return 'home'
 }
@@ -189,6 +193,7 @@ function AppShell() {
             <Route path="/queue"           element={<QueueMaintenance />} />
             <Route path="/inbox"           element={<InboxPage />} />
             <Route path="/inspectors"      element={<Inspectors />} />
+            <Route path="/exemptions"      element={<Exemptions />} />
             <Route path="/settings"        element={<SettingsPage />} />
             <Route path="*"               element={<Navigate to="/" replace />} />
           </Routes>

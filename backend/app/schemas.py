@@ -117,6 +117,20 @@ class CameraSegmentBase(BaseModel):
     violation_rule_ids: Optional[list[str]] = None   # e.g. ["IL-STATIC-001", "IL-STATIC-005"]
     display_order: int = 0
     is_active: bool = True
+    # Geometry (#4) — where in the frame the segment sits
+    coordinate_type: Optional[str] = "pixels"        # pixels | normalized | polygon
+    x1: Optional[float] = None
+    y1: Optional[float] = None
+    x2: Optional[float] = None
+    y2: Optional[float] = None
+    polygon_json: Optional[list] = None
+    # Per-segment overrides + schedule (#1, #4)
+    min_stay_seconds: Optional[int] = None
+    evidence_video_seconds: Optional[int] = None
+    active_days: Optional[list[str]] = None          # ["SUN","MON",...]
+    active_from_time: Optional[str] = None           # "07:00"
+    active_to_time: Optional[str] = None             # "19:00"
+    holiday_policy: Optional[str] = None
 
 
 class CameraSegmentCreate(CameraSegmentBase):
@@ -128,6 +142,18 @@ class CameraSegmentUpdate(BaseModel):
     violation_rule_ids: Optional[list[str]] = None
     display_order: Optional[int] = None
     is_active: Optional[bool] = None
+    coordinate_type: Optional[str] = None
+    x1: Optional[float] = None
+    y1: Optional[float] = None
+    x2: Optional[float] = None
+    y2: Optional[float] = None
+    polygon_json: Optional[list] = None
+    min_stay_seconds: Optional[int] = None
+    evidence_video_seconds: Optional[int] = None
+    active_days: Optional[list[str]] = None
+    active_from_time: Optional[str] = None
+    active_to_time: Optional[str] = None
+    holiday_policy: Optional[str] = None
 
 
 class CameraSegmentResponse(CameraSegmentBase):

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck } from "lucide-react";
+import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, History } from "lucide-react";
 import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
 import { useAuth } from "../context/AuthContext";
 
@@ -31,6 +31,7 @@ interface TicketDetail {
   vehicle_color?: string;
   vehicle_type?: string;
   assigned_inspector_id?: number | null;
+  require_evidence_images?: boolean;
 }
 
 interface Screenshot {
@@ -77,12 +78,21 @@ const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
   approved:       { cls: "badge-success", label: "אושר" },
   rejected:       { cls: "badge-danger",  label: "נדחה" },
   paid:           { cls: "badge-info",    label: "שולם" },
+  exempt:         { cls: "badge-neutral", label: "פטור" },
+  duplicate:      { cls: "badge-neutral", label: "כפול" },
 };
 
 const DECISION_STYLE: Record<string, { badge: string; bar: string; label: string }> = {
   confirmed_violation: { badge: "badge-danger",  bar: "bg-red-600",   label: "הפרה מאושרת" },
   suspected_violation: { badge: "badge-warning", bar: "bg-amber-500", label: "הפרה חשודה" },
   no_violation:        { badge: "badge-success", bar: "bg-green-600", label: "ללא הפרה" },
+};
+
+const AUDIT_ACTION: Record<string, string> = {
+  inspector_approve: "אישור",
+  inspector_reject: "דחייה",
+  inspector_update: "עדכון",
+  inspector_transfer: "העברה",
 };
 
 export default function TicketReview() {
@@ -96,6 +106,7 @@ export default function TicketReview() {
   const [error, setError] = useState<string | null>(null);
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
   const [screenshots, setScreenshots] = useState<Screenshot[]>([]);
+  const [audit, setAudit] = useState<any[]>([]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [captureMsg, setCaptureMsg] = useState<string | null>(null);
@@ -157,8 +168,9 @@ export default function TicketReview() {
         currentUrl = url;
         setVideoUrl(url);
         setState("ready");
-        // Load screenshots (non-blocking)
+        // Load screenshots + audit trail (non-blocking)
         ticketsApi.listScreenshots(ticketId).then(setScreenshots).catch(() => {});
+        ticketsApi.audit(ticketId).then(setAudit).catch(() => {});
       } catch (err: any) {
         if (!cancelled) {
           setState("error");
@@ -264,6 +276,13 @@ export default function TicketReview() {
   async function handleApprove() {
     if (!ticket) return;
     if (!aPlate.trim()) { setApproveMsg("✗ יש להזין מספר רכב"); return; }
+    if (ticket.require_evidence_images) {
+      const missing = ROLES.filter((r) => !screenshots.some((s) => s.role === r.key));
+      if (missing.length > 0) {
+        setApproveMsg(`✗ חסרות תמונות ראיה: ${missing.map((m) => m.label).join(", ")}`);
+        return;
+      }
+    }
     setSaving(true);
     setApproveMsg(null);
     try {
@@ -279,6 +298,7 @@ export default function TicketReview() {
       setTicket(updated);
       setApproveMsg("✓ הדוח אושר");
       reloadVideo();
+      ticketsApi.audit(ticketId).then(setAudit).catch(() => {});
     } catch (err: any) {
       setApproveMsg(`✗ ${err?.message || "שגיאה באישור"}`);
     } finally {
@@ -295,6 +315,7 @@ export default function TicketReview() {
       setTicket(updated);
       setTransferTo("");
       setApproveMsg("✓ הדוח הועבר");
+      ticketsApi.audit(ticketId).then(setAudit).catch(() => {});
     } catch (err: any) {
       setApproveMsg(`✗ ${err?.message || "שגיאה בהעברה"}`);
     } finally {
@@ -628,7 +649,9 @@ export default function TicketReview() {
 
               {/* 4 tagged images */}
               <div className="border-t border-theme-card-border my-2 pt-2">
-                <div className="text-[11px] text-theme-text-muted mb-1">4 תמונות לדוח (עצור את הוידאו ולחץ):</div>
+                <div className="text-[11px] text-theme-text-muted mb-1">
+                  4 תמונות לדוח (עצור את הוידאו ולחץ){ticket.require_evidence_images ? <span className="text-red-500"> — חובה לאישור</span> : null}:
+                </div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {ROLES.map((role) => {
                     const has = screenshots.some((s) => s.role === role.key);
@@ -708,6 +731,31 @@ export default function TicketReview() {
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* Audit trail */}
+          {ticket && audit.length > 0 && (
+            <div className="app-card grow basis-[240px] p-4">
+              <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                <History className="w-4 h-4 text-theme-text-muted" /> יומן פעולות
+              </h3>
+              <ul className="space-y-2 m-0 p-0 list-none">
+                {audit.map((a) => (
+                  <li key={a.id} className="text-theme-sm border-r-2 border-theme-accent pr-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold">{AUDIT_ACTION[a.action_type] ?? a.action_type}</span>
+                      <span className="text-theme-xs text-theme-text-muted">
+                        {a.inspector_id ? (inspectors.find((i) => i.id === a.inspector_id)?.full_name ?? `פקח #${a.inspector_id}`) : "—"}
+                      </span>
+                      <span className="text-theme-xs text-theme-text-muted mr-auto">
+                        {a.created_at ? new Date(a.created_at).toLocaleString("he-IL") : ""}
+                      </span>
+                    </div>
+                    {a.notes && <div className="text-theme-xs text-theme-text-muted mt-0.5">{a.notes}</div>}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

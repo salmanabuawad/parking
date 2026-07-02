@@ -197,6 +197,9 @@ export const ticketsApi = {
       body: JSON.stringify(payload),
     });
   },
+  audit(ticketId: number | string): Promise<any[]> {
+    return fetchJson(`/tickets/${ticketId}/audit`);
+  },
 };
 
 export const camerasApi = {
@@ -350,5 +353,20 @@ export const cameraSegmentsApi = {
   },
   delete(cameraId: number, segmentId: number): Promise<void> {
     return fetchJson(`/cameras/${cameraId}/segments/${segmentId}`, { method: 'DELETE' })
+  },
+}
+
+export const exemptionsApi = {
+  list(): Promise<any[]> {
+    return fetchJson('/exemptions')
+  },
+  create(payload: Record<string, unknown>): Promise<any> {
+    return fetchJson('/exemptions', { method: 'POST', body: JSON.stringify(payload) })
+  },
+  update(id: number, payload: Record<string, unknown>): Promise<any> {
+    return fetchJson(`/exemptions/${id}`, { method: 'PATCH', body: JSON.stringify(payload) })
+  },
+  delete(id: number): Promise<void> {
+    return fetchJson(`/exemptions/${id}`, { method: 'DELETE' })
   },
 }
