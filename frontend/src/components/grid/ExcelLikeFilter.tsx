@@ -14,7 +14,8 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useGridFilter } from 'ag-grid-react';
-import type { CustomFilterProps, IAfterGuiAttachedParams, IDoesFilterPassParams } from 'ag-grid-community';
+import type { CustomFilterProps } from 'ag-grid-react';
+import type { IAfterGuiAttachedParams, IDoesFilterPassParams } from 'ag-grid-community';
 
 const BLANK_LABEL = '(ריק)';
 

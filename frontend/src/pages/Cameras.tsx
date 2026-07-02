@@ -317,11 +317,11 @@ export default function Cameras() {
       {loading ? <p className="text-theme-text-muted">{t('loading')}</p> : (
         <ul className="list-none p-0 flex flex-col gap-2">
           {cameras.map(c => {
-            const hasVideoDb = (c.connection_config as Record<string, unknown>)?.video_id
-            const hasVideoFile = (c.connection_config as Record<string, unknown>)?.sample_video
+            const hasVideoDb = Boolean((c.connection_config as Record<string, unknown>)?.video_id)
+            const hasVideoFile = Boolean((c.connection_config as Record<string, unknown>)?.sample_video)
             const hasSample = c.name === 'Sample Camera' || hasVideoDb || hasVideoFile
             const base = getApiBase().replace(/\/$/, '')
-            const videoUrl = hasVideoDb ? `${base}/cameras/${c.id}/video` : `${base}/sample/video?t=${Date.now()}`
+            const videoUrl: string = hasVideoDb ? `${base}/cameras/${c.id}/video` : `${base}/sample/video?t=${Date.now()}`
             const zoneIds = cameraZoneMap[c.id] || []
             const zoneNames = availableZones.filter(z => zoneIds.includes(z.id)).map(z => z.name_he)
             return (

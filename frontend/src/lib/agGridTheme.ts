@@ -9,12 +9,10 @@ function buildTheme(brightness: Brightness) {
       headerBackgroundColor:       '#0f172a',
       foregroundColor:             '#e5e7eb',
       headerTextColor:             '#cbd5e1',
-      secondaryForegroundColor:    '#94a3b8',
       borderColor:                 '#2a3550',
       rowHoverColor:               'rgba(255,255,255,0.06)',
       selectedRowBackgroundColor:  'rgba(96,165,250,0.18)',
       inputBackgroundColor:        '#1a2439',
-      inputBorderColor:            '#2a3550',
     })
   }
   if (brightness === 'contrast') {
@@ -24,7 +22,6 @@ function buildTheme(brightness: Brightness) {
       headerBackgroundColor:       '#ffffff',
       foregroundColor:             '#000000',
       headerTextColor:             '#000000',
-      secondaryForegroundColor:    '#1a1a1a',
       borderColor:                 '#000000',
       rowHoverColor:               '#e8e8e8',
       selectedRowBackgroundColor:  '#c8d4e0',

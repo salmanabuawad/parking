@@ -13,14 +13,6 @@ function buildUrl(path: string): string {
   return `${left}/api${right}`;
 }
 
-function authHeader(): Record<string, string> {
-  const token = localStorage.getItem("parking_token");
-  return token ? { Authorization: `Bearer ${token}` } : {};
-  // Auto-prefix with /api unless already present
-  const apiRight = right.startsWith("/api") ? right : `/api${right}`;
-  return `${left}${apiRight}`;
-}
-
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
   const token = localStorage.getItem("parking_token");
   return {

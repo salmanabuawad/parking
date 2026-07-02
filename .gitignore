@@ -49,3 +49,7 @@ sample_video/
 backend/videos/
 videos/
 sample_video/
+.env
+*.env
+backend/.env
+frontend/.env

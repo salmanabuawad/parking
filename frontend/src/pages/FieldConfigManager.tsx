@@ -117,11 +117,14 @@ export default function FieldConfigManager() {
       lockPinned: true,
       suppressMovable: true,
       editable: false,
-      cellStyle: (p: any) => ({
-        textAlign: 'right',
-        fontWeight: 600,
-        background: isDirty(p.data) ? '#fef3c7' : undefined,
-      }),
+      cellStyle: (p: any) => {
+        const style: Record<string, string | number> = {
+          textAlign: 'right',
+          fontWeight: 600,
+        }
+        if (p.data && p.data ? isDirty(p.data) : false) style.background = '#fef3c7'
+        return style
+      },
     },
     {
       field: 'grid_name',
@@ -175,8 +178,8 @@ export default function FieldConfigManager() {
       cellEditor: 'agCheckboxCellEditor',
       cellRenderer: 'agCheckboxCellRenderer',
       cellStyle: { textAlign: 'right' },
-      valueGetter: (p) => p.data.visible !== false,
-      valueSetter: (p) => { p.data.visible = p.newValue ?? true; return true },
+      valueGetter: (p) => p.data?.visible !== false,
+      valueSetter: (p) => { if (!p.data) return false; p.data.visible = p.newValue ?? true; return true },
     },
     {
       field: 'pinned',
@@ -186,8 +189,8 @@ export default function FieldConfigManager() {
       cellEditor: 'agCheckboxCellEditor',
       cellRenderer: 'agCheckboxCellRenderer',
       cellStyle: { textAlign: 'right' },
-      valueGetter: (p) => p.data.pinned ?? false,
-      valueSetter: (p) => { p.data.pinned = p.newValue ?? false; return true },
+      valueGetter: (p) => p.data?.pinned ?? false,
+      valueSetter: (p) => { if (!p.data) return false; p.data.pinned = p.newValue ?? false; return true },
     },
     {
       field: 'pin_side',
@@ -295,7 +298,6 @@ export default function FieldConfigManager() {
             onCellValueChanged={handleCellChanged}
             stopEditingWhenCellsLoseFocus={true}
             animateRows={false}
-            style={{ width: '100%', height: '100%' }}
           />
         </div>
       )}
