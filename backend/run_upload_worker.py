@@ -423,16 +423,19 @@ def process_one_job() -> bool:
             # Violation window: start = recording time, end = start + clip length (inspector-editable)
             v_start = job.captured_at
             v_end = None
+            _req_secs = float(getattr(cfg, "required_video_seconds", 10) or 10) if cfg else 10.0
+            _actual_dur = None
+            if isinstance(video_params, dict):
+                for _k in ("duration", "duration_sec", "duration_seconds"):
+                    if video_params.get(_k):
+                        _actual_dur = float(video_params[_k])
+                        break
             if v_start is not None:
-                dur = None
-                if isinstance(video_params, dict):
-                    for _k in ("duration", "duration_sec", "duration_seconds"):
-                        if video_params.get(_k):
-                            dur = float(video_params[_k])
-                            break
-                if dur is None:
-                    dur = float(getattr(cfg, "required_video_seconds", 10) or 10) if cfg else 10.0
-                v_end = v_start + timedelta(seconds=dur)
+                v_end = v_start + timedelta(seconds=(_actual_dur if _actual_dur is not None else _req_secs))
+            # Flag clips shorter than the configured required length (system settings #1)
+            if _actual_dur is not None and _req_secs and _actual_dur < _req_secs:
+                _short = f"סרטון קצר מהנדרש: {_actual_dur:.0f}ש׳ < {_req_secs:.0f}ש׳"
+                plate_reason = f"{plate_reason} · {_short}" if plate_reason else _short
             kw = dict(
                 upload_job_id=job.id,
                 license_plate=display_plate,
@@ -603,9 +606,24 @@ def main():
     except Exception as e:
         print(f"WARNING: Tesseract not available: {e}", flush=True)
 
+    _last_retention = 0.0
     while True:
         try:
             did_work = process_one_job()
+            # Video retention purge (system settings #1): on startup + hourly, free videos past the window.
+            _now = time.monotonic()
+            if _now - _last_retention > 3600:
+                _last_retention = _now
+                try:
+                    from app.database import SessionLocal
+                    from app.services.retention_service import cleanup_expired_videos
+                    _rdb = SessionLocal()
+                    _r = cleanup_expired_videos(_rdb)
+                    _rdb.close()
+                    if _r.get("tickets"):
+                        print(f"[retention] purged videos from {_r['tickets']} ticket(s) older than {_r['days']}d, freed {_r['freed_mb']} MB", flush=True)
+                except Exception as _re:
+                    print(f"[retention] cleanup failed (non-fatal): {_re}", flush=True)
             if not did_work:
                 # Idle: wait before next poll
                 time.sleep(idle_interval)
