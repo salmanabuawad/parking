@@ -400,22 +400,17 @@ def process_one_job() -> bool:
                     print(f"[Job {job.id}] registry deep-check failed (non-fatal): {dc_err}", flush=True)
             vehicle_data = _lookup_vehicle(display_plate, job.id) if display_plate else {}
 
-            # --- Snapshot layer: skip-enforce exempt plates, dedup recent tickets, freeze config (rule 8) ---
+            # --- Snapshot layer: skip-enforce exempt plates, freeze config (rule 8). Multi-track
+            # duplicates are collapsed before ticket creation (see Step 3), so no duplicate rows. ---
             ticket_status = "pending_review"
             try:
-                from app.services.vehicle_exemption_service import find_duplicate_ticket, is_plate_exempt
+                from app.services.vehicle_exemption_service import is_plate_exempt
                 if display_plate and is_plate_exempt(db, display_plate):
                     ticket_status = "exempt"
                     plate_reason = f"Exempt plate {display_plate} (whitelist) — no enforcement"
                     print(f"[Job {job.id}] {display_plate} exempt — ticket marked exempt", flush=True)
-                elif display_plate:
-                    dup = find_duplicate_ticket(db, plate=display_plate, camera_id=job.camera_id, within_seconds=300)
-                    if dup is not None:
-                        ticket_status = "duplicate"
-                        plate_reason = f"Duplicate of ticket #{dup.id} ({display_plate} within 5 min)"
-                        print(f"[Job {job.id}] {display_plate} duplicates ticket #{dup.id}", flush=True)
             except Exception as ex_err:
-                print(f"[Job {job.id}] exemption/dedup check failed (non-fatal): {ex_err}", flush=True)
+                print(f"[Job {job.id}] exemption check failed (non-fatal): {ex_err}", flush=True)
             try:
                 from app.services.ticket_snapshot_service import build_ticket_snapshots
                 snapshots = build_ticket_snapshots(db, camera_id=job.camera_id, section_id=None, rule_code=None)
@@ -454,7 +449,7 @@ def process_one_job() -> bool:
                 captured_at=job.captured_at,
                 violation_start_at=v_start,
                 violation_end_at=v_end,
-                assigned_inspector_id=(None if ticket_status in ("exempt", "duplicate") else camera_assigned_inspector),
+                assigned_inspector_id=(None if ticket_status == "exempt" else camera_assigned_inspector),
                 video_params=video_params if video_params else None,
             )
             if plate_reason:
@@ -523,10 +518,24 @@ def process_one_job() -> bool:
             return ticket, display_plate
 
         # --- Step 3: one ticket per car (or a single 'not detected' ticket if none) ---
+        from app.services.israeli_plate import normalize_israeli_plate as _norm_plate
         created: list = []
         if cars:
             cars_sorted = sorted(cars, key=lambda c: c.get("vote_count", 0), reverse=True)
-            for idx, car in enumerate(cars_sorted):
+            # Collapse multi-track repeats: one physical car can fragment into several tracks that
+            # read the same plate — keep the highest-vote track per plate so it yields ONE ticket,
+            # not duplicates. Plateless tracks (review tickets) are kept individually.
+            _seen: set = set()
+            _unique = []
+            for _c in cars_sorted:
+                _n = _norm_plate(_c.get("raw_digits") or "")
+                if _n and _n in _seen:
+                    print(f"[Job {job.id}] duplicate track for plate {_n} — skipped", flush=True)
+                    continue
+                if _n:
+                    _seen.add(_n)
+                _unique.append(_c)
+            for idx, car in enumerate(_unique):
                 tid = car.get("track_id", idx + 1)
                 anpr_track = {k: car.get(k) for k in ("track_id", "raw_digits", "normalized_plate", "vote_count")}
                 created.append(_finalize_ticket(
