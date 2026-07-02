@@ -541,6 +541,18 @@ export default function TicketReview() {
                 </Field>
               )}
 
+              {/* Violation window — date + time of start / end (#5) */}
+              {ticket.violation_start_at && (
+                <Field label="תחילת עבירה">
+                  {new Date(ticket.violation_start_at).toLocaleString("he-IL")}
+                </Field>
+              )}
+              {ticket.violation_end_at && (
+                <Field label="סיום עבירה">
+                  {new Date(ticket.violation_end_at).toLocaleString("he-IL")}
+                </Field>
+              )}
+
               {/* Submission time */}
               {ticket.created_at && (
                 <Field label="זמן הגשה">
