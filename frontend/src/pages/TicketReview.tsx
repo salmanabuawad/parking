@@ -646,7 +646,17 @@ export default function TicketReview() {
                   onChange={(e) => setAPlate(e.target.value)}
                   placeholder="הקלד מספר רכב"
                 />
-                <div className="text-[11px] text-theme-text-muted mt-0.5">חייב להתאים למספר שזוהה אוטומטית</div>
+                {(() => {
+                  const detected = (ticket.license_plate || "").replace(/\D/g, "");
+                  const typed = aPlate.replace(/\D/g, "");
+                  if (!typed)
+                    return <div className="text-[11px] text-theme-text-muted mt-0.5">חייב להתאים למספר שזוהה אוטומטית{detected && detected !== PLATE_UNKNOWN ? ` (${detected})` : ""}</div>;
+                  if (!detected || detected === PLATE_UNKNOWN)
+                    return <div className="text-[11px] text-theme-text-muted mt-0.5">אין מספר מזוהה אוטומטית להשוואה</div>;
+                  return typed === detected
+                    ? <div className="text-[11px] text-green-600 font-semibold mt-0.5">✓ תואם למספר שזוהה אוטומטית</div>
+                    : <div className="text-[11px] text-red-600 font-semibold mt-0.5">⚠ שגיאה: אינו תואם למספר שזוהה אוטומטית ({detected})</div>;
+                })()}
               </Field>
 
               <div className="flex gap-2">
