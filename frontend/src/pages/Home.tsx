@@ -34,12 +34,16 @@ function StatusCell({ value }: { value: string }) {
   return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent: string }) {
+function StatCard({ label, value, accent, active, onClick }: { label: string; value: number; accent: string; active?: boolean; onClick?: () => void }) {
   return (
-    <div className="app-card flex-1 min-w-[110px] px-5 py-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`app-card flex-1 min-w-[110px] px-5 py-4 text-right cursor-pointer transition-shadow ${active ? 'ring-2 ring-theme-accent' : 'hover:shadow-md'}`}
+    >
       <div className={`text-3xl font-bold ${accent}`}>{value}</div>
       <div className="text-sm text-theme-text-muted mt-0.5">{label}</div>
-    </div>
+    </button>
   )
 }
 
@@ -55,6 +59,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [quickFilter, setQuickFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState<string | null>(null)
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -80,6 +85,7 @@ export default function Home() {
     completed: jobs.filter((j) => j.status === 'completed').length,
     failed: jobs.filter((j) => j.status === 'failed').length,
   }
+  const visibleJobs = statusFilter ? jobs.filter((j) => j.status === statusFilter) : jobs
 
   const colDefs = useMemo<ColDef<UploadJob>[]>(() => {
     const w = getFontSizeWidthMultiplier()
@@ -146,10 +152,10 @@ export default function Home() {
 
       {/* Stat cards */}
       <div className="flex flex-wrap gap-3">
-        <StatCard label="סה״כ"   value={counts.total}     accent="text-blue-700" />
-        <StatCard label="ממתינים" value={counts.pending}   accent="text-amber-600" />
-        <StatCard label="הושלמו"  value={counts.completed} accent="text-green-700" />
-        <StatCard label="נכשלו"   value={counts.failed}    accent="text-red-600" />
+        <StatCard label="סה״כ"   value={counts.total}     accent="text-blue-700"  active={statusFilter === null}        onClick={() => setStatusFilter(null)} />
+        <StatCard label="ממתינים" value={counts.pending}   accent="text-amber-600" active={statusFilter === 'queued'}    onClick={() => setStatusFilter((s) => (s === 'queued' ? null : 'queued'))} />
+        <StatCard label="הושלמו"  value={counts.completed} accent="text-green-700" active={statusFilter === 'completed'} onClick={() => setStatusFilter((s) => (s === 'completed' ? null : 'completed'))} />
+        <StatCard label="נכשלו"   value={counts.failed}    accent="text-red-600"   active={statusFilter === 'failed'}    onClick={() => setStatusFilter((s) => (s === 'failed' ? null : 'failed'))} />
       </div>
 
       {/* Queue grid */}
@@ -179,7 +185,7 @@ export default function Home() {
           <div className="grid-card">
             <AgGridReact<UploadJob>
               theme={agTheme}
-              rowData={jobs}
+              rowData={visibleJobs}
               columnDefs={colDefs}
               quickFilterText={quickFilter}
               enableRtl={true}
