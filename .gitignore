@@ -53,3 +53,6 @@ sample_video/
 *.env
 backend/.env
 frontend/.env
+
+# Reference/scratch material (code snippet drops, patch notes)
+_snippets/
