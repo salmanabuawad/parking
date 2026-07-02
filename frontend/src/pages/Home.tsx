@@ -189,8 +189,6 @@ export default function Home() {
               columnDefs={colDefs}
               quickFilterText={quickFilter}
               enableRtl={true}
-              pagination={true}
-              paginationPageSize={15}
               rowHeight={46}
               defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
               overlayNoRowsTemplate={`<span style="color:#94a3b8">${he.home.empty}</span>`}

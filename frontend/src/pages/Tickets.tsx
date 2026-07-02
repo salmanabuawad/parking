@@ -190,8 +190,6 @@ export default function Tickets() {
             columnDefs={colDefs}
             quickFilterText={quickFilter}
             enableRtl={true}
-            pagination={true}
-            paginationPageSize={20}
             rowHeight={48}
             defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
             style={{ width: '100%', height: '100%' }}

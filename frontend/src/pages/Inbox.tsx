@@ -75,8 +75,6 @@ export default function Inbox() {
             columnDefs={cols}
             quickFilterText={quick}
             enableRtl
-            pagination
-            paginationPageSize={20}
             rowHeight={48}
             defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
             overlayNoRowsTemplate={`<span style="color:#94a3b8">אין דוחות בתיבה</span>`}
