@@ -81,38 +81,6 @@ def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_
         return {}
 
 
-def _lookup_vehicle(plate: str, job_id: int) -> dict:
-    """Look up vehicle details from local registry then data.gov.il. Non-fatal."""
-    if not plate or plate == "11111":
-        return {}
-    try:
-        from app.violation.services.registry import VehicleRegistryService
-        svc = VehicleRegistryService()
-        rec = svc.lookup(plate)
-        if rec:
-            return {
-                "vehicle_make":  rec.manufacturer,
-                "vehicle_model": rec.model_name,
-                "vehicle_year":  rec.production_year,
-            }
-    except Exception as e:
-        print(f"[Job {job_id}] Local registry lookup failed: {e}", flush=True)
-    try:
-        from app.violation.services.data_gov_il import data_gov_il_lookup
-        gov = data_gov_il_lookup(plate)
-        if gov:
-            return {
-                "vehicle_make":  gov.get("manufacturer"),
-                "vehicle_model": gov.get("model_name"),
-                "vehicle_year":  gov.get("year"),
-                "vehicle_color": gov.get("color"),
-                "vehicle_type":  gov.get("vehicle_type"),
-            }
-    except Exception as e:
-        print(f"[Job {job_id}] data.gov.il lookup failed: {e}", flush=True)
-    return {}
-
-
 def _ensure_h264(video_bytes: bytes, job_id: int) -> bytes:
     """Re-encode the processed video to browser-playable H.264.
 
@@ -377,7 +345,7 @@ def process_one_job() -> bool:
             from app.services.ticket_finalization import resolve_ticket_fields
             fields = resolve_ticket_fields(
                 db, job=job, cfg=cfg, display_plate=display_plate, candidates=candidates,
-                video_params=video_params, lookup_vehicle=_lookup_vehicle,
+                video_params=video_params,
             )
             display_plate = fields["plate"]
             location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"

@@ -13,9 +13,11 @@ Handles, in order:
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy.orm import Session
+
+from app.services.vehicle_lookup import record_to_vehicle_fields
 
 
 def _clip_duration(video_params: Any) -> float | None:
@@ -34,20 +36,22 @@ def resolve_ticket_fields(
     display_plate: str,
     candidates,
     video_params,
-    lookup_vehicle: Callable[[str, int], dict],
 ) -> dict[str, Any]:
     """Return the resolved ticket fields (plate may be corrected). Every step is non-fatal."""
     reason: str | None = None
     registry_status: str | None = None
     registry_raw: Any = None
+    vehicle_data: dict = {}
 
     # 1) Registry deep-check — confirm the read, or correct a misread to a registered near-variant.
+    # The check already fetches the vehicle record, so we map it here (one registry path, no re-lookup).
     if display_plate:
         try:
             from app.services.plate_registry_check import deep_check
             dc = deep_check(db, display_plate, candidates=candidates)
             registry_status = dc.get("status")
             registry_raw = dc.get("vehicle")
+            vehicle_data = record_to_vehicle_fields(dc.get("vehicle"))
             if dc.get("corrected") and dc.get("plate"):
                 print(f"[Job {job.id}] plate corrected via registry (OCR alt): {display_plate} -> {dc['plate']}", flush=True)
                 reason = f"Auto-corrected {display_plate} -> {dc['plate']} (OCR alternative confirmed in gov registry)"
@@ -62,8 +66,6 @@ def resolve_ticket_fields(
                     reason = f"{display_plate} not in gov registry — manual verification needed"
         except Exception as e:
             print(f"[Job {job.id}] registry deep-check failed (non-fatal): {e}", flush=True)
-
-    vehicle_data = lookup_vehicle(display_plate, job.id) if display_plate else {}
 
     # 2) Exemption — whitelisted plates are recorded but not enforced.
     ticket_status = "pending_review"

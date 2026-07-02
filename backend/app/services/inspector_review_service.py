@@ -100,15 +100,9 @@ def update_ticket_by_inspector(
         ticket.vehicle_registry_lookup_status = registry_result.get("status")
         ticket.vehicle_registry_raw_json = registry_result
         ticket.vehicle_registry_checked_at = datetime.now(timezone.utc)
-        record = registry_result.get("record") or {}
-        ticket.vehicle_make = record.get("tozeret_nm") or record.get("manufacturer") or ticket.vehicle_make
-        ticket.vehicle_model = record.get("kinuy_mishari") or record.get("degem_nm") or record.get("model") or ticket.vehicle_model
-        ticket.vehicle_color = record.get("tzeva_rechev") or record.get("color") or ticket.vehicle_color
-        if record.get("shnat_yitzur") is not None:
-            try:
-                ticket.vehicle_year = int(record.get("shnat_yitzur"))
-            except (ValueError, TypeError):
-                pass
+        from app.services.vehicle_lookup import record_to_vehicle_fields
+        for _f, _v in record_to_vehicle_fields(registry_result.get("record")).items():
+            setattr(ticket, _f, _v)
         ocr_norm = normalize_israeli_plate(ticket.license_plate)
         if ocr_norm and ocr_norm != normalized:
             ticket.review_status = "manual_review_required"
