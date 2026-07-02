@@ -399,6 +399,30 @@ def process_one_job() -> bool:
                 except Exception as dc_err:
                     print(f"[Job {job.id}] registry deep-check failed (non-fatal): {dc_err}", flush=True)
             vehicle_data = _lookup_vehicle(display_plate, job.id) if display_plate else {}
+
+            # --- Snapshot layer: skip-enforce exempt plates, dedup recent tickets, freeze config (rule 8) ---
+            ticket_status = "pending_review"
+            try:
+                from app.services.vehicle_exemption_service import find_duplicate_ticket, is_plate_exempt
+                if display_plate and is_plate_exempt(db, display_plate):
+                    ticket_status = "exempt"
+                    plate_reason = f"Exempt plate {display_plate} (whitelist) — no enforcement"
+                    print(f"[Job {job.id}] {display_plate} exempt — ticket marked exempt", flush=True)
+                elif display_plate:
+                    dup = find_duplicate_ticket(db, plate=display_plate, camera_id=job.camera_id, within_seconds=300)
+                    if dup is not None:
+                        ticket_status = "duplicate"
+                        plate_reason = f"Duplicate of ticket #{dup.id} ({display_plate} within 5 min)"
+                        print(f"[Job {job.id}] {display_plate} duplicates ticket #{dup.id}", flush=True)
+            except Exception as ex_err:
+                print(f"[Job {job.id}] exemption/dedup check failed (non-fatal): {ex_err}", flush=True)
+            try:
+                from app.services.ticket_snapshot_service import build_ticket_snapshots
+                snapshots = build_ticket_snapshots(db, camera_id=job.camera_id, section_id=None, rule_code=None)
+            except Exception as snap_err:
+                print(f"[Job {job.id}] snapshot build failed (non-fatal): {snap_err}", flush=True)
+                snapshots = {}
+
             video_params = extract_video_params(str(proc_path))
             location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
             # Violation window: start = recording time, end = start + clip length (inspector-editable)
@@ -421,7 +445,7 @@ def process_one_job() -> bool:
                 location=location_str,
                 violation_zone=job.violation_zone or "red_white",
                 description=job.description or f"Mobile upload at {location_str}",
-                status="pending_review",
+                status=ticket_status,
                 video_path=proc_rel,
                 ticket_image_path=frame_rel,
                 original_video_path=original_video_rel,
@@ -430,7 +454,7 @@ def process_one_job() -> bool:
                 captured_at=job.captured_at,
                 violation_start_at=v_start,
                 violation_end_at=v_end,
-                assigned_inspector_id=camera_assigned_inspector,
+                assigned_inspector_id=(None if ticket_status in ("exempt", "duplicate") else camera_assigned_inspector),
                 video_params=video_params if video_params else None,
             )
             if plate_reason:
@@ -455,6 +479,9 @@ def process_one_job() -> bool:
             for _f, _v in _reg_kw.items():
                 if hasattr(_TicketModel, _f):
                     kw[_f] = _v
+            for _sf, _sv in (snapshots or {}).items():
+                if _sv is not None and hasattr(_TicketModel, _sf):
+                    kw[_sf] = _sv
             ticket = ticket_repo.create(**kw)
 
             if anpr_track:
