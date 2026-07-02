@@ -53,6 +53,7 @@ class Camera(Base):
     # Legacy single zone hint (kept for upload jobs / backward compat)
     violation_zone = Column(String(20), nullable=True)
     assigned_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True)  # handling inspector (#8)
+    range_config = Column(JSON, nullable=True)  # camera coverage/range config (from snippets)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)
@@ -77,6 +78,19 @@ class CameraSegment(Base):
     camera_id = Column(Integer, ForeignKey("cameras.id", ondelete="CASCADE"), nullable=False, index=True)
     label = Column(String(200), nullable=False)          # מלל ליד כל מקטע (free text)
     violation_rule_ids = Column(JSON, nullable=True)     # סוגי עבירה — list of ViolationRule.rule_id strings
+    # --- Geometry (box or polygon on the camera frame) + schedule (from snippets) ---
+    coordinate_type = Column(String(20), default="pixels", nullable=False)  # pixels | normalized | polygon
+    x1 = Column(Float, nullable=True)
+    y1 = Column(Float, nullable=True)
+    x2 = Column(Float, nullable=True)
+    y2 = Column(Float, nullable=True)
+    polygon_json = Column(JSON, nullable=True)
+    min_stay_seconds = Column(Integer, nullable=True)
+    evidence_video_seconds = Column(Integer, nullable=True)
+    active_days = Column(JSON, nullable=True)             # e.g. ["SUN","MON","TUE"]
+    active_from_time = Column(String(10), nullable=True)  # "07:00"
+    active_to_time = Column(String(10), nullable=True)    # "19:00"
+    holiday_policy = Column(String(30), nullable=True)
     display_order = Column(Integer, default=0, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -190,8 +204,41 @@ class Ticket(Base):
     approved_by_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True, index=True)
     assigned_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True, index=True)  # inbox owner / handler (#9)
     inspector_approved_at = Column(DateTime(timezone=True), nullable=True)
-    inspector_violation_rule_id = Column(String(30), nullable=True)   # violation type chosen by the inspector
+    inspector_violation_rule_id = Column(String(30), nullable=True)   # violation type chosen by the inspector (rule_id)
     inspector_plate = Column(String(20), nullable=True)               # plate confirmed by the inspector (must match detected)
+    # --- Extended inspector review (snippets merge) ---
+    inspector_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    inspector_decision = Column(String(30), nullable=True)            # approved | rejected
+    review_status = Column(String(40), nullable=True)                 # manual_review_required | approved | rejected
+    violation_duration_seconds = Column(Float, nullable=True)
+    camera_section_id = Column(Integer, ForeignKey("camera_segments.id"), nullable=True)
+    inspector_vehicle_color = Column(String(100), nullable=True)
+    inspector_vehicle_type = Column(String(100), nullable=True)
+    inspector_vehicle_make = Column(String(100), nullable=True)
+    inspector_vehicle_model = Column(String(100), nullable=True)
+    # --- Registry lookup snapshot (make/model/color/year reuse vehicle_* above) ---
+    vehicle_registry_lookup_status = Column(String(40), nullable=True)  # plate_found | plate_not_found | invalid_plate | lookup_failed
+    vehicle_registry_raw_json = Column(JSON, nullable=True)
+    vehicle_registry_checked_at = Column(DateTime(timezone=True), nullable=True)
+    # --- 4 evidence images (screenshot ids) ---
+    start_violation_screenshot_id = Column(Integer, nullable=True)
+    end_violation_screenshot_id = Column(Integer, nullable=True)
+    clear_plate_screenshot_id = Column(Integer, nullable=True)
+    violation_context_screenshot_id = Column(Integer, nullable=True)
+    # --- Suspected-vehicle marker (green pending -> red approved) ---
+    suspected_vehicle_box = Column(JSON, nullable=True)
+    suspected_vehicle_track_id = Column(String(40), nullable=True)
+    suspected_vehicle_marker_state = Column(String(20), default="pending", nullable=False)
+    # --- Immutable snapshots at creation (never recomputed from live config) ---
+    camera_config_snapshot = Column(JSON, nullable=True)
+    camera_section_snapshot = Column(JSON, nullable=True)
+    violation_rule_snapshot = Column(JSON, nullable=True)
+    system_config_snapshot = Column(JSON, nullable=True)
+    # --- Evidence integrity hashes ---
+    original_video_sha256 = Column(String(64), nullable=True)
+    evidence_video_sha256 = Column(String(64), nullable=True)
+    best_frame_sha256 = Column(String(64), nullable=True)
+    plate_crop_sha256 = Column(String(64), nullable=True)
 
     anpr_track_results = relationship(
         "AnprTrackResult",
@@ -302,6 +349,14 @@ class ViolationRule(Base):
     legal_basis_he = Column(Text, nullable=True)
     legal_basis_en = Column(Text, nullable=True)
     fine_ils = Column(Integer, nullable=True)
+    # --- Evidence + timing requirements (violation-type catalog, from snippets) ---
+    default_min_stay_seconds = Column(Integer, default=30, nullable=False)
+    default_evidence_video_seconds = Column(Integer, default=20, nullable=False)
+    requires_start_image = Column(Boolean, default=True, nullable=False)
+    requires_end_image = Column(Boolean, default=True, nullable=False)
+    requires_clear_plate_image = Column(Boolean, default=True, nullable=False)
+    requires_context_image = Column(Boolean, default=True, nullable=False)
+    requires_continuous_video = Column(Boolean, default=True, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -346,6 +401,38 @@ class UploadJob(Base):
     camera_id = Column(String(50), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class TicketAuditLog(Base):
+    """Immutable audit trail of every inspector action on a ticket (from snippets)."""
+
+    __tablename__ = "ticket_audit_log"
+
+    id = Column(Integer, primary_key=True, index=True)
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False, index=True)
+    inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True, index=True)
+    action_type = Column(String(50), nullable=False, index=True)
+    old_value_json = Column(JSON, nullable=True)
+    new_value_json = Column(JSON, nullable=True)
+    notes = Column(Text, nullable=True)
+    ip_address = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class VehicleExemption(Base):
+    """Whitelist / exemption for specific plates (from snippets)."""
+
+    __tablename__ = "vehicle_exemptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plate_number = Column(String(20), nullable=False, index=True)
+    exemption_type = Column(String(50), nullable=False)   # diplomat | police | resident | disabled | ...
+    valid_from = Column(DateTime(timezone=True), nullable=True)
+    valid_until = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
 class FieldConfiguration(Base):

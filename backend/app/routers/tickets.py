@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from app.auth import get_current_user, get_current_inspector
@@ -66,6 +66,21 @@ def _ticket_dict(t) -> dict:
         "inspector_approved_at": t.inspector_approved_at.isoformat() if getattr(t, "inspector_approved_at", None) else None,
         "inspector_violation_rule_id": getattr(t, "inspector_violation_rule_id", None),
         "inspector_plate": getattr(t, "inspector_plate", None),
+        # Extended review / snapshot layer
+        "review_status": getattr(t, "review_status", None),
+        "inspector_decision": getattr(t, "inspector_decision", None),
+        "violation_duration_seconds": getattr(t, "violation_duration_seconds", None),
+        "suspected_vehicle_marker_state": getattr(t, "suspected_vehicle_marker_state", None),
+        "inspector_vehicle_color": getattr(t, "inspector_vehicle_color", None),
+        "inspector_vehicle_type": getattr(t, "inspector_vehicle_type", None),
+        "inspector_vehicle_make": getattr(t, "inspector_vehicle_make", None),
+        "inspector_vehicle_model": getattr(t, "inspector_vehicle_model", None),
+        "vehicle_registry_lookup_status": getattr(t, "vehicle_registry_lookup_status", None),
+        "vehicle_registry_checked_at": t.vehicle_registry_checked_at.isoformat() if getattr(t, "vehicle_registry_checked_at", None) else None,
+        "start_violation_screenshot_id": getattr(t, "start_violation_screenshot_id", None),
+        "end_violation_screenshot_id": getattr(t, "end_violation_screenshot_id", None),
+        "clear_plate_screenshot_id": getattr(t, "clear_plate_screenshot_id", None),
+        "violation_context_screenshot_id": getattr(t, "violation_context_screenshot_id", None),
     }
 
 
@@ -386,63 +401,39 @@ class InspectorApprovalBody(BaseModel):
 def approve_ticket_as_inspector(
     ticket_id: int,
     body: InspectorApprovalBody,
+    request: Request,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     inspector=Depends(get_current_inspector),
 ):
-    """Inspector approval: pick the violation type and confirm the vehicle number. The typed
-    number must match the auto-detected plate (#7.2). Records the approving inspector."""
-    ticket = ticket_repo.get(ticket_id)
-    if not ticket:
-        raise HTTPException(status_code=404, detail="Ticket not found")
+    """Inspector approval — thin router: delegates to inspector_review_service (validate plate 7/8
+    digits, registry lookup + snapshot, 4-image gate, audit-log), then re-renders the video with the
+    red 'approved' box (#10)."""
+    from app.services.inspector_review_service import update_ticket_by_inspector
 
-    def _digits(p: Optional[str]) -> str:
-        return "".join(ch for ch in (p or "") if ch.isdigit())
-
-    typed = _digits(body.inspector_plate)
-    if not typed:
-        raise HTTPException(status_code=422, detail="יש להזין מספר רכב")
-    detected = _digits(ticket.license_plate)
-    has_detected = bool(detected) and detected != "11111"
-    if has_detected and typed != detected:
-        raise HTTPException(
-            status_code=422,
-            detail=f"מספר הרכב שהוקלד ({typed}) אינו תואם את המספר שזוהה ({detected})",
-        )
-
-    now = datetime.now(timezone.utc)
-    update_kw = {
-        "status": "approved",
-        "approved_by_inspector_id": inspector.id,
-        "inspector_approved_at": now,
-        "reviewed_at": now,
-        "inspector_plate": body.inspector_plate.strip(),
-        "inspector_violation_rule_id": body.inspector_violation_rule_id,
-    }
-    if not has_detected:
-        update_kw["license_plate"] = body.inspector_plate.strip()  # OCR failed → use the confirmed plate
-    if body.violation_start_at is not None:
-        update_kw["violation_start_at"] = body.violation_start_at
-    if body.violation_end_at is not None:
-        update_kw["violation_end_at"] = body.violation_end_at
-    if body.vehicle_color is not None:
-        update_kw["vehicle_color"] = body.vehicle_color
-    if body.vehicle_type is not None:
-        update_kw["vehicle_type"] = body.vehicle_type
-    if body.admin_notes is not None:
-        update_kw["admin_notes"] = body.admin_notes
-    if body.fine_amount is not None:
-        update_kw["fine_amount"] = body.fine_amount
-
-    ticket_repo.update(ticket_id, **update_kw)
+    ip = request.client.host if request.client else None
+    ticket = update_ticket_by_inspector(
+        ticket_repo.db,
+        ticket_id=ticket_id,
+        inspector_id=inspector.id,
+        data={
+            "plate_number": body.inspector_plate,
+            "violation_rule_id": body.inspector_violation_rule_id,
+            "vehicle_color": body.vehicle_color,
+            "vehicle_type": body.vehicle_type,
+            "violation_start_at": body.violation_start_at,
+            "violation_end_at": body.violation_end_at,
+            "fine_amount": body.fine_amount,
+            "admin_notes": body.admin_notes,
+            "approve": True,
+        },
+        ip_address=ip,
+    )
 
     # #10 — the subject-car box turns red once the report is approved.
     try:
         from app.services.video_rerender import rerender_ticket_video
-        updated = ticket_repo.get(ticket_id)
-        rerender_ticket_video(
-            ticket_repo.db, updated, box_color=(0, 0, 255),
-            plate_override=update_kw.get("inspector_plate") or updated.license_plate,
-        )
+        rerender_ticket_video(ticket_repo.db, ticket, box_color=(0, 0, 255),
+                              plate_override=ticket.inspector_plate or ticket.license_plate)
     except Exception as _rr:
         logging.getLogger(__name__).warning("approve re-render (red box) failed for ticket %s: %s", ticket_id, _rr)
 
@@ -470,15 +461,56 @@ class TransferBody(BaseModel):
 def transfer_ticket(
     ticket_id: int,
     body: TransferBody,
+    request: Request,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     inspector=Depends(get_current_inspector),
 ):
-    """Transfer a report to another inspector's inbox (#9)."""
+    """Transfer a report to another inspector's inbox (#9). Audited (rule 7)."""
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    old_assignee = ticket.assigned_inspector_id
     ticket_repo.update(ticket_id, assigned_inspector_id=body.to_inspector_id)
+    try:
+        from app.services.audit_log_service import write_ticket_audit
+        write_ticket_audit(
+            ticket_repo.db, ticket_id=ticket_id, inspector_id=inspector.id, action_type="inspector_transfer",
+            old_value={"assigned_inspector_id": old_assignee},
+            new_value={"assigned_inspector_id": body.to_inspector_id},
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass
     return _ticket_dict(ticket_repo.get(ticket_id))
+
+
+@router.get("/{ticket_id}/audit")
+def ticket_audit_log(
+    ticket_id: int,
+    db=Depends(get_db),
+    _=Depends(get_current_user),
+):
+    """Audit trail for a ticket — every inspector action (rule 7)."""
+    from app.models import TicketAuditLog
+    rows = (
+        db.query(TicketAuditLog)
+        .filter(TicketAuditLog.ticket_id == ticket_id)
+        .order_by(TicketAuditLog.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "action_type": r.action_type,
+            "inspector_id": r.inspector_id,
+            "old_value": r.old_value_json,
+            "new_value": r.new_value_json,
+            "notes": r.notes,
+            "ip_address": r.ip_address,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
 
 
 @router.get("/{ticket_id}/screenshots")
