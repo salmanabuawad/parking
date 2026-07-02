@@ -372,70 +372,15 @@ def process_one_job() -> bool:
             except Exception as sign_err:
                 print(f"[Job {job.id}] signing failed (non-fatal): {sign_err}", flush=True)
 
-            # --- Multi-stage registry deep-check: confirm the read against the gov vehicle list, or
-            # correct a likely misread to a registered near-variant (flagged for inspector review). ---
-            plate_reason = None
-            registry_status = None
-            registry_raw = None
-            if display_plate:
-                try:
-                    from app.services.plate_registry_check import deep_check
-                    dc = deep_check(db, display_plate, candidates=candidates)
-                    registry_status = dc.get("status")
-                    registry_raw = dc.get("vehicle")
-                    if dc.get("corrected") and dc.get("plate"):
-                        # SAFE correction: an alternative the OCR actually read, confirmed in the registry.
-                        print(f"[Job {job.id}] plate corrected via registry (OCR alt): {display_plate} -> {dc['plate']}", flush=True)
-                        plate_reason = f"Auto-corrected {display_plate} -> {dc['plate']} (OCR alternative confirmed in gov registry)"
-                        display_plate = dc["plate"]
-                    elif registry_status == "not_in_registry":
-                        sug = dc.get("suggestions") or []
-                        if sug:
-                            registry_raw = {"read": display_plate, "suggestions": sug}
-                            hints = ", ".join(f"{s['plate']} ({s['make']})".strip() for s in sug)
-                            plate_reason = f"{display_plate} not in gov registry — possible matches: {hints}"
-                        else:
-                            plate_reason = f"{display_plate} not in gov registry — manual verification needed"
-                except Exception as dc_err:
-                    print(f"[Job {job.id}] registry deep-check failed (non-fatal): {dc_err}", flush=True)
-            vehicle_data = _lookup_vehicle(display_plate, job.id) if display_plate else {}
-
-            # --- Snapshot layer: skip-enforce exempt plates, freeze config (rule 8). Multi-track
-            # duplicates are collapsed before ticket creation (see Step 3), so no duplicate rows. ---
-            ticket_status = "pending_review"
-            try:
-                from app.services.vehicle_exemption_service import is_plate_exempt
-                if display_plate and is_plate_exempt(db, display_plate):
-                    ticket_status = "exempt"
-                    plate_reason = f"Exempt plate {display_plate} (whitelist) — no enforcement"
-                    print(f"[Job {job.id}] {display_plate} exempt — ticket marked exempt", flush=True)
-            except Exception as ex_err:
-                print(f"[Job {job.id}] exemption check failed (non-fatal): {ex_err}", flush=True)
-            try:
-                from app.services.ticket_snapshot_service import build_ticket_snapshots
-                snapshots = build_ticket_snapshots(db, camera_id=job.camera_id, section_id=None, rule_code=None)
-            except Exception as snap_err:
-                print(f"[Job {job.id}] snapshot build failed (non-fatal): {snap_err}", flush=True)
-                snapshots = {}
-
+            # Resolve plate/registry/exemption/snapshot/window fields (logic lives in the service).
             video_params = extract_video_params(str(proc_path))
+            from app.services.ticket_finalization import resolve_ticket_fields
+            fields = resolve_ticket_fields(
+                db, job=job, cfg=cfg, display_plate=display_plate, candidates=candidates,
+                video_params=video_params, lookup_vehicle=_lookup_vehicle,
+            )
+            display_plate = fields["plate"]
             location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
-            # Violation window: start = recording time, end = start + clip length (inspector-editable)
-            v_start = job.captured_at
-            v_end = None
-            _req_secs = float(getattr(cfg, "required_video_seconds", 10) or 10) if cfg else 10.0
-            _actual_dur = None
-            if isinstance(video_params, dict):
-                for _k in ("duration", "duration_sec", "duration_seconds"):
-                    if video_params.get(_k):
-                        _actual_dur = float(video_params[_k])
-                        break
-            if v_start is not None:
-                v_end = v_start + timedelta(seconds=(_actual_dur if _actual_dur is not None else _req_secs))
-            # Flag clips shorter than the configured required length (system settings #1)
-            if _actual_dur is not None and _req_secs and _actual_dur < _req_secs:
-                _short = f"סרטון קצר מהנדרש: {_actual_dur:.0f}ש׳ < {_req_secs:.0f}ש׳"
-                plate_reason = f"{plate_reason} · {_short}" if plate_reason else _short
             kw = dict(
                 upload_job_id=job.id,
                 license_plate=display_plate,
@@ -443,42 +388,35 @@ def process_one_job() -> bool:
                 location=location_str,
                 violation_zone=job.violation_zone or "red_white",
                 description=job.description or f"Mobile upload at {location_str}",
-                status=ticket_status,
+                status=fields["ticket_status"],
                 video_path=proc_rel,
                 ticket_image_path=frame_rel,
                 original_video_path=original_video_rel,
                 latitude=job.latitude,
                 longitude=job.longitude,
                 captured_at=job.captured_at,
-                violation_start_at=v_start,
-                violation_end_at=v_end,
-                assigned_inspector_id=(None if ticket_status == "exempt" else camera_assigned_inspector),
+                violation_start_at=fields["v_start"],
+                violation_end_at=fields["v_end"],
+                assigned_inspector_id=(None if fields["ticket_status"] == "exempt" else camera_assigned_inspector),
                 video_params=video_params if video_params else None,
             )
-            if plate_reason:
-                kw["plate_detection_reason"] = plate_reason
+            if fields["reason"]:
+                kw["plate_detection_reason"] = fields["reason"]
             if sig_hex:
                 kw["video_signature"] = sig_hex
                 kw["video_signature_key"] = sig_key_fp
                 kw["video_signed_at"] = datetime.now(timezone.utc)
-            if vehicle_data:
-                kw.update(vehicle_data)
-            # Persist the registry deep-check outcome on the ticket, guarded so the worker also runs
-            # against older schemas that predate these columns.
-            _reg_kw: dict = {}
-            if registry_status:
-                _reg_kw["vehicle_registry_lookup_status"] = registry_status
-            if registry_raw:
+            if fields["vehicle_data"]:
+                kw.update(fields["vehicle_data"])
+            if fields["registry_status"]:
+                kw["vehicle_registry_lookup_status"] = fields["registry_status"]
+            if fields["registry_raw"]:
                 import json
-                _reg_kw["vehicle_registry_raw_json"] = json.dumps(registry_raw, ensure_ascii=False)
-            if registry_status in ("corrected", "not_in_registry"):
-                _reg_kw["review_status"] = "manual_review_required"
-            from app.models import Ticket as _TicketModel
-            for _f, _v in _reg_kw.items():
-                if hasattr(_TicketModel, _f):
-                    kw[_f] = _v
-            for _sf, _sv in (snapshots or {}).items():
-                if _sv is not None and hasattr(_TicketModel, _sf):
+                kw["vehicle_registry_raw_json"] = json.dumps(fields["registry_raw"], ensure_ascii=False)
+            if fields["review_status"]:
+                kw["review_status"] = fields["review_status"]
+            for _sf, _sv in fields["snapshots"].items():
+                if _sv is not None:
                     kw[_sf] = _sv
             ticket = ticket_repo.create(**kw)
 

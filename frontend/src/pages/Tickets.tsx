@@ -10,6 +10,7 @@ import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeSt
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
 import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
+import { ticketStatusBadge } from '../lib/ticketStatus'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -23,17 +24,8 @@ interface Ticket {
   violation_confidence?: number
 }
 
-const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
-  pending_review: { cls: 'badge-warning', label: 'ממתין לבדיקה' },
-  approved:       { cls: 'badge-success', label: 'אושר' },
-  final:          { cls: 'badge-success', label: 'סופי' },
-  rejected:       { cls: 'badge-danger',  label: 'נדחה' },
-  exempt:         { cls: 'badge-neutral', label: 'פטור' },
-  duplicate:      { cls: 'badge-neutral', label: 'כפול' },
-}
-
 function StatusBadge({ value }: { value: string }) {
-  const s = STATUS_BADGE[value] ?? { cls: 'badge-neutral', label: value }
+  const s = ticketStatusBadge(value)
   return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 

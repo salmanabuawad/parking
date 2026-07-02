@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, History } from "lucide-react";
 import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
 import { useAuth } from "../context/AuthContext";
+import { ticketStatusBadge } from "../lib/ticketStatus";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -72,15 +73,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
-
-const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
-  pending_review: { cls: "badge-warning", label: "ממתין לבדיקה" },
-  approved:       { cls: "badge-success", label: "אושר" },
-  rejected:       { cls: "badge-danger",  label: "נדחה" },
-  paid:           { cls: "badge-info",    label: "שולם" },
-  exempt:         { cls: "badge-neutral", label: "פטור" },
-  duplicate:      { cls: "badge-neutral", label: "כפול" },
-};
 
 const DECISION_STYLE: Record<string, { badge: string; bar: string; label: string }> = {
   confirmed_violation: { badge: "badge-danger",  bar: "bg-red-600",   label: "הפרה מאושרת" },
@@ -324,7 +316,7 @@ export default function TicketReview() {
   }
 
   const plateOk = ticket && ticket.license_plate && ticket.license_plate !== PLATE_UNKNOWN && ticket.license_plate !== "";
-  const statusBadge = ticket ? (STATUS_BADGE[ticket.status] ?? { cls: "badge-neutral", label: ticket.status }) : null;
+  const statusBadge = ticket ? ticketStatusBadge(ticket.status) : null;
 
   return (
     <div className="page-fill">
