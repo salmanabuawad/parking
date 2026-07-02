@@ -35,6 +35,7 @@ from .registry_lookup import RegistryLookup
 from .result_writer import write_result_json, write_video
 from .vehicle_detector import VehicleDetector
 from .video_io import get_video_info, read_frames
+from app.services.alpr_reader import read_plates
 
 BBox = tuple[int, int, int, int]
 
@@ -631,12 +632,15 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                 v for v in vehicle_det.detect_and_track(frame)
                 if v.confidence >= VEHICLE_MIN_CONFIDENCE and v.track_id is not None
             ]
+        do_ocr = (not cfg.disable_ocr) and (fidx % ocr_every == 0)
+        # PRIMARY reader: purpose-built ANPR (fast-alpr) once per frame — plates for the whole frame.
+        alpr_plates = read_plates(frame) if do_ocr else []
         for v in last_vdets:
             vs = veh.get(v.track_id)
             if vs is None:
                 vs = {"tid": v.track_id, "ocr": Counter(), "best_crop": None, "best_sharp": -1.0,
                       "seen": 0, "first_bbox": v.bbox, "last_bbox": v.bbox,
-                      "plate_by_frame": {}, "car_by_frame": {}}
+                      "plate_by_frame": {}, "car_by_frame": {}, "alpr_best": False}
                 veh[v.track_id] = vs
             vs["seen"] += 1
             vs["last_bbox"] = v.bbox
@@ -644,9 +648,32 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
             # Keep the WHOLE violating car sharp in every frame so its plate number is never
             # blurred (the rest of the scene stays blurred for bystander privacy).
             vs["car_by_frame"][fidx] = (max(0, _cx1), max(0, _cy1), max(0, _cx2 - _cx1), max(0, _cy2 - _cy1))
-            if cfg.disable_ocr or (fidx % ocr_every != 0):
+            if not do_ocr:
                 continue
             x1, y1, x2, y2 = v.bbox
+            # --- PRIMARY: a fast-alpr plate whose centre falls inside this car ---
+            matched = False
+            for p in alpr_plates:
+                px1, py1, px2, py2 = p["bbox"]
+                pcx, pcy = (px1 + px2) // 2, (py1 + py2) // 2
+                if not (x1 <= pcx <= x2 and y1 <= pcy <= y2):
+                    continue
+                cleaned = engine.clean_text(p["digits"])
+                if not engine.is_valid_plate(cleaned):
+                    continue
+                vs["ocr"][cleaned] += 5  # high weight: purpose-built reader outranks legacy OCR
+                matched = True
+                crop = frame[max(0, py1):max(0, py2), max(0, px1):max(0, px2)]
+                if crop.size:
+                    s = engine.laplacian_var(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY))
+                    if not vs.get("alpr_best") or s > vs["best_sharp"]:
+                        vs["best_crop"] = crop.copy()
+                        vs["best_sharp"] = s
+                        vs["alpr_best"] = True
+                vs["plate_by_frame"][fidx] = (px1, py1, px2 - px1, py2 - py1)
+            if matched:
+                continue
+            # --- FALLBACK: HSV-yellow localization + Tesseract (legacy), only when ALPR found nothing ---
             py0 = max(0, y1 + int((y2 - y1) * 0.40))  # plate sits on the lower part of the car
             roi = frame[py0:max(0, y2), max(0, x1):max(0, x2)]
             if roi.size == 0:
@@ -659,7 +686,7 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
             if crop.size == 0:
                 continue
             sharp = engine.laplacian_var(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY))
-            if sharp > vs["best_sharp"]:
+            if sharp > vs["best_sharp"] and not vs.get("alpr_best"):
                 vs["best_sharp"] = sharp
                 vs["best_crop"] = crop.copy()
             for r in engine.ocr_crop(crop):
@@ -667,7 +694,7 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                 if engine.is_valid_plate(cleaned):
                     vs["ocr"][cleaned] += 1
             # absolute plate bbox (xywh) for per-car privacy rendering
-            vs["plate_by_frame"][fidx] = (x1 + bx1, py0 + by1, bx2 - bx1, by2 - by1)
+            vs["plate_by_frame"].setdefault(fidx, (x1 + bx1, py0 + by1, bx2 - bx1, by2 - by1))
 
     # Higher-quality OCR pass per car on its sharpest crop: EasyOCR (stronger than Tesseract on
     # small/angled plates) gets a weighted vote, plus a Tesseract fallback if still nothing. Votes
@@ -700,7 +727,8 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         norm = normalize_israeli_private_plate(raw)
         if not norm:
             continue
-        rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc}
+        rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc,
+              "candidates": [c for c, _ in vs["ocr"].most_common(5)]}
         track_results.append(rd)
         overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
         out_frames = []
@@ -725,6 +753,35 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         finally:
             tmp.unlink(missing_ok=True)
         tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"]})
+
+    # If NO car produced a readable plate, still issue ONE review ticket for the best-tracked
+    # vehicle (car boxed + best crop) so an occluded/angled plate isn't lost to a blank fallback —
+    # the inspector reads/enters the plate manually (and can mark it exempt).
+    if not tracks_render:
+        for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
+            if vs["seen"] < 3:
+                continue
+            rd = {"track_id": vs["tid"], "raw_digits": "", "normalized_plate": "", "vote_count": 0}
+            track_results.append(rd)
+            out_frames = []
+            for fidx, frame in enumerate(frames):
+                boxes = [vs["car_by_frame"][fidx]] if fidx in vs["car_by_frame"] else []
+                of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size,
+                                                 box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
+                if vs["best_crop"] is not None:
+                    of = engine.draw_preview(of, vs["best_crop"])
+                cv2.putText(of, "??-???-??", (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 200, 255), 2, cv2.LINE_AA)
+                if _clock_on:
+                    of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps))
+                out_frames.append(of)
+            tmp = Path(tempfile.mktemp(suffix=".mp4"))
+            try:
+                write_video(out_frames, tmp, fps=fps)
+                video_bytes = tmp.read_bytes() if tmp.exists() else b""
+            finally:
+                tmp.unlink(missing_ok=True)
+            tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"], "unread": True})
+            break  # one review ticket for the primary vehicle
 
     overall_video_bytes = b""
     if not tracks_render:

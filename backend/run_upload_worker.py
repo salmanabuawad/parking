@@ -347,7 +347,7 @@ def process_one_job() -> bool:
             except Exception:
                 pass
 
-        def _finalize_ticket(*, video_bytes_out: bytes, plate: str, anpr_track, suffix: str):
+        def _finalize_ticket(*, video_bytes_out: bytes, plate: str, anpr_track, suffix: str, candidates=None):
             """Save one car's video + frame, sign it, create its ticket, attach violation/anpr/screenshots."""
             display_plate = "" if (not plate or plate == "11111") else plate
             proc_rel = f"processed/job_{job.id}{suffix}.mp4"
@@ -372,14 +372,32 @@ def process_one_job() -> bool:
             except Exception as sign_err:
                 print(f"[Job {job.id}] signing failed (non-fatal): {sign_err}", flush=True)
 
+            # --- Multi-stage registry deep-check: confirm the read against the gov vehicle list, or
+            # correct a likely misread to a registered near-variant (flagged for inspector review). ---
             plate_reason = None
-            if display_plate and getattr(settings, "validate_plate_in_registry", False):
+            registry_status = None
+            registry_raw = None
+            if display_plate:
                 try:
-                    from app.violation.services.registry import VehicleRegistryService
-                    if not VehicleRegistryService().plate_exists(display_plate):
-                        plate_reason = f"Detected {display_plate} — not in Ministry of Transport registry"
-                except Exception:
-                    pass
+                    from app.services.plate_registry_check import deep_check
+                    dc = deep_check(db, display_plate, candidates=candidates)
+                    registry_status = dc.get("status")
+                    registry_raw = dc.get("vehicle")
+                    if dc.get("corrected") and dc.get("plate"):
+                        # SAFE correction: an alternative the OCR actually read, confirmed in the registry.
+                        print(f"[Job {job.id}] plate corrected via registry (OCR alt): {display_plate} -> {dc['plate']}", flush=True)
+                        plate_reason = f"Auto-corrected {display_plate} -> {dc['plate']} (OCR alternative confirmed in gov registry)"
+                        display_plate = dc["plate"]
+                    elif registry_status == "not_in_registry":
+                        sug = dc.get("suggestions") or []
+                        if sug:
+                            registry_raw = {"read": display_plate, "suggestions": sug}
+                            hints = ", ".join(f"{s['plate']} ({s['make']})".strip() for s in sug)
+                            plate_reason = f"{display_plate} not in gov registry — possible matches: {hints}"
+                        else:
+                            plate_reason = f"{display_plate} not in gov registry — manual verification needed"
+                except Exception as dc_err:
+                    print(f"[Job {job.id}] registry deep-check failed (non-fatal): {dc_err}", flush=True)
             vehicle_data = _lookup_vehicle(display_plate, job.id) if display_plate else {}
             video_params = extract_video_params(str(proc_path))
             location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
@@ -423,6 +441,20 @@ def process_one_job() -> bool:
                 kw["video_signed_at"] = datetime.now(timezone.utc)
             if vehicle_data:
                 kw.update(vehicle_data)
+            # Persist the registry deep-check outcome on the ticket, guarded so the worker also runs
+            # against older schemas that predate these columns.
+            _reg_kw: dict = {}
+            if registry_status:
+                _reg_kw["vehicle_registry_lookup_status"] = registry_status
+            if registry_raw:
+                import json
+                _reg_kw["vehicle_registry_raw_json"] = json.dumps(registry_raw, ensure_ascii=False)
+            if registry_status in ("corrected", "not_in_registry"):
+                _reg_kw["review_status"] = "manual_review_required"
+            from app.models import Ticket as _TicketModel
+            for _f, _v in _reg_kw.items():
+                if hasattr(_TicketModel, _f):
+                    kw[_f] = _v
             ticket = ticket_repo.create(**kw)
 
             if anpr_track:
@@ -475,6 +507,7 @@ def process_one_job() -> bool:
                     plate=car.get("raw_digits") or "",
                     anpr_track=anpr_track,
                     suffix=f"_car{tid}",
+                    candidates=car.get("candidates"),
                 ))
         else:
             created.append(_finalize_ticket(
