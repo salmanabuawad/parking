@@ -81,6 +81,30 @@ def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_
         return {}
 
 
+def _camera_context(db, job) -> tuple[list | None, str | None, int | None]:
+    """Resolve a job's camera rules / zone / handling-inspector (all empty for mobile uploads)."""
+    allowed_rules: list | None = None
+    violation_zone: str | None = job.violation_zone
+    assigned_inspector: int | None = None
+    if job.camera_id and job.camera_id not in ("", "mobile"):
+        try:
+            from app.models import Camera as CameraModel
+            cam = db.query(CameraModel).filter(CameraModel.id == int(job.camera_id)).first()
+            if cam:
+                assigned_inspector = getattr(cam, "assigned_inspector_id", None)
+                if cam.violation_rules:
+                    allowed_rules = cam.violation_rules
+                if cam.violation_zone and not violation_zone:
+                    violation_zone = cam.violation_zone
+                if getattr(cam, "zones", None):
+                    zone_codes = [z.zone_code for z in cam.zones if z.is_active]
+                    if zone_codes:
+                        violation_zone = zone_codes[0]
+        except (ValueError, TypeError, Exception) as cam_err:
+            print(f"[Job {job.id}] Camera lookup skipped: {cam_err}", flush=True)
+    return allowed_rules, violation_zone, assigned_inspector
+
+
 def _ensure_h264(video_bytes: bytes, job_id: int) -> bytes:
     """Re-encode the processed video to browser-playable H.264.
 
@@ -276,25 +300,7 @@ def process_one_job() -> bool:
                 overall_blurred = b""
 
         # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
-        camera_allowed_rules: list | None = None
-        camera_violation_zone: str | None = job.violation_zone
-        camera_assigned_inspector: int | None = None
-        if job.camera_id and job.camera_id not in ("", "mobile"):
-            try:
-                from app.models import Camera as CameraModel
-                cam = db.query(CameraModel).filter(CameraModel.id == int(job.camera_id)).first()
-                if cam:
-                    camera_assigned_inspector = getattr(cam, "assigned_inspector_id", None)
-                    if cam.violation_rules:
-                        camera_allowed_rules = cam.violation_rules
-                    if cam.violation_zone and not camera_violation_zone:
-                        camera_violation_zone = cam.violation_zone
-                    if getattr(cam, "zones", None):
-                        zone_codes = [z.zone_code for z in cam.zones if z.is_active]
-                        if zone_codes:
-                            camera_violation_zone = zone_codes[0]
-            except (ValueError, TypeError, Exception) as cam_err:
-                print(f"[Job {job.id}] Camera lookup skipped: {cam_err}", flush=True)
+        camera_allowed_rules, camera_violation_zone, camera_assigned_inspector = _camera_context(db, job)
 
         violation_data: dict = _run_violation_analysis(
             video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at

@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
-import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
+import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { jobStatusBadge } from '../lib/jobStatus'
 import { ListOrdered } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
@@ -29,16 +30,9 @@ interface Settings {
   use_violation_pipeline?: boolean
 }
 
-const STATUS_BADGE: Record<string, { cls: string; key: string }> = {
-  queued:     { cls: 'badge-warning', key: 'statusQueued' },
-  processing: { cls: 'badge-info',    key: 'statusProcessing' },
-  completed:  { cls: 'badge-success', key: 'statusCompleted' },
-  failed:     { cls: 'badge-danger',  key: 'statusFailed' },
-}
-
 function StatusCell({ value }: { value: string }) {
-  const s = STATUS_BADGE[value]
-  return <span className={`badge ${s ? s.cls : 'badge-neutral'}`}>{s ? t(s.key) : value}</span>
+  const s = jobStatusBadge(value)
+  return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
 function ErrorCell({ value }: { value: string | null }) {
@@ -249,7 +243,7 @@ export default function QueueMaintenance() {
             quickFilterText={quickFilter}
             enableRtl={true}
             rowHeight={48}
-            defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
+            defaultColDef={DEFAULT_COL_DEF}
             style={{ width: '100%', height: '100%' }}
           />
         </div>

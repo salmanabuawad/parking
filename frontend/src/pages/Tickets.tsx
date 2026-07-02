@@ -9,7 +9,7 @@ import { ticketsApi } from '../api'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
-import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
+import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { ticketStatusBadge } from '../lib/ticketStatus'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -183,7 +183,7 @@ export default function Tickets() {
             quickFilterText={quickFilter}
             enableRtl={true}
             rowHeight={48}
-            defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
+            defaultColDef={DEFAULT_COL_DEF}
             style={{ width: '100%', height: '100%' }}
           />
         </div>

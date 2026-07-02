@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
-import ExcelLikeFilter from '../components/grid/ExcelLikeFilter'
+import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { jobStatusBadge } from '../lib/jobStatus'
 import { LayoutDashboard, RefreshCw } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
@@ -22,15 +23,8 @@ interface UploadJob {
   error_message?: string
 }
 
-const STATUS_BADGE: Record<string, { cls: string; label: string }> = {
-  queued:     { cls: 'badge-warning', label: 'ממתין בתור' },
-  processing: { cls: 'badge-info',    label: 'מעובד' },
-  completed:  { cls: 'badge-success', label: 'הושלם' },
-  failed:     { cls: 'badge-danger',  label: 'נכשל' },
-}
-
 function StatusCell({ value }: { value: string }) {
-  const s = STATUS_BADGE[value] ?? { cls: 'badge-neutral', label: value }
+  const s = jobStatusBadge(value)
   return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
@@ -190,7 +184,7 @@ export default function Home() {
               quickFilterText={quickFilter}
               enableRtl={true}
               rowHeight={46}
-              defaultColDef={{ sortable: true, filter: ExcelLikeFilter, resizable: true }}
+              defaultColDef={DEFAULT_COL_DEF}
               overlayNoRowsTemplate={`<span style="color:#94a3b8">${he.home.empty}</span>`}
               style={{ width: '100%', height: '100%' }}
             />
