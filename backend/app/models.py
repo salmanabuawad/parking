@@ -63,6 +63,9 @@ class Camera(Base):
     # Grid zone-map: paint image cells with a violation type (color). Shape:
     # {"cols": N, "rows": M, "cells": {"c,r": "RULE_ID", ...}}. A car's position → cell → violation type.
     zone_grid = Column(JSON, nullable=True)
+    # Geographic placement (WGS84) for the cameras map view
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)

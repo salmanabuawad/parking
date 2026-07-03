@@ -18,6 +18,16 @@ from app.services import simulation as sim
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
+# Spread simulation cameras across a few real Netanya street locations (lat, lng).
+NETANYA_SPOTS = [
+    (32.32755, 34.85493),  # city center / Herzl St
+    (32.32148, 34.85806),  # near Independence Square
+    (32.31690, 34.86075),  # south Netanya
+    (32.33012, 34.86010),  # north
+    (32.32430, 34.85190),  # toward the beach
+    (32.31450, 34.85520),
+]
+
 
 @router.get("/sources")
 def list_sources():
@@ -58,7 +68,7 @@ def seed_cameras(
         raise HTTPException(status_code=404, detail="לא נמצאו קבצי סימולציה בשרת (videos/simulation/*.mp4)")
 
     out = []
-    for name in names:
+    for idx, name in enumerate(names):
         got = sim.frame_for_source(name, seek_frac=body.seek_frac)
         if not got:
             continue
@@ -67,21 +77,28 @@ def seed_cameras(
         if cam is None:
             cam = camera_repo.create(
                 name=f"סימולציה {name.upper()}",
-                location="סימולציה",
+                location="נתניה",
                 connection_type="simulation",
                 connection_config={"simulation_source": name},
                 source_type="simulation",
                 is_active=True,
             )
         rel = _save_snapshot(cam.id, jpeg)
-        camera_repo.update(
-            cam.id,
-            snapshot_path=rel,
-            calibration_width=w,
-            calibration_height=h,
-            source_type="simulation",
-        )
-        out.append({"id": cam.id, "name": cam.name, "source": name, "width": w, "height": h})
+        fields = {
+            "snapshot_path": rel,
+            "calibration_width": w,
+            "calibration_height": h,
+            "source_type": "simulation",
+        }
+        # Place on the Netanya map if not already positioned (never override a moved camera)
+        if cam.latitude is None or cam.longitude is None:
+            lat, lng = NETANYA_SPOTS[idx % len(NETANYA_SPOTS)]
+            fields["latitude"] = lat
+            fields["longitude"] = lng
+        camera_repo.update(cam.id, **fields)
+        out.append({"id": cam.id, "name": cam.name, "source": name, "width": w, "height": h,
+                    "latitude": fields.get("latitude", cam.latitude),
+                    "longitude": fields.get("longitude", cam.longitude)})
 
     if not out:
         raise HTTPException(status_code=400, detail="לא ניתן לחלץ פריים מאף קליפ סימולציה")

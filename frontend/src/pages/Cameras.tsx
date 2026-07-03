@@ -2,11 +2,12 @@ import { useState, useEffect, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
-import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard, Eye } from 'lucide-react'
+import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard, Eye, Map as MapIcon, List } from 'lucide-react'
 import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulationApi } from '../api'
 import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
 import CameraZoneView from './CameraZoneView'
+import CameraMap from './CameraMap'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { t } from '../i18n'
@@ -40,6 +41,8 @@ interface Camera {
   zone_ids?: number[]
   source_type?: string
   rtsp_url?: string
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface CameraForm {
@@ -98,6 +101,7 @@ export default function Cameras() {
   const [form, setForm] = useState<CameraForm>(EMPTY_FORM)
   const [simSources, setSimSources] = useState<SimulationSource[]>([])
   const [seeding, setSeeding] = useState(false)
+  const [view, setView] = useState<'list' | 'map'>('list')
 
   const load = async () => {
     setLoading(true)
@@ -207,6 +211,13 @@ export default function Cameras() {
     } finally { setSeeding(false) }
   }
 
+  const moveCamera = async (id: number, lat: number, lng: number) => {
+    setCameras(cs => cs.map(c => (c.id === id ? { ...c, latitude: lat, longitude: lng } : c)))
+    try { await camerasApi.update(id, { latitude: lat, longitude: lng }) } catch { load() }
+  }
+  const selectFromMap = (id: number) => { const c = cameras.find(x => x.id === id); if (c) setViewing(c) }
+  const editFromMap = (id: number) => { const c = cameras.find(x => x.id === id); if (c) openEdit(c) }
+
   const remove = async (id: number) => {
     if (!confirm(t('removeCameraConfirm'))) return
     try { await camerasApi.delete(id); load() }
@@ -253,6 +264,10 @@ export default function Cameras() {
           <h1 className="page-header-title">{t('cameras')}</h1>
           <p className="page-header-label opacity-90">{t('camerasIntro')}</p>
         </div>
+        <div className="flex items-center rounded-lg border border-theme-card-border overflow-hidden">
+          <button onClick={() => setView('list')} className={`px-2.5 py-1.5 text-theme-sm flex items-center gap-1 ${view === 'list' ? 'bg-theme-accent text-white' : 'text-theme-text-muted'}`}><List className="w-4 h-4" /> רשימה</button>
+          <button onClick={() => setView('map')} className={`px-2.5 py-1.5 text-theme-sm flex items-center gap-1 ${view === 'map' ? 'bg-theme-accent text-white' : 'text-theme-text-muted'}`}><MapIcon className="w-4 h-4" /> מפה</button>
+        </div>
         {simSources.length > 0 && (
           <button onClick={seedSimulation} disabled={seeding} className="btn-secondary" title="יוצר מצלמת סימולציה לכל קליפ לדוגמה בשרת">
             <Clapperboard className="w-4 h-4" /> {seeding ? 'יוצר...' : 'מצלמות סימולציה'}
@@ -261,10 +276,19 @@ export default function Cameras() {
         <button onClick={openAdd} className="btn-primary"><Plus className="w-4 h-4" /> {t('addCamera')}</button>
       </div>
 
-      {/* Camera list */}
+      {/* Camera list / map */}
       <div className="flex flex-col flex-1 min-h-0">
         {loading ? (
           <p className="text-theme-text-muted py-6 text-center">{t('loading')}</p>
+        ) : view === 'map' ? (
+          <div className="grid-card overflow-hidden">
+            <CameraMap
+              cameras={cameras}
+              onMove={moveCamera}
+              onSelect={(c) => selectFromMap(c.id)}
+              onEdit={(c) => editFromMap(c.id)}
+            />
+          </div>
         ) : (
           <div className="grid-card">
             <AgGridReact<Camera>

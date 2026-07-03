@@ -25,6 +25,8 @@ class CameraBase(BaseModel):
     calibration_width: Optional[int] = None
     calibration_height: Optional[int] = None
     zone_grid: Optional[dict[str, Any]] = None     # {"cols","rows","cells":{"c,r":rule_id}}
+    latitude: Optional[float] = None               # map placement (WGS84)
+    longitude: Optional[float] = None
 
 
 class CameraCreate(CameraBase):
@@ -49,6 +51,8 @@ class CameraUpdate(BaseModel):
     snapshot_path: Optional[str] = None
     calibration_width: Optional[int] = None
     calibration_height: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class CameraResponse(CameraBase):
