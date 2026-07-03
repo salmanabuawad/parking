@@ -330,10 +330,11 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
                   const count = Object.values(grid.cells).filter(v => v === r.id).length
                   return (
                     <button key={r.id} type="button" onClick={() => setActiveRule(r.id)} title={r.label}
-                      className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs ${activeRule === r.id ? 'ring-2 ring-theme-accent' : ''}`}
+                      className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs max-w-[180px] ${activeRule === r.id ? 'ring-2 ring-theme-accent' : ''}`}
                       style={{ borderColor: ruleColor(r.id) }}>
-                      <span className="w-3 h-3 rounded-sm" style={{ background: ruleColor(r.id) }} />
-                      {r.title || r.id}{count ? ` · ${count}` : ''}
+                      <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: ruleColor(r.id) }} />
+                      <span className="truncate min-w-0">{r.title || r.id}</span>
+                      {count ? <span className="shrink-0 text-theme-text-muted">· {count}</span> : null}
                     </button>
                   )
                 })}
@@ -380,9 +381,9 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
                 {s.id === selectedId && (
                   <div className="mt-2 flex flex-wrap gap-1" onClick={e => e.stopPropagation()}>
                     {rules.map(r => (
-                      <label key={r.id} title={r.label} className={`text-theme-xs rounded border px-1.5 py-0.5 cursor-pointer ${(s.violation_rule_ids || []).includes(r.id) ? 'bg-green-100 border-green-300' : 'border-theme-card-border'}`}>
-                        <input type="checkbox" className="me-1" checked={(s.violation_rule_ids || []).includes(r.id)} onChange={() => toggleRule(s, r.id)} />
-                        {r.title || r.id}
+                      <label key={r.id} title={r.label} className={`inline-flex items-center max-w-[190px] text-theme-xs rounded border px-1.5 py-0.5 cursor-pointer ${(s.violation_rule_ids || []).includes(r.id) ? 'bg-green-100 border-green-300' : 'border-theme-card-border'}`}>
+                        <input type="checkbox" className="me-1 shrink-0" checked={(s.violation_rule_ids || []).includes(r.id)} onChange={() => toggleRule(s, r.id)} />
+                        <span className="truncate min-w-0">{r.title || r.id}</span>
                       </label>
                     ))}
                   </div>
