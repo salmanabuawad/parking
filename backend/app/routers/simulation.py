@@ -92,6 +92,7 @@ def seed_cameras(
             "calibration_width": w,
             "calibration_height": h,
             "source_type": "simulation",
+            "city": "netanya",
         }
         # Place on the Netanya map if not already positioned (never override a moved camera)
         if cam.latitude is None or cam.longitude is None:
@@ -108,34 +109,86 @@ def seed_cameras(
     return {"cameras": out, "count": len(out)}
 
 
-# ── Sample fleet generator (dashboard demo data) ──────────────────────────────
-NETANYA_STREETS = [
-    "הרצל", "ויצמן", "שדרות ניצה", "דיזנגוף", "רזיאל", "בן גוריון", "סמילנסקי",
-    "רמז", "אוסטרובסקי", "המעפילים", "גד מכנס", "פינסקר", "שער העמק", "בני בנימין",
-]
-# On-land anchor points across Netanya neighborhoods (lat, lng). Cameras scatter around these with a
-# small jitter so none fall in the sea (the coast is ~34.852; a blind west-reaching box put pins in
-# the water) or in empty fields. All anchors are lng ≥ 34.858, safely inland.
-NETANYA_ANCHORS = [
-    (32.3286, 34.8590), (32.3240, 34.8615), (32.3320, 34.8600), (32.3340, 34.8635),
-    (32.3190, 34.8600), (32.3155, 34.8640), (32.3110, 34.8615), (32.3070, 34.8648),
-    (32.3040, 34.8605), (32.3270, 34.8648), (32.3210, 34.8662), (32.3140, 34.8632),
-    (32.3225, 34.8585), (32.3300, 34.8660),
+# ── Sample fleet generator (multi-city dashboard demo data) ───────────────────
+STREETS = [
+    "הרצל", "ויצמן", "בן גוריון", "רזיאל", "סוקולוב", "אלנבי", "ז'בוטינסקי",
+    "המלך ג'ורג'", "רוטשילד", "דיזנגוף", "החלוץ", "יפו", "בן יהודה", "הנביאים",
 ]
 # Weighted status pool: ~70% online, 15% offline, 10% maintenance, 5% error
 FLEET_STATUS_POOL = (["online"] * 70) + (["offline"] * 15) + (["maintenance"] * 10) + (["error"] * 5)
 
+# City demo areas: a map center (lat, lng) + zoom and a set of ON-LAND anchor points across real
+# neighborhoods; cameras scatter around anchors with a small jitter. `lng_min`/`lng_max` are
+# water-avoidance clamps — coastal cities keep pins east of the sea, Tiberias west of the Kinneret.
+CITIES: dict[str, dict] = {
+    "netanya": {
+        "label": "נתניה", "center": (32.3215, 34.8532), "zoom": 13, "lng_min": 34.855,
+        "anchors": [
+            (32.3286, 34.8590), (32.3240, 34.8615), (32.3320, 34.8600), (32.3340, 34.8635),
+            (32.3190, 34.8600), (32.3155, 34.8640), (32.3110, 34.8615), (32.3070, 34.8648),
+            (32.3040, 34.8605), (32.3270, 34.8648), (32.3210, 34.8662), (32.3140, 34.8632),
+        ],
+    },
+    "haifa": {
+        "label": "חיפה", "center": (32.7940, 34.9950), "zoom": 12, "lng_min": 34.978,
+        "anchors": [
+            (32.7940, 34.9896), (32.8080, 34.9970), (32.8160, 35.0010), (32.7870, 35.0030),
+            (32.7830, 35.0130), (32.8010, 34.9950), (32.7780, 35.0080), (32.8050, 35.0060),
+            (32.7920, 34.9990), (32.8120, 35.0040), (32.7990, 35.0100), (32.7890, 35.0050),
+        ],
+    },
+    "tel-aviv": {
+        "label": "תל אביב", "center": (32.0853, 34.7818), "zoom": 13, "lng_min": 34.775,
+        "anchors": [
+            (32.0809, 34.7806), (32.0900, 34.7835), (32.0990, 34.7865), (32.0760, 34.7835),
+            (32.0850, 34.7895), (32.0950, 34.7925), (32.1080, 34.7985), (32.0720, 34.7815),
+            (32.0690, 34.7905), (32.1030, 34.7905), (32.0880, 34.7955), (32.0800, 34.7885),
+        ],
+    },
+    "jerusalem": {
+        "label": "ירושלים", "center": (31.7780, 35.2100), "zoom": 12,
+        "anchors": [
+            (31.7683, 35.2137), (31.7850, 35.2100), (31.7900, 35.2010), (31.7760, 35.2240),
+            (31.7620, 35.2120), (31.7810, 35.2200), (31.7950, 35.2240), (31.7700, 35.1960),
+            (31.7580, 35.2210), (31.7880, 35.1980), (31.7990, 35.2130), (31.7720, 35.2300),
+        ],
+    },
+    "tiberias": {
+        "label": "טבריה", "center": (32.7900, 35.5290), "zoom": 14, "lng_max": 35.532,
+        "anchors": [
+            (32.7922, 35.5285), (32.7965, 35.5268), (32.7885, 35.5293), (32.7850, 35.5255),
+            (32.8000, 35.5275), (32.7805, 35.5268), (32.7765, 35.5290), (32.7925, 35.5250),
+            (32.7980, 35.5240), (32.7835, 35.5275), (32.7900, 35.5298), (32.7860, 35.5245),
+        ],
+    },
+}
 
-def _netanya_point() -> tuple[float, float]:
-    lat0, lng0 = random.choice(NETANYA_ANCHORS)
-    lat = lat0 + random.uniform(-0.0035, 0.0035)
-    lng = max(34.855, lng0 + random.uniform(-0.0035, 0.0035))  # clamp: never west into the sea
+
+def _city_point(key: str) -> tuple[float, float]:
+    c = CITIES[key]
+    lat0, lng0 = random.choice(c["anchors"])
+    lat = lat0 + random.uniform(-0.0025, 0.0025)
+    lng = lng0 + random.uniform(-0.0025, 0.0025)
+    if c.get("lng_min") is not None:
+        lng = max(c["lng_min"], lng)
+    if c.get("lng_max") is not None:
+        lng = min(c["lng_max"], lng)
     return round(lat, 6), round(lng, 6)
 
 
+@router.get("/cities")
+def list_cities():
+    """Cities available on the fleet dashboard (center is [lng, lat] for MapLibre)."""
+    return [
+        {"key": k, "label": c["label"], "center": [c["center"][1], c["center"][0]], "zoom": c["zoom"]}
+        for k, c in CITIES.items()
+    ]
+
+
 class FleetRequest(BaseModel):
-    count: int = 100
-    clear: bool = True   # remove previously generated demo cameras first
+    count: int = 100                    # cameras per city
+    cities: list[str] | None = None     # None → all cities
+    clear: bool = True                  # remove previously generated demo cameras for those cities
 
 
 @router.post("/generate-fleet")
@@ -143,16 +196,23 @@ def generate_fleet(
     body: FleetRequest | None = None,
     camera_repo: CameraRepository = Depends(get_camera_repo),
 ):
-    """Generate N demo cameras spread across Netanya with varied operational status, for the fleet
-    dashboard. Generated cameras are tagged connection_config.generated=true; re-running with
-    clear=true removes the previous batch so it doesn't accumulate."""
+    """Generate `count` demo cameras per city (varied status), spread on-land across each city, for the
+    fleet dashboard. Tagged connection_config.generated=true + city=<key>; clear=true first removes the
+    previous generated batch for the requested cities so they don't accumulate."""
     body = body or FleetRequest()
-    n = max(1, min(2000, body.count))
+    n = max(1, min(1000, body.count))
+    keys = [k for k in (body.cities or list(CITIES.keys())) if k in CITIES]
+    if not keys:
+        raise HTTPException(status_code=400, detail="No valid cities requested")
     db = camera_repo.db
 
     removed = 0
     if body.clear:
-        existing = [c for c in db.query(Camera).all() if (c.connection_config or {}).get("generated")]
+        target = set(keys)
+        existing = [
+            c for c in db.query(Camera).all()
+            if (c.connection_config or {}).get("generated") and (c.city or "netanya") in target
+        ]
         for c in existing:
             db.delete(c)
             removed += 1
@@ -160,21 +220,25 @@ def generate_fleet(
             db.commit()
 
     objs = []
-    for i in range(1, n + 1):
-        status = random.choice(FLEET_STATUS_POOL)
-        street = random.choice(NETANYA_STREETS)
-        lat, lng = _netanya_point()
-        objs.append(Camera(
-            name=f"מצלמה {i:03d}",
-            location=f"{street} {random.randint(1, 120)}, נתניה",
-            connection_type="ip",
-            connection_config={"generated": True},
-            source_type="uploaded_image",
-            is_active=(status != "offline"),
-            status=status,
-            latitude=lat,
-            longitude=lng,
-        ))
+    for key in keys:
+        label = CITIES[key]["label"]
+        for i in range(1, n + 1):
+            status = random.choice(FLEET_STATUS_POOL)
+            street = random.choice(STREETS)
+            lat, lng = _city_point(key)
+            objs.append(Camera(
+                name=f"{label} {i:03d}",
+                location=f"{street} {random.randint(1, 120)}, {label}",
+                connection_type="ip",
+                connection_config={"generated": True},
+                source_type="uploaded_image",
+                is_active=(status != "offline"),
+                status=status,
+                city=key,
+                latitude=lat,
+                longitude=lng,
+            ))
     db.add_all(objs)
     db.commit()
-    return {"created": len(objs), "removed": removed, "by_status": dict(Counter(o.status for o in objs))}
+    return {"created": len(objs), "removed": removed, "cities": keys,
+            "by_status": dict(Counter(o.status for o in objs))}

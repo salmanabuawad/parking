@@ -68,6 +68,7 @@ class Camera(Base):
     longitude = Column(Float, nullable=True)
     # Operational status for the fleet dashboard: online | offline | maintenance | error
     status = Column(String(20), default="online", nullable=True)
+    city = Column(String(30), nullable=True, index=True)   # fleet dashboard grouping (netanya, haifa, …)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)

@@ -28,6 +28,7 @@ class CameraBase(BaseModel):
     latitude: Optional[float] = None               # map placement (WGS84)
     longitude: Optional[float] = None
     status: Optional[str] = "online"               # online | offline | maintenance | error
+    city: Optional[str] = None                     # fleet dashboard grouping
 
 
 class CameraCreate(CameraBase):
@@ -55,6 +56,7 @@ class CameraUpdate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     status: Optional[str] = None
+    city: Optional[str] = None
 
 
 class CameraResponse(CameraBase):

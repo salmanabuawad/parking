@@ -23,6 +23,7 @@ export interface MapCamera {
   location?: string | null
   is_active: boolean
   status?: string | null
+  city?: string | null
   latitude?: number | null
   longitude?: number | null
 }
@@ -103,7 +104,7 @@ function makePopup(cam: MapCamera, cb: React.MutableRefObject<Cbs>): maplibregl.
   return new maplibregl.Popup({ offset: 26, closeButton: true }).setDOMContent(node)
 }
 
-export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null } & Cbs) {
+export default function CameraMap({ cameras, styleUrl, center, zoom, onMove, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null; center?: [number, number]; zoom?: number } & Cbs) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<Record<number, maplibregl.Marker>>({})
@@ -116,8 +117,8 @@ export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit 
     const map = new maplibregl.Map({
       container: containerRef.current,
       style: styleUrl || OSM_STYLE,   // MapTiler vector style when configured, else OSM raster
-      center: NETANYA,
-      zoom: 13,
+      center: center || NETANYA,
+      zoom: zoom ?? 13,
       dragRotate: false,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
@@ -139,6 +140,16 @@ export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit 
     if (!styleAppliedRef.current) { styleAppliedRef.current = true; return } // init already set it
     map.setStyle(styleUrl || OSM_STYLE)
   }, [styleUrl])
+
+  // Recenter when the selected city changes (init already used the first center/zoom).
+  const centeredRef = useRef(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !center) return
+    if (!centeredRef.current) { centeredRef.current = true; return }
+    map.jumpTo({ center, zoom: zoom ?? map.getZoom() })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center?.[0], center?.[1], zoom])
 
   // Rebuild markers whenever the camera set changes (few cameras → cheap + always fresh)
   useEffect(() => {

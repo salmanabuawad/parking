@@ -44,6 +44,7 @@ interface Camera {
   latitude?: number | null
   longitude?: number | null
   status?: string | null
+  city?: string | null
 }
 
 interface CameraForm {
