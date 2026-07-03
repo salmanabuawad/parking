@@ -160,7 +160,10 @@ export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit 
 
   return (
     <div className="absolute inset-0">
-      <div ref={containerRef} className="absolute inset-0" />
+      {/* Inline size, NOT Tailwind: maplibre-gl.css is unlayered and sets .maplibregl-map
+          position:relative, which beats layered Tailwind utilities and collapses an `absolute inset-0`
+          container to 0 height. An inline width/height fills the parent regardless. */}
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       {unplaced.length > 0 && (
         <div className="absolute top-2 start-2 z-10 bg-white/95 rounded-lg shadow-lg p-2 max-w-[230px] text-theme-xs" dir="rtl">
           <div className="font-semibold mb-1">מצלמות ללא מיקום ({unplaced.length})</div>
