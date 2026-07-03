@@ -113,10 +113,24 @@ NETANYA_STREETS = [
     "הרצל", "ויצמן", "שדרות ניצה", "דיזנגוף", "רזיאל", "בן גוריון", "סמילנסקי",
     "רמז", "אוסטרובסקי", "המעפילים", "גד מכנס", "פינסקר", "שער העמק", "בני בנימין",
 ]
-# Netanya built-up area bounding box: (lat_min, lat_max, lng_min, lng_max)
-NETANYA_BOX = (32.2960, 32.3400, 34.8470, 34.8690)
+# On-land anchor points across Netanya neighborhoods (lat, lng). Cameras scatter around these with a
+# small jitter so none fall in the sea (the coast is ~34.852; a blind west-reaching box put pins in
+# the water) or in empty fields. All anchors are lng ≥ 34.858, safely inland.
+NETANYA_ANCHORS = [
+    (32.3286, 34.8590), (32.3240, 34.8615), (32.3320, 34.8600), (32.3340, 34.8635),
+    (32.3190, 34.8600), (32.3155, 34.8640), (32.3110, 34.8615), (32.3070, 34.8648),
+    (32.3040, 34.8605), (32.3270, 34.8648), (32.3210, 34.8662), (32.3140, 34.8632),
+    (32.3225, 34.8585), (32.3300, 34.8660),
+]
 # Weighted status pool: ~70% online, 15% offline, 10% maintenance, 5% error
 FLEET_STATUS_POOL = (["online"] * 70) + (["offline"] * 15) + (["maintenance"] * 10) + (["error"] * 5)
+
+
+def _netanya_point() -> tuple[float, float]:
+    lat0, lng0 = random.choice(NETANYA_ANCHORS)
+    lat = lat0 + random.uniform(-0.0035, 0.0035)
+    lng = max(34.855, lng0 + random.uniform(-0.0035, 0.0035))  # clamp: never west into the sea
+    return round(lat, 6), round(lng, 6)
 
 
 class FleetRequest(BaseModel):
@@ -145,11 +159,11 @@ def generate_fleet(
         if existing:
             db.commit()
 
-    lat0, lat1, lng0, lng1 = NETANYA_BOX
     objs = []
     for i in range(1, n + 1):
         status = random.choice(FLEET_STATUS_POOL)
         street = random.choice(NETANYA_STREETS)
+        lat, lng = _netanya_point()
         objs.append(Camera(
             name=f"מצלמה {i:03d}",
             location=f"{street} {random.randint(1, 120)}, נתניה",
@@ -158,8 +172,8 @@ def generate_fleet(
             source_type="uploaded_image",
             is_active=(status != "offline"),
             status=status,
-            latitude=round(random.uniform(lat0, lat1), 6),
-            longitude=round(random.uniform(lng0, lng1), 6),
+            latitude=lat,
+            longitude=lng,
         ))
     db.add_all(objs)
     db.commit()
