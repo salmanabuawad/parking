@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Upload, Video, RefreshCw, Plus, Check, X, Trash2, AlertTriangle, Clapperboard } from 'lucide-react'
+import { Upload, Video, RefreshCw, Plus, Check, X, Trash2, AlertTriangle, Clapperboard, Grid3x3, Eraser } from 'lucide-react'
 import { camerasApi, cameraSegmentsApi } from '../api'
 
 /**
@@ -12,6 +12,7 @@ const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899'
 const DISPLAY_W = 720
 
 type Pt = [number, number]
+type GridState = { cols: number; rows: number; cells: Record<string, string> }
 interface Section {
   id: number
   label: string
@@ -46,6 +47,17 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<'polygon' | 'grid'>('polygon')
+  const [grid, setGrid] = useState<GridState>({ cols: 24, rows: 14, cells: {} })
+  const [activeRule, setActiveRule] = useState<string | null>(rules[0]?.id ?? null)
+  const paintingRef = useRef(false)
+  const gridRef = useRef<GridState>(grid)
+
+  // Each violation rule gets a stable color (shared with the polygon sections palette).
+  const ruleColor = (ruleId: string) => {
+    const i = rules.findIndex(r => r.id === ruleId)
+    return i >= 0 ? COLORS[i % COLORS.length] : '#64748b'
+  }
 
   const loadImage = useCallback(() => {
     const img = new Image()
@@ -62,11 +74,20 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
       setHasRtsp(Boolean(cam.rtsp_url))
       setHasSim(cam.source_type === 'simulation' || Boolean(cam.connection_config?.simulation_source))
       setSections((segs as Section[]).map(s => ({ ...s, polygon_json: (s.polygon_json as Pt[]) || [] })))
+      const zg = cam.zone_grid as GridState | null | undefined
+      if (zg && zg.cells && Object.keys(zg.cells).length) {
+        setGrid({ cols: zg.cols, rows: zg.rows, cells: zg.cells })
+        setMode('grid')
+      } else if (cam.calibration_width && cam.calibration_height) {
+        const cols = 24
+        setGrid({ cols, rows: Math.max(4, Math.round((cols * cam.calibration_height) / cam.calibration_width)), cells: {} })
+      }
       loadImage()
     } catch { setMsg('שגיאה בטעינה') }
   }, [cameraId, loadImage])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { gridRef.current = grid }, [grid])
 
   // ── Render ──
   useEffect(() => {
@@ -79,6 +100,20 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     const ctx = canvas.getContext('2d')!
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+    if (mode === 'grid') {
+      const cw = canvas.width / grid.cols, ch = canvas.height / grid.rows
+      for (const [key, ruleId] of Object.entries(grid.cells)) {
+        const [c, r] = key.split(',').map(Number)
+        ctx.fillStyle = ruleColor(ruleId) + 'aa'
+        ctx.fillRect(c * cw, r * ch, cw, ch)
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.30)'; ctx.lineWidth = 1; ctx.beginPath()
+      for (let c = 0; c <= grid.cols; c++) { ctx.moveTo(c * cw, 0); ctx.lineTo(c * cw, canvas.height) }
+      for (let r = 0; r <= grid.rows; r++) { ctx.moveTo(0, r * ch); ctx.lineTo(canvas.width, r * ch) }
+      ctx.stroke()
+      return
+    }
 
     const poly = (pts: Pt[], color: string, sel: boolean, open = false) => {
       if (!pts.length) return
@@ -115,7 +150,7 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
       poly(pts, '#111827', true, true)
       pts.forEach(p => handle(p[0], p[1], '#111827'))
     }
-  }, [sections, drawing, selectedId, nat])
+  }, [sections, drawing, selectedId, nat, mode, grid])
 
   const toOriginal = (e: React.MouseEvent): Pt => {
     const canvas = canvasRef.current!, rect = canvas.getBoundingClientRect()
@@ -125,7 +160,44 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     return [Math.round(cx / scale), Math.round(cy / scale)]
   }
 
+  // ── Grid painting ──
+  const cellAt = (e: React.MouseEvent): [number, number] => {
+    const canvas = canvasRef.current!, rect = canvas.getBoundingClientRect()
+    const cx = (e.clientX - rect.left) * (canvas.width / rect.width)
+    const cy = (e.clientY - rect.top) * (canvas.height / rect.height)
+    const c = Math.floor(cx / (canvas.width / grid.cols))
+    const r = Math.floor(cy / (canvas.height / grid.rows))
+    return [Math.max(0, Math.min(grid.cols - 1, c)), Math.max(0, Math.min(grid.rows - 1, r))]
+  }
+  const paintAt = (e: React.MouseEvent) => {
+    const [c, r] = cellAt(e), key = `${c},${r}`
+    setGrid(g => {
+      const cells = { ...g.cells }
+      if (activeRule) { if (cells[key] === activeRule) return g; cells[key] = activeRule }
+      else { if (!(key in cells)) return g; delete cells[key] }
+      return { ...g, cells }
+    })
+  }
+  const saveGrid = async (g?: GridState) => {
+    try { await camerasApi.saveZoneGrid(cameraId, g ?? gridRef.current) }
+    catch (e: any) { setMsg('שגיאה בשמירת רשת: ' + (e?.message || '')) }
+  }
+  const changeCols = (cols: number) => {
+    const aspectW = calib?.w ?? nat?.w ?? 16, aspectH = calib?.h ?? nat?.h ?? 9
+    const rows = Math.max(4, Math.round((cols * aspectH) / aspectW))
+    const cells: Record<string, string> = {}
+    for (const [key, rule] of Object.entries(grid.cells)) {
+      const [c, r] = key.split(',').map(Number)
+      const nc = Math.min(cols - 1, Math.floor(((c + 0.5) / grid.cols) * cols))
+      const nr = Math.min(rows - 1, Math.floor(((r + 0.5) / grid.rows) * rows))
+      cells[`${nc},${nr}`] = rule
+    }
+    const next = { cols, rows, cells }; setGrid(next); saveGrid(next)
+  }
+  const clearGrid = () => { const next = { ...grid, cells: {} }; setGrid(next); saveGrid(next) }
+
   const onDown = (e: React.MouseEvent) => {
+    if (mode === 'grid') { paintingRef.current = true; paintAt(e); return }
     if (!nat) return
     const [x, y] = toOriginal(e)
     if (drawing) { setDrawing([...drawing, [x, y]]); return }
@@ -139,12 +211,14 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     setSelectedId(hit ? hit.id : null)
   }
   const onMove = (e: React.MouseEvent) => {
+    if (mode === 'grid') { if (paintingRef.current) paintAt(e); return }
     if (!dragRef.current || selectedId == null) return
     const [x, y] = toOriginal(e)
     setSections(secs => secs.map(s => s.id === selectedId && s.polygon_json
       ? { ...s, polygon_json: s.polygon_json.map((p, i) => (i === dragRef.current!.idx ? ([x, y] as Pt) : p)) } : s))
   }
   const onUp = async () => {
+    if (mode === 'grid') { if (paintingRef.current) { paintingRef.current = false; await saveGrid() } return }
     if (dragRef.current && selectedId != null) {
       const s = sections.find(x => x.id === selectedId)
       if (s) { try { await cameraSegmentsApi.update(cameraId, s.id, { polygon_json: s.polygon_json, coordinate_type: 'polygon' }) } catch { /* keep local */ } }
@@ -194,6 +268,13 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
 
   return (
     <div className="flex flex-col gap-3">
+      {/* Marking method: freehand polygons or paint grid squares */}
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="text-theme-sm font-semibold ms-1">שיטת סימון:</span>
+        <button type="button" onClick={() => setMode('polygon')} className={mode === 'polygon' ? 'btn-primary' : 'btn-secondary'}>מצולעים</button>
+        <button type="button" onClick={() => setMode('grid')} className={mode === 'grid' ? 'btn-primary' : 'btn-secondary'}><Grid3x3 className="w-4 h-4" /> ריבועים</button>
+      </div>
+
       {/* Snapshot source toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-theme-sm font-semibold">תמונת מצלמה:</span>
@@ -228,20 +309,54 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
               className="block cursor-crosshair max-w-full"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            {!drawing ? (
-              <button type="button" onClick={() => { setDrawing([]); setSelectedId(null) }} disabled={!nat || busy} className="btn-primary"><Plus className="w-4 h-4" /> מקטע חדש</button>
-            ) : (
-              <>
-                <span className="text-theme-xs text-theme-text-muted">לחץ להוספת נקודות, לחיצה כפולה לסיום ({drawing.length})</span>
-                <button type="button" onClick={finishDrawing} disabled={drawing.length < 3} className="btn-success"><Check className="w-4 h-4" /> סיים</button>
-                <button type="button" onClick={() => setDrawing(null)} className="btn-cancel"><X className="w-4 h-4" /> בטל</button>
-              </>
-            )}
-          </div>
+          {mode === 'polygon' && (
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              {!drawing ? (
+                <button type="button" onClick={() => { setDrawing([]); setSelectedId(null) }} disabled={!nat || busy} className="btn-primary"><Plus className="w-4 h-4" /> מקטע חדש</button>
+              ) : (
+                <>
+                  <span className="text-theme-xs text-theme-text-muted">לחץ להוספת נקודות, לחיצה כפולה לסיום ({drawing.length})</span>
+                  <button type="button" onClick={finishDrawing} disabled={drawing.length < 3} className="btn-success"><Check className="w-4 h-4" /> סיים</button>
+                  <button type="button" onClick={() => setDrawing(null)} className="btn-cancel"><X className="w-4 h-4" /> בטל</button>
+                </>
+              )}
+            </div>
+          )}
+          {mode === 'grid' && (
+            <div className="flex flex-col gap-2 mt-2">
+              <div className="text-theme-xs text-theme-text-muted">בחר סוג עבירה (צבע) וצבע על הריבועים בגרירה. בחר "מחק" כדי לנקות ריבוע. השמירה אוטומטית.</div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {rules.map(r => {
+                  const count = Object.values(grid.cells).filter(v => v === r.id).length
+                  return (
+                    <button key={r.id} type="button" onClick={() => setActiveRule(r.id)} title={r.label}
+                      className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs ${activeRule === r.id ? 'ring-2 ring-theme-accent' : ''}`}
+                      style={{ borderColor: ruleColor(r.id) }}>
+                      <span className="w-3 h-3 rounded-sm" style={{ background: ruleColor(r.id) }} />
+                      {r.id}{count ? ` · ${count}` : ''}
+                    </button>
+                  )
+                })}
+                <button type="button" onClick={() => setActiveRule(null)}
+                  className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs ${activeRule === null ? 'ring-2 ring-theme-accent border-gray-400' : 'border-theme-card-border'}`}>
+                  <Eraser className="w-3.5 h-3.5" /> מחק
+                </button>
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-theme-xs text-theme-text-muted">צפיפות:</label>
+                <select value={grid.cols} onChange={e => changeCols(parseInt(e.target.value))} className="input-base w-28">
+                  {[12, 16, 24, 32, 40].map(n => <option key={n} value={n}>{n} עמודות</option>)}
+                </select>
+                <span className="text-theme-xs text-theme-text-muted">{grid.cols}×{grid.rows}</span>
+                <button type="button" onClick={clearGrid} className="btn-cancel"><Trash2 className="w-4 h-4" /> נקה רשת</button>
+              </div>
+              {rules.length === 0 && <div className="text-theme-xs text-amber-600">לא הוגדרו כללי הפרה — הוסף כללים כדי לצבוע לפי סוג עבירה.</div>}
+            </div>
+          )}
         </div>
 
-        {/* Section list */}
+        {/* Section list (polygon mode only) */}
+        {mode === 'polygon' && (
         <div className="grow basis-[260px] min-w-[240px]">
           <div className="text-theme-sm font-semibold mb-2">מקטעים ({sections.length})</div>
           <div className="flex flex-col gap-2">
@@ -277,6 +392,7 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
             {sections.length === 0 && <div className="text-theme-text-muted text-theme-sm">אין מקטעים — לחץ "מקטע חדש" וצייר על התמונה</div>}
           </div>
         </div>
+        )}
       </div>
     </div>
   )

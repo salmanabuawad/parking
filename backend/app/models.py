@@ -60,6 +60,9 @@ class Camera(Base):
     snapshot_path = Column(String(255), nullable=True)     # saved calibration frame (videos/snapshots/...)
     calibration_width = Column(Integer, nullable=True)     # snapshot resolution; polygons are stored in these px
     calibration_height = Column(Integer, nullable=True)
+    # Grid zone-map: paint image cells with a violation type (color). Shape:
+    # {"cols": N, "rows": M, "cells": {"c,r": "RULE_ID", ...}}. A car's position → cell → violation type.
+    zone_grid = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)

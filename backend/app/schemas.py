@@ -24,6 +24,7 @@ class CameraBase(BaseModel):
     snapshot_path: Optional[str] = None
     calibration_width: Optional[int] = None
     calibration_height: Optional[int] = None
+    zone_grid: Optional[dict[str, Any]] = None     # {"cols","rows","cells":{"c,r":rule_id}}
 
 
 class CameraCreate(CameraBase):

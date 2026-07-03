@@ -4,6 +4,7 @@ from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from app.config import settings
 from app.dependencies import get_camera_repo, get_camera_video_repo
@@ -159,6 +160,30 @@ def create_camera(
     {"moving": true, "night_light": true, "resolution": "1080p", "fps": 30}
     """
     return camera_repo.create(**data.model_dump())
+
+
+class ZoneGridIn(BaseModel):
+    cols: int
+    rows: int
+    cells: dict[str, str] = {}   # "c,r" -> violation rule_id (color); sparse (only painted cells)
+
+
+@router.put("/{camera_id}/zone-grid", response_model=CameraResponse)
+def set_zone_grid(
+    camera_id: int,
+    payload: ZoneGridIn,
+    camera_repo: CameraRepository = Depends(get_camera_repo),
+):
+    """Save the grid zone-map — image cells painted with a violation type. Stored as
+    {cols, rows, cells:{"c,r": rule_id}}; a car's position maps to a cell → its violation type.
+    Empty cell values are dropped so the map stays sparse."""
+    cam = camera_repo.get(camera_id)
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    cols = max(1, min(200, int(payload.cols)))
+    rows = max(1, min(200, int(payload.rows)))
+    cells = {k: v for k, v in (payload.cells or {}).items() if v}
+    return camera_repo.update(camera_id, zone_grid={"cols": cols, "rows": rows, "cells": cells})
 
 
 @router.patch("/{camera_id}", response_model=CameraResponse)

@@ -206,12 +206,16 @@ export const camerasApi = {
   },
   update(id: number, payload: unknown): Promise<{ data: any }> {
     return fetchJson(`/cameras/${id}`, {
-      method: "PUT",
+      method: "PATCH",
       body: JSON.stringify(payload),
     }).then((data) => ({ data }));
   },
   delete(id: number): Promise<{ data: any }> {
     return fetchJson(`/cameras/${id}`, { method: "DELETE" }).then((data) => ({ data }));
+  },
+  // Grid zone-map: paint image cells with a violation type. {cols, rows, cells:{"c,r": ruleId}}
+  saveZoneGrid(id: number, grid: { cols: number; rows: number; cells: Record<string, string> }): Promise<any> {
+    return fetchJson(`/cameras/${id}/zone-grid`, { method: "PUT", body: JSON.stringify(grid) });
   },
   get(id: number): Promise<{ data: any }> {
     return fetchJson(`/cameras/${id}`).then((data) => ({ data }));
