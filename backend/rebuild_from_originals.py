@@ -90,10 +90,15 @@ def main():
             n_anpr = db.execute(text("DELETE FROM anpr_track_results")).rowcount or 0
         except Exception:
             n_anpr = 0
+        try:
+            # ticket_audit_log.ticket_id -> tickets (no cascade); clear before deleting tickets
+            n_audit = db.execute(text("DELETE FROM ticket_audit_log")).rowcount or 0
+        except Exception:
+            n_audit = 0
         n_jobs_del = db.query(UploadJob).delete(synchronize_session=False)
         n_tickets_del = db.query(Ticket).delete(synchronize_session=False)
         db.commit()
-        print(f"Deleted: {n_tickets_del} tickets, {n_ss} screenshots, {n_anpr} anpr rows, {n_jobs_del} jobs.", flush=True)
+        print(f"Deleted: {n_tickets_del} tickets, {n_ss} screenshots, {n_anpr} anpr rows, {n_audit} audit rows, {n_jobs_del} jobs.", flush=True)
 
         # 3) Recreate fresh queued jobs from the originals (copy original -> raw/, preserve metadata)
         job_repo = UploadJobRepository(db)
