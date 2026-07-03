@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("./uploads")
     videos_dir: Path = Path("./videos")  # Set VIDEOS_DIR env when API and worker run separately
     secret_key: str = "dev-secret-key-change-in-production"
+    # MapTiler API key for the cameras map basemap (vector tiles + Hebrew labels). Empty → the
+    # frontend falls back to plain OpenStreetMap raster tiles. Set MAPTILER_KEY in the environment.
+    maptiler_key: str = ""
 
     # Violation pipeline (red/white curb detection)
     use_violation_pipeline: bool = True  # Identify cars parked at red/white curb; blur moving cars

@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard, Eye, Map as MapIcon, List } from 'lucide-react'
-import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulationApi } from '../api'
+import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulationApi, mapConfigApi } from '../api'
 import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
 import CameraZoneView from './CameraZoneView'
@@ -102,21 +102,24 @@ export default function Cameras() {
   const [simSources, setSimSources] = useState<SimulationSource[]>([])
   const [seeding, setSeeding] = useState(false)
   const [view, setView] = useState<'list' | 'map'>('list')
+  const [mapStyleUrl, setMapStyleUrl] = useState<string | null>(null)
 
   const load = async () => {
     setLoading(true)
     try {
-      const [camsResult, rulesResult, zonesResult, inspectorsResult, simsResult] = await Promise.all([
+      const [camsResult, rulesResult, zonesResult, inspectorsResult, simsResult, mapCfg] = await Promise.all([
         camerasApi.list(),
         violationRulesApi.list(),
         parkingZonesApi.list(),
         inspectorsApi.list(true).catch(() => []),
         simulationApi.sources().catch(() => []),
+        mapConfigApi.get().catch(() => ({ maptiler_key: '', style_url: null as string | null })),
       ])
       const cams: Camera[] = camsResult.data
       setCameras(cams)
       setInspectors(inspectorsResult as { id: number; full_name: string }[])
       setSimSources(simsResult as SimulationSource[])
+      setMapStyleUrl(mapCfg.style_url || null)
       setAvailableRules(
         rulesResult.data
           .filter((r: any) => r.is_active)
@@ -284,6 +287,7 @@ export default function Cameras() {
           <div className="grid-card overflow-hidden">
             <CameraMap
               cameras={cameras}
+              styleUrl={mapStyleUrl}
               onMove={moveCamera}
               onSelect={(c) => selectFromMap(c.id)}
               onEdit={(c) => editFromMap(c.id)}

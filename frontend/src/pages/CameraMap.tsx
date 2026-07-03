@@ -20,6 +20,20 @@ export interface MapCamera {
 // Netanya city center [lng, lat]
 const NETANYA: [number, number] = [34.8532, 32.3215]
 
+// Plain OpenStreetMap raster fallback when no MapTiler key is configured.
+const OSM_STYLE: maplibregl.StyleSpecification = {
+  version: 8,
+  sources: {
+    osm: {
+      type: 'raster',
+      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+      tileSize: 256,
+      attribution: '© OpenStreetMap contributors',
+    },
+  },
+  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
+}
+
 interface Cbs {
   onMove: (id: number, lat: number, lng: number) => void
   onSelect: (cam: MapCamera) => void
@@ -55,7 +69,7 @@ function makePopup(cam: MapCamera, cb: React.MutableRefObject<Cbs>): maplibregl.
   return new maplibregl.Popup({ offset: 26, closeButton: true }).setDOMContent(node)
 }
 
-export default function CameraMap({ cameras, onMove, onSelect, onEdit }: { cameras: MapCamera[] } & Cbs) {
+export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null } & Cbs) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<Record<number, maplibregl.Marker>>({})
@@ -67,18 +81,7 @@ export default function CameraMap({ cameras, onMove, onSelect, onEdit }: { camer
     if (!containerRef.current || mapRef.current) return
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: {
-        version: 8,
-        sources: {
-          osm: {
-            type: 'raster',
-            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-            tileSize: 256,
-            attribution: '© OpenStreetMap contributors',
-          },
-        },
-        layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-      },
+      style: styleUrl || OSM_STYLE,   // MapTiler vector style when configured, else OSM raster
       center: NETANYA,
       zoom: 13,
       dragRotate: false,
@@ -90,7 +93,18 @@ export default function CameraMap({ cameras, onMove, onSelect, onEdit }: { camer
     const rz = window.setTimeout(() => map.resize(), 60)
     mapRef.current = map
     return () => { window.clearTimeout(rz); map.remove(); mapRef.current = null; markersRef.current = {} }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // If the MapTiler style arrives after the map was created (async config), swap it in.
+  // Markers are DOM overlays, so setStyle keeps them.
+  const styleAppliedRef = useRef(false)
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+    if (!styleAppliedRef.current) { styleAppliedRef.current = true; return } // init already set it
+    map.setStyle(styleUrl || OSM_STYLE)
+  }, [styleUrl])
 
   // Rebuild markers whenever the camera set changes (few cameras → cheap + always fresh)
   useEffect(() => {

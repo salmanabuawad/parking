@@ -253,6 +253,13 @@ export const simulationApi = {
   },
 };
 
+export const mapConfigApi = {
+  // Basemap config for the cameras map. maptiler_key empty → frontend uses OSM fallback.
+  get(): Promise<{ maptiler_key: string; style_url: string | null }> {
+    return fetchJson("/map/config");
+  },
+};
+
 export const settingsApi = {
   get(): Promise<{ data: any }> {
     return fetchJson("/settings").then((data) => ({ data }));
