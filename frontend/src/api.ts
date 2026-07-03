@@ -267,8 +267,8 @@ export const simulationApi = {
       body: JSON.stringify(sources ? { sources } : {}),
     });
   },
-  // Cities available on the fleet dashboard (center is [lng, lat]).
-  cities(): Promise<{ key: string; label: string; center: [number, number]; zoom: number }[]> {
+  // Cities available on the fleet dashboard (center is [lng, lat]; bounds [[w,s],[e,n]]).
+  cities(): Promise<{ key: string; label: string; center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }[]> {
     return fetchJson("/simulation/cities");
   },
   // Generate `count` demo cameras per city (varied status, on-land). cities omitted → all cities.

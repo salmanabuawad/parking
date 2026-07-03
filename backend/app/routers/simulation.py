@@ -176,11 +176,20 @@ def _city_point(key: str) -> tuple[float, float]:
     return round(lat, 6), round(lng, 6)
 
 
+def _city_bounds(c: dict) -> list[list[float]]:
+    """Padded bounding box around a city's anchors, as [[west, south], [east, north]] (lng/lat) for
+    MapLibre maxBounds — so the map can't pan or zoom out past the city."""
+    lats = [a[0] for a in c["anchors"]]
+    lngs = [a[1] for a in c["anchors"]]
+    return [[min(lngs) - 0.025, min(lats) - 0.020], [max(lngs) + 0.025, max(lats) + 0.020]]
+
+
 @router.get("/cities")
 def list_cities():
     """Cities available on the fleet dashboard (center is [lng, lat] for MapLibre)."""
     return [
-        {"key": k, "label": c["label"], "center": [c["center"][1], c["center"][0]], "zoom": c["zoom"]}
+        {"key": k, "label": c["label"], "center": [c["center"][1], c["center"][0]],
+         "zoom": c["zoom"], "bounds": _city_bounds(c)}
         for k, c in CITIES.items()
     ]
 

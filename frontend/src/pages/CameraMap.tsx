@@ -104,7 +104,9 @@ function makePopup(cam: MapCamera, cb: React.MutableRefObject<Cbs>): maplibregl.
   return new maplibregl.Popup({ offset: 26, closeButton: true }).setDOMContent(node)
 }
 
-export default function CameraMap({ cameras, styleUrl, center, zoom, onMove, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null; center?: [number, number]; zoom?: number } & Cbs) {
+type Bounds = [[number, number], [number, number]]
+
+export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onMove, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null; center?: [number, number]; zoom?: number; bounds?: Bounds | null } & Cbs) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<Record<number, maplibregl.Marker>>({})
@@ -119,6 +121,7 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, onMove, onS
       style: styleUrl || OSM_STYLE,   // MapTiler vector style when configured, else OSM raster
       center: center || NETANYA,
       zoom: zoom ?? 13,
+      maxBounds: bounds ?? undefined,   // constrain to the city; also caps zoom-out
       dragRotate: false,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
@@ -141,15 +144,16 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, onMove, onS
     map.setStyle(styleUrl || OSM_STYLE)
   }, [styleUrl])
 
-  // Recenter when the selected city changes (init already used the first center/zoom).
-  const centeredRef = useRef(false)
+  // Constrain the map to the selected city — recenter + maxBounds so you can't pan or zoom out past
+  // its borders. Clear bounds before moving, else jumping to a new city gets clamped by the old one.
   useEffect(() => {
     const map = mapRef.current
-    if (!map || !center) return
-    if (!centeredRef.current) { centeredRef.current = true; return }
-    map.jumpTo({ center, zoom: zoom ?? map.getZoom() })
+    if (!map) return
+    map.setMaxBounds(undefined)
+    if (center) map.jumpTo({ center, zoom: zoom ?? map.getZoom() })
+    if (bounds) map.setMaxBounds(bounds)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center?.[0], center?.[1], zoom])
+  }, [center?.[0], center?.[1], zoom, bounds?.[0]?.[0], bounds?.[1]?.[0]])
 
   // Rebuild markers whenever the camera set changes (few cameras → cheap + always fresh)
   useEffect(() => {

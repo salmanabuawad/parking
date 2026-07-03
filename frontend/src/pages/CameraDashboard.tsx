@@ -4,7 +4,7 @@ import { LayoutDashboard, RefreshCw, Sparkles } from 'lucide-react'
 import { camerasApi, mapConfigApi, simulationApi } from '../api'
 import CameraMap, { STATUS_META, statusOf, type MapCamera } from './CameraMap'
 
-interface CityInfo { key: string; label: string; center: [number, number]; zoom: number }
+interface CityInfo { key: string; label: string; center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }
 
 /** Fleet dashboard: pick a city, see its cameras as status-colored pins on the map; per-status
  *  counts double as map filters. */
@@ -117,6 +117,7 @@ export default function CameraDashboard() {
             styleUrl={styleUrl}
             center={city?.center}
             zoom={city?.zoom}
+            bounds={city?.bounds}
             onMove={moveCamera}
             onSelect={() => navigate('/cameras')}
             onEdit={() => navigate('/cameras')}
