@@ -20,7 +20,7 @@ interface Section {
   polygon_json?: Pt[] | null
 }
 
-export default function CameraZoneView({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string }[] }) {
+export default function CameraZoneView({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string; title?: string }[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const [sections, setSections] = useState<Section[]>([])
@@ -114,7 +114,7 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
                 <div key={s.id} className="flex items-center gap-1 text-theme-xs">
                   <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: COLORS[i % COLORS.length] }} />
                   {s.label || `מקטע ${i + 1}`}
-                  {s.violation_rule_ids?.length ? <span className="text-theme-text-muted"> — {s.violation_rule_ids.join(', ')}</span> : null}
+                  {s.violation_rule_ids?.length ? <span className="text-theme-text-muted"> — {s.violation_rule_ids.map(id => rules.find(r => r.id === id)?.title || id).join(', ')}</span> : null}
                 </div>
               ))}
             </div>
@@ -129,7 +129,7 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
                 return (
                   <div key={rid} className="flex items-center gap-1 text-theme-xs" title={rules.find(r => r.id === rid)?.label || rid}>
                     <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: ruleColor(rid) }} />
-                    {rid} <span className="text-theme-text-muted">· {count} ריבועים</span>
+                    {rules.find(r => r.id === rid)?.title || rid} <span className="text-theme-text-muted">· {count} ריבועים</span>
                   </div>
                 )
               })}

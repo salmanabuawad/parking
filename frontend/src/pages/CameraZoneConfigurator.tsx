@@ -31,7 +31,7 @@ function pointInPoly(p: Pt, poly: Pt[]): boolean {
   return inside
 }
 
-export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string }[] }) {
+export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string; title?: string }[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
   const imgFileRef = useRef<HTMLInputElement>(null)
@@ -333,7 +333,7 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
                       className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs ${activeRule === r.id ? 'ring-2 ring-theme-accent' : ''}`}
                       style={{ borderColor: ruleColor(r.id) }}>
                       <span className="w-3 h-3 rounded-sm" style={{ background: ruleColor(r.id) }} />
-                      {r.id}{count ? ` · ${count}` : ''}
+                      {r.title || r.id}{count ? ` · ${count}` : ''}
                     </button>
                   )
                 })}
@@ -380,9 +380,9 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
                 {s.id === selectedId && (
                   <div className="mt-2 flex flex-wrap gap-1" onClick={e => e.stopPropagation()}>
                     {rules.map(r => (
-                      <label key={r.id} className={`text-theme-xs rounded border px-1.5 py-0.5 cursor-pointer ${(s.violation_rule_ids || []).includes(r.id) ? 'bg-green-100 border-green-300' : 'border-theme-card-border'}`}>
+                      <label key={r.id} title={r.label} className={`text-theme-xs rounded border px-1.5 py-0.5 cursor-pointer ${(s.violation_rule_ids || []).includes(r.id) ? 'bg-green-100 border-green-300' : 'border-theme-card-border'}`}>
                         <input type="checkbox" className="me-1" checked={(s.violation_rule_ids || []).includes(r.id)} onChange={() => toggleRule(s, r.id)} />
-                        {r.id}
+                        {r.title || r.id}
                       </label>
                     ))}
                   </div>

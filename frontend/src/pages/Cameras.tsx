@@ -65,6 +65,7 @@ interface ParkingZone {
 interface ViolationRuleOption {
   id: string
   label: string
+  title: string
 }
 
 const EMPTY_FORM: CameraForm = {
@@ -107,7 +108,7 @@ export default function Cameras() {
       setAvailableRules(
         rulesResult.data
           .filter((r: any) => r.is_active)
-          .map((r: any) => ({ id: r.rule_id, label: `${r.rule_id} — ${r.title_he}` }))
+          .map((r: any) => ({ id: r.rule_id, label: `${r.rule_id} — ${r.title_he}`, title: r.title_he || r.rule_id }))
       )
       setAvailableZones(zonesResult.data.filter((z: any) => z.is_active))
       const zoneEntries = await Promise.all(
