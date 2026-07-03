@@ -7,7 +7,7 @@ import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulati
 import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
 import CameraZoneView from './CameraZoneView'
-import CameraMap from './CameraMap'
+import CameraMap, { STATUS_META } from './CameraMap'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { t } from '../i18n'
@@ -43,6 +43,7 @@ interface Camera {
   rtsp_url?: string
   latitude?: number | null
   longitude?: number | null
+  status?: string | null
 }
 
 interface CameraForm {
@@ -241,9 +242,17 @@ export default function Cameras() {
     { headerName: 'אזורים', flex: 1, valueGetter: p => zoneNames(p.data!.id) || '—' },
     { headerName: 'פקח מטפל', width: 150, valueGetter: p => inspectorName(p.data?.assigned_inspector_id) },
     {
-      field: 'is_active', headerName: 'סטטוס', width: 110,
+      field: 'status', headerName: 'מצב', width: 130,
+      valueGetter: p => p.data?.status || (p.data?.is_active ? 'online' : 'offline'),
+      cellRenderer: (p: ICellRendererParams<Camera>) => {
+        const meta = STATUS_META.find(s => s.key === p.value)
+        return <span className="inline-flex items-center gap-1.5 text-theme-sm"><span className="w-2.5 h-2.5 rounded-full" style={{ background: meta?.color || '#64748b' }} />{meta?.label || p.value}</span>
+      },
+    },
+    {
+      field: 'is_active', headerName: 'מופעל', width: 100,
       cellRenderer: (p: ICellRendererParams<Camera>) =>
-        <span className={`badge ${p.value ? 'badge-success' : 'badge-neutral'}`}>{p.value ? 'פעיל' : 'לא פעיל'}</span>,
+        <span className={`badge ${p.value ? 'badge-success' : 'badge-neutral'}`}>{p.value ? 'כן' : 'לא'}</span>,
     },
     {
       headerName: '', width: 130, sortable: false, filter: false,

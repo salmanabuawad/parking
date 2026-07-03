@@ -27,6 +27,7 @@ class CameraBase(BaseModel):
     zone_grid: Optional[dict[str, Any]] = None     # {"cols","rows","cells":{"c,r":rule_id}}
     latitude: Optional[float] = None               # map placement (WGS84)
     longitude: Optional[float] = None
+    status: Optional[str] = "online"               # online | offline | maintenance | error
 
 
 class CameraCreate(CameraBase):
@@ -53,6 +54,7 @@ class CameraUpdate(BaseModel):
     calibration_height: Optional[int] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
+    status: Optional[str] = None
 
 
 class CameraResponse(CameraBase):

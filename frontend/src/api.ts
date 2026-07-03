@@ -251,6 +251,10 @@ export const simulationApi = {
       body: JSON.stringify(sources ? { sources } : {}),
     });
   },
+  // Generate N demo cameras spread across Netanya with varied status (fleet dashboard sample data).
+  generateFleet(count = 100, clear = true): Promise<{ created: number; removed: number; by_status: Record<string, number> }> {
+    return fetchJson("/simulation/generate-fleet", { method: "POST", body: JSON.stringify({ count, clear }) });
+  },
 };
 
 export const mapConfigApi = {

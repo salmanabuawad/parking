@@ -66,6 +66,8 @@ class Camera(Base):
     # Geographic placement (WGS84) for the cameras map view
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+    # Operational status for the fleet dashboard: online | offline | maintenance | error
+    status = Column(String(20), default="online", nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)

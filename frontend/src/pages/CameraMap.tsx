@@ -13,8 +13,24 @@ export interface MapCamera {
   name: string
   location?: string | null
   is_active: boolean
+  status?: string | null
   latitude?: number | null
   longitude?: number | null
+}
+
+// Operational status → label + pin color (shared with the fleet dashboard).
+export const STATUS_META = [
+  { key: 'online', label: 'מקוון', color: '#16a34a' },
+  { key: 'offline', label: 'לא מקוון', color: '#64748b' },
+  { key: 'maintenance', label: 'תחזוקה', color: '#f59e0b' },
+  { key: 'error', label: 'תקלה', color: '#dc2626' },
+] as const
+const STATUS_COLOR: Record<string, string> = Object.fromEntries(STATUS_META.map(s => [s.key, s.color]))
+export function statusOf(cam: MapCamera): string {
+  return cam.status || (cam.is_active ? 'online' : 'offline')
+}
+function markerColor(cam: MapCamera): string {
+  return STATUS_COLOR[statusOf(cam)] || '#64748b'
 }
 
 // Netanya city center [lng, lat]
@@ -54,6 +70,15 @@ function makePopup(cam: MapCamera, cb: React.MutableRefObject<Cbs>): maplibregl.
     loc.style.cssText = 'font-size:12px;color:#64748b;margin-bottom:6px'
     node.appendChild(loc)
   }
+  const st = statusOf(cam)
+  const meta = STATUS_META.find(m => m.key === st)
+  const stEl = document.createElement('div')
+  stEl.style.cssText = 'display:flex;align-items:center;gap:5px;font-size:12px;margin-bottom:6px'
+  const dot = document.createElement('span')
+  dot.style.cssText = `width:9px;height:9px;border-radius:50%;display:inline-block;background:${meta?.color || '#64748b'}`
+  stEl.appendChild(dot)
+  stEl.appendChild(document.createTextNode(meta?.label || st))
+  node.appendChild(stEl)
   const row = document.createElement('div')
   row.style.cssText = 'display:flex;gap:6px;margin-top:4px'
   const mk = (label: string, fn: () => void, primary = false) => {
@@ -114,7 +139,7 @@ export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit 
     markersRef.current = {}
     for (const c of cameras) {
       if (c.latitude == null || c.longitude == null) continue
-      const m = new maplibregl.Marker({ color: c.is_active ? '#16a34a' : '#94a3b8', draggable: true })
+      const m = new maplibregl.Marker({ color: markerColor(c), draggable: true })
         .setLngLat([c.longitude, c.latitude])
         .setPopup(makePopup(c, cbRef))
         .addTo(map)

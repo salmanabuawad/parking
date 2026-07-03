@@ -6,6 +6,8 @@ clip); the zone configurator then draws enforcement sections on that snapshot ex
 a real camera. Idempotent by ``simulation_source`` — re-running refreshes the snapshot, not creates
 duplicates. A simulation camera can re-grab a fresh (random) frame via the normal snapshot endpoint.
 """
+import random
+from collections import Counter
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -13,6 +15,7 @@ from pydantic import BaseModel
 
 from app.config import settings
 from app.dependencies import get_camera_repo
+from app.models import Camera
 from app.repositories import CameraRepository
 from app.services import simulation as sim
 
@@ -103,3 +106,61 @@ def seed_cameras(
     if not out:
         raise HTTPException(status_code=400, detail="לא ניתן לחלץ פריים מאף קליפ סימולציה")
     return {"cameras": out, "count": len(out)}
+
+
+# ── Sample fleet generator (dashboard demo data) ──────────────────────────────
+NETANYA_STREETS = [
+    "הרצל", "ויצמן", "שדרות ניצה", "דיזנגוף", "רזיאל", "בן גוריון", "סמילנסקי",
+    "רמז", "אוסטרובסקי", "המעפילים", "גד מכנס", "פינסקר", "שער העמק", "בני בנימין",
+]
+# Netanya built-up area bounding box: (lat_min, lat_max, lng_min, lng_max)
+NETANYA_BOX = (32.2960, 32.3400, 34.8470, 34.8690)
+# Weighted status pool: ~70% online, 15% offline, 10% maintenance, 5% error
+FLEET_STATUS_POOL = (["online"] * 70) + (["offline"] * 15) + (["maintenance"] * 10) + (["error"] * 5)
+
+
+class FleetRequest(BaseModel):
+    count: int = 100
+    clear: bool = True   # remove previously generated demo cameras first
+
+
+@router.post("/generate-fleet")
+def generate_fleet(
+    body: FleetRequest | None = None,
+    camera_repo: CameraRepository = Depends(get_camera_repo),
+):
+    """Generate N demo cameras spread across Netanya with varied operational status, for the fleet
+    dashboard. Generated cameras are tagged connection_config.generated=true; re-running with
+    clear=true removes the previous batch so it doesn't accumulate."""
+    body = body or FleetRequest()
+    n = max(1, min(2000, body.count))
+    db = camera_repo.db
+
+    removed = 0
+    if body.clear:
+        existing = [c for c in db.query(Camera).all() if (c.connection_config or {}).get("generated")]
+        for c in existing:
+            db.delete(c)
+            removed += 1
+        if existing:
+            db.commit()
+
+    lat0, lat1, lng0, lng1 = NETANYA_BOX
+    objs = []
+    for i in range(1, n + 1):
+        status = random.choice(FLEET_STATUS_POOL)
+        street = random.choice(NETANYA_STREETS)
+        objs.append(Camera(
+            name=f"מצלמה {i:03d}",
+            location=f"{street} {random.randint(1, 120)}, נתניה",
+            connection_type="ip",
+            connection_config={"generated": True},
+            source_type="uploaded_image",
+            is_active=(status != "offline"),
+            status=status,
+            latitude=round(random.uniform(lat0, lat1), 6),
+            longitude=round(random.uniform(lng0, lng1), 6),
+        ))
+    db.add_all(objs)
+    db.commit()
+    return {"created": len(objs), "removed": removed, "by_status": dict(Counter(o.status for o in objs))}

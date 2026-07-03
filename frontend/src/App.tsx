@@ -1,7 +1,7 @@
 import { Component, type ReactNode, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert, Inbox, Users, ShieldCheck,
+  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert, Inbox, Users, ShieldCheck, MapPin,
 } from 'lucide-react'
 
 const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
@@ -22,6 +22,7 @@ function useIsMobile() {
 }
 
 import Cameras          from './pages/Cameras'
+import CameraDashboard  from './pages/CameraDashboard'
 import SettingsPage     from './pages/Settings'
 import Home             from './pages/Home'
 import Upload           from './pages/Upload'
@@ -73,6 +74,7 @@ function buildNavItems(userType?: string): NavItem[] {
   return [
     inbox,
     { id: 'home', label: he.app.home, icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'camera-map', label: 'מפת מצלמות', icon: <MapPin className="w-4 h-4" /> },
     ticketsGroup,
     {
       id: 'cameras-group', label: 'מצלמות', icon: <Camera className="w-4 h-4" />,
@@ -91,6 +93,7 @@ function buildNavItems(userType?: string): NavItem[] {
 const ID_TO_PATH: Record<string, string> = {
   inbox:            '/inbox',
   home:             '/',
+  'camera-map':     '/map',
   tickets:          '/tickets',
   queue:            '/queue',
   cameras:          '/cameras',
@@ -103,6 +106,7 @@ const ID_TO_PATH: Record<string, string> = {
 /* Map pathname → active nav id */
 function pathnameToActiveId(pathname: string): string {
   if (pathname === '/')                         return 'home'
+  if (pathname.startsWith('/map'))              return 'camera-map'
   if (pathname.startsWith('/inbox'))            return 'inbox'
   if (pathname.startsWith('/tickets'))          return 'tickets'
   if (pathname.startsWith('/queue'))            return 'queue'
@@ -185,6 +189,7 @@ function AppShell() {
         <main className="app-content bg-theme-content">
           <Routes>
             <Route path="/"                element={<Home />} />
+            <Route path="/map"             element={<CameraDashboard />} />
             <Route path="/upload"          element={<Upload />} />
             <Route path="/tickets"         element={<Tickets />} />
             <Route path="/tickets/:id"     element={<TicketReview />} />
