@@ -293,7 +293,7 @@ export default function Cameras() {
         {loading ? (
           <p className="text-theme-text-muted py-6 text-center">{t('loading')}</p>
         ) : view === 'map' ? (
-          <div className="grid-card overflow-hidden">
+          <div className="grid-card overflow-hidden relative">
             <CameraMap
               cameras={cameras}
               styleUrl={mapStyleUrl}

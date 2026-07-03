@@ -82,7 +82,7 @@ export default function CameraDashboard() {
       </div>
 
       {/* Map */}
-      <div className="grid-card overflow-hidden flex-1 min-h-0">
+      <div className="grid-card overflow-hidden flex-1 min-h-0 relative">
         {loading ? (
           <p className="text-theme-text-muted py-6 text-center">טוען…</p>
         ) : (

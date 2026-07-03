@@ -159,7 +159,7 @@ export default function CameraMap({ cameras, styleUrl, onMove, onSelect, onEdit 
   }
 
   return (
-    <div className="relative w-full h-full">
+    <div className="absolute inset-0">
       <div ref={containerRef} className="absolute inset-0" />
       {unplaced.length > 0 && (
         <div className="absolute top-2 start-2 z-10 bg-white/95 rounded-lg shadow-lg p-2 max-w-[230px] text-theme-xs" dir="rtl">
