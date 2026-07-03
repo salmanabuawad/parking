@@ -71,7 +71,13 @@ def get_camera_snapshot(camera_id: int, camera_repo: CameraRepository = Depends(
         got = grab_rtsp_frame(cam.rtsp_url)
         if got:
             return Response(content=got[0], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
-    raise HTTPException(status_code=404, detail="No snapshot — upload an image/video or set an RTSP URL")
+    if cam.source_type == "simulation":
+        from app.services import simulation as sim
+        src = (cam.connection_config or {}).get("simulation_source")
+        got = sim.frame_for_source(src) if src else None
+        if got:
+            return Response(content=got[0], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+    raise HTTPException(status_code=404, detail="No snapshot — upload an image/video, set an RTSP URL, or use a simulation source")
 
 
 @router.post("/{camera_id}/snapshot")
@@ -99,6 +105,10 @@ async def set_camera_snapshot(
         else:
             result = cs.normalize_image_bytes(content)
             source_type = "uploaded_image"
+    elif cam.source_type == "simulation" and (cam.connection_config or {}).get("simulation_source"):
+        from app.services import simulation as sim
+        result = sim.frame_for_source((cam.connection_config or {}).get("simulation_source"))
+        source_type = "simulation"
     elif cam.rtsp_url:
         result = cs.grab_rtsp_frame(cam.rtsp_url)
         source_type = "rtsp"

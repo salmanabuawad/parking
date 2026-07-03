@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
-import { Camera as CameraIcon, Plus, Pencil, Trash2, X } from 'lucide-react'
-import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi } from '../api'
+import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard } from 'lucide-react'
+import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulationApi } from '../api'
+import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
@@ -48,6 +49,7 @@ interface CameraForm {
   assigned_inspector_id: number | null
   source_type: string
   rtsp_url: string
+  simulation_source: string
 }
 
 interface ParkingZone {
@@ -69,7 +71,7 @@ const EMPTY_FORM: CameraForm = {
   connection_config: {}, param_source: 'manual', params: {},
   manufacturer: '', model: '', is_active: true,
   violation_rules: [], selected_zone_ids: [], assigned_inspector_id: null,
-  source_type: 'uploaded_image', rtsp_url: '',
+  source_type: 'uploaded_image', rtsp_url: '', simulation_source: '',
 }
 
 export default function Cameras() {
@@ -83,19 +85,23 @@ export default function Cameras() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Camera | null>(null)
   const [form, setForm] = useState<CameraForm>(EMPTY_FORM)
+  const [simSources, setSimSources] = useState<SimulationSource[]>([])
+  const [seeding, setSeeding] = useState(false)
 
   const load = async () => {
     setLoading(true)
     try {
-      const [camsResult, rulesResult, zonesResult, inspectorsResult] = await Promise.all([
+      const [camsResult, rulesResult, zonesResult, inspectorsResult, simsResult] = await Promise.all([
         camerasApi.list(),
         violationRulesApi.list(),
         parkingZonesApi.list(),
         inspectorsApi.list(true).catch(() => []),
+        simulationApi.sources().catch(() => []),
       ])
       const cams: Camera[] = camsResult.data
       setCameras(cams)
       setInspectors(inspectorsResult as { id: number; full_name: string }[])
+      setSimSources(simsResult as SimulationSource[])
       setAvailableRules(
         rulesResult.data
           .filter((r: any) => r.is_active)
@@ -147,6 +153,7 @@ export default function Cameras() {
       assigned_inspector_id: c.assigned_inspector_id ?? null,
       source_type: c.source_type || 'uploaded_image',
       rtsp_url: c.rtsp_url || '',
+      simulation_source: (c.connection_config?.simulation_source as string) || '',
     })
     setModalOpen(true)
   }
@@ -155,9 +162,11 @@ export default function Cameras() {
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const cfg = parseJson(form.connection_config)
+      if (form.source_type === 'simulation' && form.simulation_source) cfg.simulation_source = form.simulation_source
       const payload = {
         ...form,
-        connection_config: parseJson(form.connection_config),
+        connection_config: cfg,
         params: parseJson(form.params),
         violation_rules: form.violation_rules.length > 0 ? form.violation_rules : null,
         violation_zone: null,
@@ -171,6 +180,18 @@ export default function Cameras() {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
       alert(ax.response?.data?.detail || ax.message)
     }
+  }
+
+  const seedSimulation = async () => {
+    setSeeding(true)
+    try {
+      const res = await simulationApi.seedCameras()
+      await load()
+      alert(`נוצרו/עודכנו ${res.count} מצלמות סימולציה — פתח מצלמה לעריכה כדי לצייר מקטעים`)
+    } catch (err: unknown) {
+      const ax = err as { message?: string }
+      alert(ax.message || 'שגיאה ביצירת מצלמות סימולציה')
+    } finally { setSeeding(false) }
   }
 
   const remove = async (id: number) => {
@@ -218,6 +239,11 @@ export default function Cameras() {
           <h1 className="page-header-title">{t('cameras')}</h1>
           <p className="page-header-label opacity-90">{t('camerasIntro')}</p>
         </div>
+        {simSources.length > 0 && (
+          <button onClick={seedSimulation} disabled={seeding} className="btn-secondary" title="יוצר מצלמת סימולציה לכל קליפ לדוגמה בשרת">
+            <Clapperboard className="w-4 h-4" /> {seeding ? 'יוצר...' : 'מצלמות סימולציה'}
+          </button>
+        )}
         <button onClick={openAdd} className="btn-primary"><Plus className="w-4 h-4" /> {t('addCamera')}</button>
       </div>
 
@@ -302,12 +328,22 @@ export default function Cameras() {
                     <option value="uploaded_image">תמונה שהועלתה</option>
                     <option value="uploaded_video">וידאו שהועלה</option>
                     <option value="rtsp">RTSP (מצלמה חיה)</option>
+                    <option value="simulation">סימולציה (קליפ לדוגמה)</option>
                   </select>
                 </div>
                 {form.source_type === 'rtsp' && (
                   <div>
                     <label className="label-base">RTSP URL</label>
                     <input value={form.rtsp_url} onChange={e => setForm({ ...form, rtsp_url: e.target.value })} className="input-base font-mono" placeholder="rtsp://user:pass@host:554/stream" />
+                  </div>
+                )}
+                {form.source_type === 'simulation' && (
+                  <div>
+                    <label className="label-base">קליפ סימולציה</label>
+                    <select value={form.simulation_source} onChange={e => setForm({ ...form, simulation_source: e.target.value })} className="input-base">
+                      <option value="">— בחר קליפ —</option>
+                      {simSources.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                    </select>
                   </div>
                 )}
               </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Upload, Video, RefreshCw, Plus, Check, X, Trash2, AlertTriangle } from 'lucide-react'
+import { Upload, Video, RefreshCw, Plus, Check, X, Trash2, AlertTriangle, Clapperboard } from 'lucide-react'
 import { camerasApi, cameraSegmentsApi } from '../api'
 
 /**
@@ -41,6 +41,7 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null)
   const [calib, setCalib] = useState<{ w: number; h: number } | null>(null)
   const [hasRtsp, setHasRtsp] = useState(false)
+  const [hasSim, setHasSim] = useState(false)
   const [drawing, setDrawing] = useState<Pt[] | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
@@ -59,6 +60,7 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
       const cam = camRes.data
       setCalib(cam.calibration_width ? { w: cam.calibration_width, h: cam.calibration_height } : null)
       setHasRtsp(Boolean(cam.rtsp_url))
+      setHasSim(cam.source_type === 'simulation' || Boolean(cam.connection_config?.simulation_source))
       setSections((segs as Section[]).map(s => ({ ...s, polygon_json: (s.polygon_json as Pt[]) || [] })))
       loadImage()
     } catch { setMsg('שגיאה בטעינה') }
@@ -178,10 +180,10 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     try { const r = await camerasApi.setSnapshot(cameraId, file); setCalib({ w: r.calibration_width ?? r.width, h: r.calibration_height ?? r.height }); loadImage() }
     catch (e: any) { setMsg('שגיאה: ' + (e?.message || '')) } finally { setBusy(false) }
   }
-  const grabRtsp = async () => {
-    setBusy(true); setMsg('מצלם מ-RTSP...')
+  const grabLive = async () => {
+    setBusy(true); setMsg('מצלם פריים...')
     try { const r = await camerasApi.grabSnapshot(cameraId); setCalib({ w: r.calibration_width ?? r.width, h: r.calibration_height ?? r.height }); loadImage() }
-    catch (e: any) { setMsg('שגיאה: ' + (e?.message || 'ה-RTSP אינו זמין')) } finally { setBusy(false) }
+    catch (e: any) { setMsg('שגיאה: ' + (e?.message || 'המקור אינו זמין')) } finally { setBusy(false) }
   }
 
   const resMismatch = nat && calib && (nat.w !== calib.w || nat.h !== calib.h)
@@ -197,7 +199,8 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
         <span className="text-theme-sm font-semibold">תמונת מצלמה:</span>
         <button type="button" onClick={() => imgFileRef.current?.click()} disabled={busy} className="btn-secondary"><Upload className="w-4 h-4" /> תמונה</button>
         <button type="button" onClick={() => vidFileRef.current?.click()} disabled={busy} className="btn-secondary"><Video className="w-4 h-4" /> וידאו</button>
-        {hasRtsp && <button type="button" onClick={grabRtsp} disabled={busy} className="btn-secondary">צלם RTSP</button>}
+        {hasRtsp && <button type="button" onClick={grabLive} disabled={busy} className="btn-secondary">צלם RTSP</button>}
+        {hasSim && <button type="button" onClick={grabLive} disabled={busy} className="btn-secondary"><Clapperboard className="w-4 h-4" /> פריים מהסימולציה</button>}
         <button type="button" onClick={loadImage} disabled={busy} className="btn-icon" title="רענן"><RefreshCw className="w-4 h-4" /></button>
         {nat && <span className="text-theme-xs text-theme-text-muted">{nat.w}×{nat.h}px</span>}
         <input ref={imgFileRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} />

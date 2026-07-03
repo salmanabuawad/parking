@@ -4,6 +4,7 @@ these pixels (the camera's calibration_width/height), so the frontend can scale 
 """
 from __future__ import annotations
 
+import random
 import tempfile
 from pathlib import Path
 
@@ -54,6 +55,29 @@ def frame_from_video_bytes(video_bytes: bytes) -> tuple[bytes, int, int] | None:
         return _encode_jpeg(frame), w, h
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def frame_from_video_path(path, seek_frac: float | None = None) -> tuple[bytes, int, int] | None:
+    """Extract one frame from a video file already on disk. ``seek_frac`` in [0,1) picks the position
+    along the clip; ``None`` picks a random position — which gives a simulation 'camera' some
+    live-feed variety (different cars/frame on each grab). Returns (jpeg, width, height) or None."""
+    cap = cv2.VideoCapture(str(path))
+    try:
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+        frac = random.uniform(0.05, 0.85) if seek_frac is None else max(0.0, min(0.99, seek_frac))
+        target = int(total * frac) if total > 0 else int(fps)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, max(0, target))
+        ok, frame = cap.read()
+        if not ok or frame is None:  # fall back to the very first frame
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            ok, frame = cap.read()
+        if not ok or frame is None:
+            return None
+        h, w = frame.shape[:2]
+        return _encode_jpeg(frame), w, h
+    finally:
+        cap.release()
 
 
 def normalize_image_bytes(img_bytes: bytes) -> tuple[bytes, int, int] | None:

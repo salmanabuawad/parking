@@ -229,6 +229,26 @@ export const camerasApi = {
   },
 };
 
+export interface SimulationSource {
+  name: string
+  file: string
+  size_bytes: number
+}
+
+export const simulationApi = {
+  // Sample clips on the server (videos/simulation/*.mp4) that stand in for a live camera feed.
+  sources(): Promise<SimulationSource[]> {
+    return fetchJson("/simulation/sources");
+  },
+  // Create (or refresh) a simulation camera per clip, each with a calibration snapshot extracted.
+  seedCameras(sources?: string[]): Promise<{ cameras: any[]; count: number }> {
+    return fetchJson("/simulation/cameras", {
+      method: "POST",
+      body: JSON.stringify(sources ? { sources } : {}),
+    });
+  },
+};
+
 export const settingsApi = {
   get(): Promise<{ data: any }> {
     return fetchJson("/settings").then((data) => ({ data }));

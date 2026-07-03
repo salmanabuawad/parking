@@ -7,6 +7,7 @@ from app.routers import auth, cameras, sample, settings as settings_router, tick
 from app.routers import field_configurations as field_configurations_router
 from app.routers import inspectors as inspectors_router, camera_segments as camera_segments_router
 from app.routers import exemptions as exemptions_router
+from app.routers import simulation as simulation_router
 
 app = FastAPI(title="Parking Enforcement API")
 app.include_router(auth.router, prefix="/api")
@@ -23,6 +24,7 @@ app.include_router(anpr_router.router, prefix="/api")
 app.include_router(inspectors_router.router, prefix="/api")
 app.include_router(camera_segments_router.router, prefix="/api")
 app.include_router(exemptions_router.router, prefix="/api")
+app.include_router(simulation_router.router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
