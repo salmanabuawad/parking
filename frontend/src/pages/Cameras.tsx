@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
-import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard } from 'lucide-react'
+import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard, Eye } from 'lucide-react'
 import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulationApi } from '../api'
 import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
+import CameraZoneView from './CameraZoneView'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { t } from '../i18n'
@@ -84,6 +85,7 @@ export default function Cameras() {
   const [cameraZoneMap, setCameraZoneMap] = useState<Record<number, number[]>>({})
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Camera | null>(null)
+  const [viewing, setViewing] = useState<Camera | null>(null)
   const [form, setForm] = useState<CameraForm>(EMPTY_FORM)
   const [simSources, setSimSources] = useState<SimulationSource[]>([])
   const [seeding, setSeeding] = useState(false)
@@ -219,9 +221,10 @@ export default function Cameras() {
         <span className={`badge ${p.value ? 'badge-success' : 'badge-neutral'}`}>{p.value ? 'פעיל' : 'לא פעיל'}</span>,
     },
     {
-      headerName: '', width: 100, sortable: false, filter: false,
+      headerName: '', width: 130, sortable: false, filter: false,
       cellRenderer: (p: ICellRendererParams<Camera>) => p.data ? (
         <div className="flex items-center gap-1 h-full">
+          <button onClick={() => setViewing(p.data!)} className="btn-icon" title="תצוגת אזורים"><Eye className="w-4 h-4" /></button>
           <button onClick={() => openEdit(p.data!)} className="btn-icon" title={t('edit')}><Pencil className="w-4 h-4" /></button>
           <button onClick={() => remove(p.data!.id)} className="btn-icon text-red-600" title={t('delete')}><Trash2 className="w-4 h-4" /></button>
         </div>
@@ -420,6 +423,19 @@ export default function Cameras() {
                 <CameraZoneConfigurator cameraId={editing.id} rules={availableRules} />
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Read-only zone view — snapshot with configured grid + polygon zones overlaid */}
+      {viewing && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={() => setViewing(null)}>
+          <div className="app-card w-full max-w-3xl my-6 p-5" dir="rtl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-base font-semibold text-theme-text-primary">תצוגת אזורי אכיפה — {viewing.name}</h3>
+              <button type="button" onClick={() => setViewing(null)} className="btn-icon" title={t('cancel')}><X className="w-5 h-5" /></button>
+            </div>
+            <CameraZoneView cameraId={viewing.id} rules={availableRules} />
           </div>
         </div>
       )}
