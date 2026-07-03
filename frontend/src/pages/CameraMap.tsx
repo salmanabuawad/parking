@@ -1,6 +1,15 @@
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import rtlTextUrl from '@mapbox/mapbox-gl-rtl-text/mapbox-gl-rtl-text.min.js?url'
+
+// MapLibre doesn't shape right-to-left scripts on its own, so Hebrew/Arabic basemap labels render
+// reversed. Register the RTL-text plugin once (module load) so map labels read correctly.
+try {
+  if ((maplibregl as any).getRTLTextPluginStatus?.() === 'unavailable') {
+    maplibregl.setRTLTextPlugin(rtlTextUrl, () => {}, true)
+  }
+} catch { /* already registered */ }
 
 /**
  * Cameras on a real map (OpenStreetMap raster tiles via MapLibre GL — same library the solarica
