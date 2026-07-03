@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # MapTiler API key for the cameras map basemap (vector tiles + Hebrew labels). Empty → the
     # frontend falls back to plain OpenStreetMap raster tiles. Set MAPTILER_KEY in the environment.
     maptiler_key: str = ""
+    # Public origin the frontend reaches this API at (e.g. https://parking.wavelync.com). Used to
+    # build absolute URLs for the locally-cached map tiles. Empty → derived from request headers.
+    public_base_url: str = ""
 
     # Violation pipeline (red/white curb detection)
     use_violation_pipeline: bool = True  # Identify cars parked at red/white curb; blur moving cars

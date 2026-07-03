@@ -282,6 +282,10 @@ export const mapConfigApi = {
   get(): Promise<{ maptiler_key: string; style_url: string | null }> {
     return fetchJson("/map/config");
   },
+  // Pre-download (cache locally on the backend) the map data for cities. Omit → all cities.
+  warm(cities?: string[]): Promise<{ cities: Record<string, { tiles: number; fonts: number }>; cache: { files: number; bytes: number } }> {
+    return fetchJson("/map/cache", { method: "POST", body: JSON.stringify(cities ? { cities } : {}) });
+  },
 };
 
 export const settingsApi = {

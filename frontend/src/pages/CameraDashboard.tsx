@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LayoutDashboard, RefreshCw, Sparkles } from 'lucide-react'
+import { LayoutDashboard, RefreshCw, Sparkles, Download } from 'lucide-react'
 import { camerasApi, mapConfigApi, simulationApi } from '../api'
 import CameraMap, { STATUS_META, statusOf, type MapCamera } from './CameraMap'
 
@@ -16,6 +16,7 @@ export default function CameraDashboard() {
   const [styleUrl, setStyleUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [warming, setWarming] = useState(false)
   const [filter, setFilter] = useState<string | null>(null)
 
   const load = async () => {
@@ -55,6 +56,16 @@ export default function CameraDashboard() {
     finally { setBusy(false) }
   }
 
+  const warmMaps = async () => {
+    setWarming(true)
+    try {
+      const r = await mapConfigApi.warm()
+      const tiles = Object.values(r.cities).reduce((a, c) => a + c.tiles, 0)
+      alert(`המפות נשמרו מקומית בשרת: ${tiles} אריחים, ${(r.cache.bytes / 1024 / 1024).toFixed(1)}MB.\nמעתה המפה נטענת מהשרת — ללא קריאות ל-MapTiler.`)
+    } catch (e: any) { alert(e?.message || 'שגיאה בהורדת מפות') }
+    finally { setWarming(false) }
+  }
+
   const moveCamera = async (id: number, lat: number, lng: number) => {
     setCameras(cs => cs.map(c => (c.id === id ? { ...c, latitude: lat, longitude: lng } : c)))
     try { await camerasApi.update(id, { latitude: lat, longitude: lng }) } catch { load() }
@@ -79,6 +90,9 @@ export default function CameraDashboard() {
           <h1 className="page-header-title">לוח מצלמות</h1>
           <p className="page-header-label opacity-90">מצלמות וסטטוס בזמן אמת — לפי עיר</p>
         </div>
+        <button onClick={warmMaps} disabled={warming} className="btn-secondary" title="מוריד ושומר את מפות הערים מקומית בשרת (חד-פעמי)">
+          <Download className="w-4 h-4" /> {warming ? 'מוריד...' : 'הורד מפות'}
+        </button>
         <button onClick={generate} disabled={busy} className="btn-secondary" title="יוצר 100 מצלמות דמו לכל עיר">
           <Sparkles className="w-4 h-4" /> {busy ? 'מייצר...' : 'צור מצלמות לדוגמה'}
         </button>
