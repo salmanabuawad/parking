@@ -54,6 +54,12 @@ class Camera(Base):
     violation_zone = Column(String(20), nullable=True)
     assigned_inspector_id = Column(Integer, ForeignKey("inspectors.id"), nullable=True)  # handling inspector (#8)
     range_config = Column(JSON, nullable=True)  # camera coverage/range config (from snippets)
+    # Zone-configuration: snapshot + calibration for drawing enforcement sections on the image
+    source_type = Column(String(20), default="uploaded_image", nullable=True)  # rtsp | uploaded_image | uploaded_video
+    rtsp_url = Column(String(500), nullable=True)
+    snapshot_path = Column(String(255), nullable=True)     # saved calibration frame (videos/snapshots/...)
+    calibration_width = Column(Integer, nullable=True)     # snapshot resolution; polygons are stored in these px
+    calibration_height = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     # Parking zones visible from this camera (many-to-many)

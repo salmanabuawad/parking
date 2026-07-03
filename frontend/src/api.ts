@@ -213,6 +213,20 @@ export const camerasApi = {
   delete(id: number): Promise<{ data: any }> {
     return fetchJson(`/cameras/${id}`, { method: "DELETE" }).then((data) => ({ data }));
   },
+  get(id: number): Promise<{ data: any }> {
+    return fetchJson(`/cameras/${id}`).then((data) => ({ data }));
+  },
+  snapshotUrl(id: number): string {
+    return `${API_BASE.replace(/\/$/, "")}/api/cameras/${id}/snapshot`;
+  },
+  setSnapshot(id: number, file: File): Promise<any> {
+    const fd = new FormData();
+    fd.append("file", file);
+    return fetchJson(`/cameras/${id}/snapshot`, { method: "POST", body: fd });
+  },
+  grabSnapshot(id: number): Promise<any> {
+    return fetchJson(`/cameras/${id}/snapshot`, { method: "POST" });
+  },
 };
 
 export const settingsApi = {

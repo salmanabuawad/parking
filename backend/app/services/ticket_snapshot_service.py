@@ -46,3 +46,35 @@ def build_ticket_snapshots(
         "violation_rule_snapshot": model_to_dict(rule),
         "system_config_snapshot": model_to_dict(system_config),
     }
+
+
+def _point_in_polygon(x: float, y: float, poly) -> bool:
+    inside = False
+    n = len(poly)
+    j = n - 1
+    for i in range(n):
+        xi, yi = poly[i][0], poly[i][1]
+        xj, yj = poly[j][0], poly[j][1]
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def find_section_for_point(db: Session, camera_id, x: float, y: float) -> int | None:
+    """Return the id of the active camera section whose polygon contains (x, y) — in the camera's
+    calibration pixels — else None. Lets the worker attach a ticket to its enforcement section so
+    build_ticket_snapshots freezes that section into camera_section_snapshot (rule 8)."""
+    if camera_id in (None, "", "mobile"):
+        return None
+    try:
+        cid = int(camera_id)
+    except (ValueError, TypeError):
+        return None
+    for seg in (db.query(CameraSegment)
+                .filter(CameraSegment.camera_id == cid, CameraSegment.is_active.is_(True))
+                .order_by(CameraSegment.display_order).all()):
+        poly = seg.polygon_json
+        if poly and len(poly) >= 3 and _point_in_polygon(x, y, poly):
+            return seg.id
+    return None

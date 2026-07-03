@@ -4,7 +4,7 @@ import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { Camera as CameraIcon, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi } from '../api'
-import CameraSegmentsEditor from '../components/CameraSegmentsEditor'
+import CameraZoneConfigurator from './CameraZoneConfigurator'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { t } from '../i18n'
@@ -29,6 +29,8 @@ interface Camera {
   violation_zone?: string | null
   assigned_inspector_id?: number | null
   zone_ids?: number[]
+  source_type?: string
+  rtsp_url?: string
 }
 
 interface CameraForm {
@@ -44,6 +46,8 @@ interface CameraForm {
   violation_rules: string[]
   selected_zone_ids: number[]
   assigned_inspector_id: number | null
+  source_type: string
+  rtsp_url: string
 }
 
 interface ParkingZone {
@@ -65,6 +69,7 @@ const EMPTY_FORM: CameraForm = {
   connection_config: {}, param_source: 'manual', params: {},
   manufacturer: '', model: '', is_active: true,
   violation_rules: [], selected_zone_ids: [], assigned_inspector_id: null,
+  source_type: 'uploaded_image', rtsp_url: '',
 }
 
 export default function Cameras() {
@@ -140,6 +145,8 @@ export default function Cameras() {
       violation_rules: c.violation_rules || [],
       selected_zone_ids: cameraZoneMap[c.id] || [],
       assigned_inspector_id: c.assigned_inspector_id ?? null,
+      source_type: c.source_type || 'uploaded_image',
+      rtsp_url: c.rtsp_url || '',
     })
     setModalOpen(true)
   }
@@ -237,7 +244,7 @@ export default function Cameras() {
       {/* Add / edit modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 overflow-y-auto" onClick={closeModal}>
-          <div className="app-card w-full max-w-3xl my-6 p-5" dir="rtl" onClick={e => e.stopPropagation()}>
+          <div className="app-card w-full max-w-5xl my-6 p-5" dir="rtl" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-base font-semibold text-theme-text-primary">{editing ? t('editCamera') : t('addCamera')}</h3>
               <button type="button" onClick={closeModal} className="btn-icon" title={t('cancel')}><X className="w-5 h-5" /></button>
@@ -285,6 +292,24 @@ export default function Cameras() {
                   <label className="label-base">{t('model')}</label>
                   <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-base" />
                 </div>
+              </div>
+
+              {/* Snapshot source for zone configuration */}
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="label-base">מקור תמונה לכיול</label>
+                  <select className="input-base" value={form.source_type} onChange={e => setForm({ ...form, source_type: e.target.value })}>
+                    <option value="uploaded_image">תמונה שהועלתה</option>
+                    <option value="uploaded_video">וידאו שהועלה</option>
+                    <option value="rtsp">RTSP (מצלמה חיה)</option>
+                  </select>
+                </div>
+                {form.source_type === 'rtsp' && (
+                  <div>
+                    <label className="label-base">RTSP URL</label>
+                    <input value={form.rtsp_url} onChange={e => setForm({ ...form, rtsp_url: e.target.value })} className="input-base font-mono" placeholder="rtsp://user:pass@host:554/stream" />
+                  </div>
+                )}
               </div>
 
               {/* Handling inspector (#8) */}
@@ -352,10 +377,11 @@ export default function Cameras() {
               </div>
             </form>
 
-            {/* Segments (only for a saved camera) */}
+            {/* Zone configuration — draw enforcement sections on the camera image (saved camera only) */}
             {editing && (
               <div className="mt-4 border-t border-theme-card-border pt-3">
-                <CameraSegmentsEditor cameraId={editing.id} rules={availableRules} />
+                <div className="text-base font-semibold mb-2">הגדרת מקטעי אכיפה (ציור על תמונת המצלמה)</div>
+                <CameraZoneConfigurator cameraId={editing.id} rules={availableRules} />
               </div>
             )}
           </div>

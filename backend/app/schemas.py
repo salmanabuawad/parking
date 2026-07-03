@@ -17,7 +17,13 @@ class CameraBase(BaseModel):
     is_active: bool = True
     violation_rules: Optional[list[str]] = None   # e.g. ["IL-STATIC-001", "IL-STATIC-005"]
     violation_zone: Optional[str] = None           # "red_white" | "blue_white" | None
-    assigned_inspector_id: Optional[int] = None    # handling inspector (#8)
+    assigned_inspector_id: Optional[int] = None    # handling inspector (#8) / default inspector
+    # Zone-configuration: snapshot + calibration for drawing enforcement sections on the image
+    source_type: Optional[str] = None              # rtsp | uploaded_image | uploaded_video
+    rtsp_url: Optional[str] = None
+    snapshot_path: Optional[str] = None
+    calibration_width: Optional[int] = None
+    calibration_height: Optional[int] = None
 
 
 class CameraCreate(CameraBase):
@@ -36,6 +42,12 @@ class CameraUpdate(BaseModel):
     is_active: Optional[bool] = None
     violation_rules: Optional[list[str]] = None
     violation_zone: Optional[str] = None
+    assigned_inspector_id: Optional[int] = None
+    source_type: Optional[str] = None
+    rtsp_url: Optional[str] = None
+    snapshot_path: Optional[str] = None
+    calibration_width: Optional[int] = None
+    calibration_height: Optional[int] = None
 
 
 class CameraResponse(CameraBase):
