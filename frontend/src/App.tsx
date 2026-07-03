@@ -72,7 +72,6 @@ function buildNavItems(userType?: string): NavItem[] {
     return [inbox, ticketsGroup]
   }
   return [
-    inbox,
     { id: 'home', label: he.app.home, icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'camera-map', label: 'מפת מצלמות', icon: <MapPin className="w-4 h-4" /> },
     ticketsGroup,

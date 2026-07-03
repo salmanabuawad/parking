@@ -32,7 +32,23 @@ async function fetchBlob(path: string): Promise<Blob> {
   return await res.blob();
 }
 
+function tokenValid(token: string | null): boolean {
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1]));
+    return !payload.exp || payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 function handle401(): never {
+  // Only force re-login when our token is actually missing/expired. A 401 with a still-valid token
+  // means the endpoint rejected our role (e.g. an admin hitting an inspector-only route) — surface it
+  // to the caller's catch instead of nuking the whole session.
+  if (tokenValid(localStorage.getItem("parking_token"))) {
+    throw new Error("Forbidden");
+  }
   localStorage.removeItem("parking_token");
   localStorage.removeItem("parking_user");
   window.location.href = "/login";
