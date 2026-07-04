@@ -119,7 +119,7 @@ FLEET_STATUS_POOL = (["online"] * 70) + (["offline"] * 15) + (["maintenance"] * 
 
 # Relative city size (≈ population, thousands) — the demo camera count scales with this, so bigger
 # cities get more cameras. count ≈ size * FLEET_SCALE, but at least FLEET_FLOOR per city.
-CITY_SIZE = {"netanya": 230, "haifa": 285, "tel-aviv": 470, "jerusalem": 950, "tiberias": 45}
+CITY_SIZE = {"netanya": 230, "haifa": 285, "tel-aviv": 470, "jerusalem": 950, "tiberias": 45, "bukata": 7}
 FLEET_SCALE = 0.04
 FLEET_FLOOR = 6
 
@@ -171,6 +171,13 @@ CITIES: dict[str, dict] = {
             (32.7922, 35.5285), (32.7965, 35.5268), (32.7885, 35.5293), (32.7850, 35.5255),
             (32.8000, 35.5275), (32.7805, 35.5268), (32.7765, 35.5290), (32.7925, 35.5250),
             (32.7980, 35.5240), (32.7835, 35.5275), (32.7900, 35.5298), (32.7860, 35.5245),
+        ],
+    },
+    "bukata": {  # Druze town in the northern Golan Heights, near Mt. Hermon
+        "label": "בוקעאתא", "center": (33.1897, 35.7742), "zoom": 14,
+        "anchors": [
+            (33.1897, 35.7742), (33.1915, 35.7755), (33.1878, 35.7728), (33.1905, 35.7720),
+            (33.1885, 35.7765), (33.1930, 35.7740), (33.1865, 35.7748), (33.1900, 35.7775),
         ],
     },
 }
