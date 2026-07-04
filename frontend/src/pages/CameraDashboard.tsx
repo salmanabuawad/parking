@@ -49,9 +49,9 @@ export default function CameraDashboard() {
   const shown = useMemo(() => (filter ? cityCameras.filter(c => statusOf(c) === filter) : cityCameras), [cityCameras, filter])
 
   const generate = async () => {
-    if (!confirm('לייצר 100 מצלמות לדוגמה לכל עיר? מצלמות דמו קודמות יימחקו.')) return
+    if (!confirm('לייצר מצלמות דמו לכל עיר (מספר לפי גודל העיר)? מצלמות דמו קודמות יימחקו.')) return
     setBusy(true)
-    try { await simulationApi.generateFleet(100); setFilter(null); await load() }
+    try { await simulationApi.generateFleet(); setFilter(null); await load() }
     catch (e: any) { alert(e?.message || 'שגיאה בייצור מצלמות') }
     finally { setBusy(false) }
   }

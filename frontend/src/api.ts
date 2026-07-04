@@ -271,9 +271,10 @@ export const simulationApi = {
   cities(): Promise<{ key: string; label: string; center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }[]> {
     return fetchJson("/simulation/cities");
   },
-  // Generate `count` demo cameras per city (varied status, on-land). cities omitted → all cities.
-  generateFleet(count = 100, cities?: string[]): Promise<{ created: number; removed: number; cities: string[]; by_status: Record<string, number> }> {
-    return fetchJson("/simulation/generate-fleet", { method: "POST", body: JSON.stringify({ count, ...(cities ? { cities } : {}) }) });
+  // Generate demo cameras per city (varied status, on-land). count omitted → scaled by city size;
+  // cities omitted → all cities.
+  generateFleet(count?: number, cities?: string[]): Promise<{ created: number; removed: number; cities: string[]; by_status: Record<string, number> }> {
+    return fetchJson("/simulation/generate-fleet", { method: "POST", body: JSON.stringify({ ...(count ? { count } : {}), ...(cities ? { cities } : {}) }) });
   },
 };
 

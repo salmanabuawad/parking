@@ -117,6 +117,18 @@ STREETS = [
 # Weighted status pool: ~70% online, 15% offline, 10% maintenance, 5% error
 FLEET_STATUS_POOL = (["online"] * 70) + (["offline"] * 15) + (["maintenance"] * 10) + (["error"] * 5)
 
+# Relative city size (≈ population, thousands) — the demo camera count scales with this, so bigger
+# cities get more cameras. count ≈ size * FLEET_SCALE, but at least FLEET_FLOOR per city.
+CITY_SIZE = {"netanya": 230, "haifa": 285, "tel-aviv": 470, "jerusalem": 950, "tiberias": 45}
+FLEET_SCALE = 0.04
+FLEET_FLOOR = 6
+
+
+def _city_camera_count(key: str, override: int | None) -> int:
+    if override:
+        return max(1, min(1000, override))
+    return max(FLEET_FLOOR, round(CITY_SIZE.get(key, 100) * FLEET_SCALE))
+
 # City demo areas: a map center (lat, lng) + zoom and a set of ON-LAND anchor points across real
 # neighborhoods; cameras scatter around anchors with a small jitter. `lng_min`/`lng_max` are
 # water-avoidance clamps — coastal cities keep pins east of the sea, Tiberias west of the Kinneret.
@@ -195,7 +207,7 @@ def list_cities():
 
 
 class FleetRequest(BaseModel):
-    count: int = 100                    # cameras per city
+    count: int | None = None            # cameras per city; None → scale by city size
     cities: list[str] | None = None     # None → all cities
     clear: bool = True                  # remove previously generated demo cameras for those cities
 
@@ -209,7 +221,6 @@ def generate_fleet(
     fleet dashboard. Tagged connection_config.generated=true + city=<key>; clear=true first removes the
     previous generated batch for the requested cities so they don't accumulate."""
     body = body or FleetRequest()
-    n = max(1, min(1000, body.count))
     keys = [k for k in (body.cities or list(CITIES.keys())) if k in CITIES]
     if not keys:
         raise HTTPException(status_code=400, detail="No valid cities requested")
@@ -231,7 +242,7 @@ def generate_fleet(
     objs = []
     for key in keys:
         label = CITIES[key]["label"]
-        for i in range(1, n + 1):
+        for i in range(1, _city_camera_count(key, body.count) + 1):
             status = random.choice(FLEET_STATUS_POOL)
             street = random.choice(STREETS)
             lat, lng = _city_point(key)
