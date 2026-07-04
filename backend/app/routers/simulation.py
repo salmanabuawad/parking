@@ -17,7 +17,7 @@ from app.config import settings
 from app.dependencies import get_camera_repo
 from app.models import Camera
 from app.repositories import CameraRepository
-from app.services import simulation as sim
+from app.services import city_streets, simulation as sim
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
@@ -110,10 +110,6 @@ def seed_cameras(
 
 
 # ── Sample fleet generator (multi-city dashboard demo data) ───────────────────
-STREETS = [
-    "הרצל", "ויצמן", "בן גוריון", "רזיאל", "סוקולוב", "אלנבי", "ז'בוטינסקי",
-    "המלך ג'ורג'", "רוטשילד", "דיזנגוף", "החלוץ", "יפו", "בן יהודה", "הנביאים",
-]
 # Weighted status pool: ~70% online, 15% offline, 10% maintenance, 5% error
 FLEET_STATUS_POOL = (["online"] * 70) + (["offline"] * 15) + (["maintenance"] * 10) + (["error"] * 5)
 
@@ -195,6 +191,15 @@ def _city_point(key: str) -> tuple[float, float]:
     return round(lat, 6), round(lng, 6)
 
 
+def _street_bbox(key: str):
+    """Tight bbox around a city's anchors, used to fetch its real street names from OSM."""
+    c = CITIES[key]
+    lats = [a[0] for a in c["anchors"]]
+    lngs = [a[1] for a in c["anchors"]]
+    pad = 0.004
+    return [[min(lngs) - pad, min(lats) - pad], [max(lngs) + pad, max(lats) + pad]]
+
+
 def _city_bounds(c: dict) -> list[list[float]]:
     """Padded bounding box around a city's anchors, as [[west, south], [east, north]] (lng/lat) for
     MapLibre maxBounds — so the map can't pan or zoom out past the city."""
@@ -249,13 +254,20 @@ def generate_fleet(
     objs = []
     for key in keys:
         label = CITIES[key]["label"]
+        streets = city_streets.get_streets(key, _street_bbox(key))  # real OSM street names (cached)
         for i in range(1, _city_camera_count(key, body.count) + 1):
             status = random.choice(FLEET_STATUS_POOL)
-            street = random.choice(STREETS)
-            lat, lng = _city_point(key)
+            if streets:
+                st = random.choice(streets)  # place on a real street, keep its real name
+                lat = round(st["lat"] + random.uniform(-0.00015, 0.00015), 6)
+                lng = round(st["lng"] + random.uniform(-0.00015, 0.00015), 6)
+                location = f"{st['name']} {random.randint(1, 120)}, {label}"
+            else:
+                lat, lng = _city_point(key)
+                location = label
             objs.append(Camera(
                 name=f"{label} {i:03d}",
-                location=f"{street} {random.randint(1, 120)}, {label}",
+                location=location,
                 connection_type="ip",
                 connection_config={"generated": True},
                 source_type="uploaded_image",

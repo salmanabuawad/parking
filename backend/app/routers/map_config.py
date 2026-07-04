@@ -81,10 +81,13 @@ def warm_cache(body: dict | None = None):
     cities; omitted → all. Idempotent (cached resources are skipped)."""
     if not settings.maptiler_key:
         raise HTTPException(status_code=400, detail="No MAPTILER_KEY configured")
-    from app.routers.simulation import CITIES, _city_bounds
+    from app.routers.simulation import CITIES, _city_bounds, _street_bbox
+    from app.services import city_streets
     wanted = (body or {}).get("cities") or list(CITIES.keys())
     out = {}
     for key in wanted:
         if key in CITIES:
-            out[key] = map_cache.warm_city(_city_bounds(CITIES[key]))
+            stats = map_cache.warm_city(_city_bounds(CITIES[key]))
+            stats["streets"] = len(city_streets.get_streets(key, _street_bbox(key)))  # real OSM names
+            out[key] = stats
     return {"cities": out, "cache": map_cache.cache_size()}
