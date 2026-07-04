@@ -4,7 +4,7 @@
 
 | | Existing (backup) | New (advanced) |
 |---|---|---|
-| **URL** | http://185.229.226.37 | https://parking.wavelync.com |
+| **URL** | http://185.229.226.37 | https://parking.kortexd.com |
 | **Directory** | `/opt/parking` | `/opt/advancedparking` |
 | **Database** | `parking` | `advancedparking` |
 | **Backend port** | 8001 | 8002 |
@@ -20,19 +20,20 @@ The two deployments coexist on the same server and share the same PostgreSQL ins
 
 ### DNS
 
-Add an **A record**: `parking.wavelync.com` → `185.229.226.37` in your DNS provider.
+Add an **A record**: `parking.kortexd.com` → `185.229.226.37` in your DNS provider.
 
-### SSL certificate (must cover the subdomain)
+### SSL certificate
 
-The existing Let's Encrypt cert covers `wavelync.com` only. Expand it to include the subdomain:
+`parking.kortexd.com` has its own dedicated Let's Encrypt cert. Once DNS resolves to the server,
+issue it with the webroot challenge (the nginx site serves `/.well-known/acme-challenge/` from
+`/var/www/certbot`):
 
 ```bash
-sudo certbot certonly --nginx --expand -d wavelync.com -d parking.wavelync.com
-# or get a wildcard (covers all subdomains):
-sudo certbot certonly --nginx -d wavelync.com -d '*.wavelync.com'
+sudo mkdir -p /var/www/certbot
+sudo certbot certonly --webroot -w /var/www/certbot -d parking.kortexd.com --cert-name parking.kortexd.com
 ```
 
-After reissuing: `sudo systemctl reload nginx`
+Certbot sets up auto-renewal. After issuing: `sudo systemctl reload nginx`
 
 ## 1. Server preparation
 
@@ -151,13 +152,13 @@ Two nginx sites coexist:
 | Site file | Serves | Proxies to |
 |---|---|---|
 | `/etc/nginx/sites-available/parking` | `185.229.226.37` (HTTP) | `127.0.0.1:8001` |
-| `/etc/nginx/sites-available/advancedparking` | `parking.wavelync.com` (HTTPS) | `127.0.0.1:8002` |
+| `/etc/nginx/sites-available/advancedparking` | `parking.kortexd.com` (HTTPS) | `127.0.0.1:8002` |
 
 Test config: `sudo nginx -t`. Reload: `sudo systemctl reload nginx`.
 
 ## 6. Open the app
 
-- **Primary URL**: https://parking.wavelync.com
+- **Primary URL**: https://parking.kortexd.com
 - **Direct IP (fallback)**: https://185.229.226.37 (uses the same cert — only valid if cert covers the IP or you accept the warning)
 - HTTP on port 80 redirects automatically to HTTPS.
 
@@ -178,7 +179,7 @@ sudo ufw enable
 
 ## 9. Troubleshooting
 
-- **502 Bad Gateway on parking.wavelync.com**: `advancedparking-backend` not running. Check `journalctl -u advancedparking-backend -f`.
+- **502 Bad Gateway on parking.kortexd.com**: `advancedparking-backend` not running. Check `journalctl -u advancedparking-backend -f`.
 - **Videos not loading**: Ensure `VIDEOS_DIR=/opt/advancedparking/backend/videos` exists and is writable by user `advancedparking`.
 - **Video signing error**: Requires `cryptography` package — if missing: `sudo -u advancedparking /opt/advancedparking/backend/.venv/bin/pip install cryptography`
 - **Tesseract (plate OCR)**: Install with `apt install tesseract-ocr tesseract-ocr-heb`.

@@ -1,4 +1,4 @@
-# Deploy NEW version to /opt/advancedparking (parking.wavelync.com) on 185.229.226.37.
+# Deploy NEW version to /opt/advancedparking (parking.kortexd.com) on 185.229.226.37.
 # The EXISTING /opt/parking deployment is NOT touched.
 # Run from repo root: .\deploy\deploy-to-advancedparking.ps1
 # Optional flags:
@@ -68,5 +68,5 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "=== Deploy done ===" -ForegroundColor Green
-Write-Host "  New:      https://parking.wavelync.com" -ForegroundColor Green
+Write-Host "  New:      https://parking.kortexd.com" -ForegroundColor Green
 Write-Host "  Existing: http://185.229.226.37 (unchanged)" -ForegroundColor Gray

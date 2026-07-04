@@ -71,5 +71,5 @@ echo "--- Service status ---"
 systemctl is-active advancedparking-backend advancedparking-worker nginx
 
 echo "=== Post-deploy done ==="
-echo "App: https://parking.wavelync.com"
+echo "App: https://parking.kortexd.com"
 echo "Existing deployment at /opt/parking is untouched."

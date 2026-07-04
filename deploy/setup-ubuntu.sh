@@ -127,11 +127,11 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Nginx: serve static frontend + proxy /api under parking.wavelync.com subdomain
+# Nginx: serve static frontend + proxy /api under parking.kortexd.com subdomain
 # If the Let's Encrypt cert for wavelync.com exists use it; otherwise fall back to snakeoil.
 FRONTEND_DIST="$DEPLOY_ROOT/frontend/dist"
-SSL_CERT="/etc/letsencrypt/live/wavelync.com/fullchain.pem"
-SSL_KEY="/etc/letsencrypt/live/wavelync.com/privkey.pem"
+SSL_CERT="/etc/letsencrypt/live/parking.kortexd.com/fullchain.pem"
+SSL_KEY="/etc/letsencrypt/live/parking.kortexd.com/privkey.pem"
 if [[ ! -f "$SSL_CERT" ]]; then
   SSL_CERT="/etc/ssl/certs/ssl-cert-snakeoil.pem"
   SSL_KEY="/etc/ssl/private/ssl-cert-snakeoil.key"
@@ -141,13 +141,13 @@ cat > /etc/nginx/sites-available/parking << EOF
 # Redirect HTTP → HTTPS
 server {
     listen 80;
-    server_name parking.wavelync.com 185.229.226.37;
-    return 301 https://parking.wavelync.com\$request_uri;
+    server_name parking.kortexd.com 185.229.226.37;
+    return 301 https://parking.kortexd.com\$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name parking.wavelync.com 185.229.226.37 localhost;
+    server_name parking.kortexd.com 185.229.226.37 localhost;
     ssl_certificate     $SSL_CERT;
     ssl_certificate_key $SSL_KEY;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -190,8 +190,8 @@ nginx -t && systemctl reload nginx || systemctl start nginx
 
 echo "=== Setup done. Next steps ==="
 echo "1. Create $BACKEND_DIR/.env (DATABASE_URL, SECRET_KEY, VIDEOS_DIR)"
-echo "2. Point parking.wavelync.com DNS A-record to 185.229.226.37"
+echo "2. Point parking.kortexd.com DNS A-record to 185.229.226.37"
 echo "3. (If needed) obtain a wildcard cert: certbot certonly --nginx -d wavelync.com -d '*.wavelync.com'"
 echo "4. Create DB and run migrations (see deploy/README.md)"
 echo "5. systemctl daemon-reload && systemctl enable parking-backend parking-worker && systemctl start parking-backend parking-worker && systemctl reload nginx"
-echo "6. Open https://parking.wavelync.com"
+echo "6. Open https://parking.kortexd.com"

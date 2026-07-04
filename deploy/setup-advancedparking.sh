@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy NEW version to /opt/advancedparking (parking.wavelync.com subdomain).
+# Deploy NEW version to /opt/advancedparking (parking.kortexd.com subdomain).
 # The EXISTING deployment at /opt/parking is NOT touched.
 # Run as root: sudo bash deploy/setup-advancedparking.sh
 
@@ -119,15 +119,15 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-# Nginx: NEW site for parking.wavelync.com subdomain — does NOT touch existing 'parking' site
+# Nginx: NEW site for parking.kortexd.com subdomain — does NOT touch existing 'parking' site
 FRONTEND_DIST="$DEPLOY_ROOT/frontend/dist"
-# parking.wavelync.com has its OWN cert (the shared wavelync.com apex cert points
+# parking.kortexd.com has its OWN cert (the shared wavelync.com apex cert points
 # elsewhere via IPv6 and can't be renewed on this server). Prefer the dedicated cert.
-SSL_CERT="/etc/letsencrypt/live/parking.wavelync.com/fullchain.pem"
-SSL_KEY="/etc/letsencrypt/live/parking.wavelync.com/privkey.pem"
+SSL_CERT="/etc/letsencrypt/live/parking.kortexd.com/fullchain.pem"
+SSL_KEY="/etc/letsencrypt/live/parking.kortexd.com/privkey.pem"
 if [[ ! -f "$SSL_CERT" ]]; then
-  SSL_CERT="/etc/letsencrypt/live/wavelync.com/fullchain.pem"
-  SSL_KEY="/etc/letsencrypt/live/wavelync.com/privkey.pem"
+  SSL_CERT="/etc/letsencrypt/live/parking.kortexd.com/fullchain.pem"
+  SSL_KEY="/etc/letsencrypt/live/parking.kortexd.com/privkey.pem"
 fi
 if [[ ! -f "$SSL_CERT" ]]; then
   SSL_CERT="/etc/ssl/certs/ssl-cert-snakeoil.pem"
@@ -138,13 +138,13 @@ cat > /etc/nginx/sites-available/$NGINX_SITE << EOF
 # Redirect HTTP → HTTPS for subdomain
 server {
     listen 80;
-    server_name parking.wavelync.com;
-    return 301 https://parking.wavelync.com\$request_uri;
+    server_name parking.kortexd.com;
+    return 301 https://parking.kortexd.com\$request_uri;
 }
 
 server {
     listen 443 ssl;
-    server_name parking.wavelync.com;
+    server_name parking.kortexd.com;
     ssl_certificate     $SSL_CERT;
     ssl_certificate_key $SSL_KEY;
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -189,6 +189,6 @@ nginx -t && systemctl reload nginx || systemctl start nginx
 echo "=== Setup done. Next steps ==="
 echo "1. Create $BACKEND_DIR/.env with DATABASE_URL=postgresql://postgres:postgres@localhost:5432/advancedparking"
 echo "2. Run: sudo DEPLOY_ROOT=$DEPLOY_ROOT APP_USER=$APP_USER bash $DEPLOY_ROOT/deploy/post-deploy-advancedparking.sh"
-echo "3. Point parking.wavelync.com DNS A-record to 185.229.226.37"
-echo "4. (If needed) expand SSL cert: certbot certonly --nginx --expand -d wavelync.com -d parking.wavelync.com"
-echo "5. Open https://parking.wavelync.com"
+echo "3. Point parking.kortexd.com DNS A-record to 185.229.226.37"
+echo "4. (If needed) expand SSL cert: certbot certonly --nginx --expand -d wavelync.com -d parking.kortexd.com"
+echo "5. Open https://parking.kortexd.com"

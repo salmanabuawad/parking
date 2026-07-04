@@ -20,7 +20,7 @@ _ASSET_HEADERS = {"Cache-Control": "public, max-age=2592000"}
 
 
 def _map_base(request: Request) -> str:
-    """Absolute base URL for our map endpoints, e.g. https://parking.wavelync.com/api/map."""
+    """Absolute base URL for our map endpoints, e.g. https://parking.kortexd.com/api/map."""
     if settings.public_base_url:
         return settings.public_base_url.rstrip("/") + "/api/map"
     proto = request.headers.get("x-forwarded-proto") or request.url.scheme
