@@ -66,12 +66,7 @@ export default function CameraDashboard() {
     finally { setWarming(false) }
   }
 
-  const moveCamera = async (id: number, lat: number, lng: number) => {
-    setCameras(cs => cs.map(c => (c.id === id ? { ...c, latitude: lat, longitude: lng } : c)))
-    try { await camerasApi.update(id, { latitude: lat, longitude: lng }) } catch { load() }
-  }
-
-  const Chip = ({ label, count, color, value }: { label: string; count: number; color: string; value: string | null }) => (
+  const Chip =({ label, count, color, value }: { label: string; count: number; color: string; value: string | null }) => (
     <button
       onClick={() => setFilter(value)}
       className={`flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors ${filter === value ? 'border-theme-accent bg-theme-accent/10' : 'border-theme-card-border hover:bg-black/5'}`}
@@ -132,7 +127,6 @@ export default function CameraDashboard() {
             center={city?.center}
             zoom={city?.zoom}
             bounds={city?.bounds}
-            onMove={moveCamera}
             onSelect={() => navigate('/cameras')}
             onEdit={() => navigate('/cameras')}
           />

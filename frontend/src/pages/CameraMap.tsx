@@ -61,7 +61,6 @@ const OSM_STYLE: maplibregl.StyleSpecification = {
 }
 
 interface Cbs {
-  onMove: (id: number, lat: number, lng: number) => void
   onSelect: (cam: MapCamera) => void
   onEdit: (cam: MapCamera) => void
 }
@@ -106,12 +105,12 @@ function makePopup(cam: MapCamera, cb: React.MutableRefObject<Cbs>): maplibregl.
 
 type Bounds = [[number, number], [number, number]]
 
-export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onMove, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null; center?: [number, number]; zoom?: number; bounds?: Bounds | null } & Cbs) {
+export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onSelect, onEdit }: { cameras: MapCamera[]; styleUrl?: string | null; center?: [number, number]; zoom?: number; bounds?: Bounds | null } & Cbs) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<maplibregl.Map | null>(null)
   const markersRef = useRef<Record<number, maplibregl.Marker>>({})
-  const cbRef = useRef<Cbs>({ onMove, onSelect, onEdit })
-  useEffect(() => { cbRef.current = { onMove, onSelect, onEdit } }, [onMove, onSelect, onEdit])
+  const cbRef = useRef<Cbs>({ onSelect, onEdit })
+  useEffect(() => { cbRef.current = { onSelect, onEdit } }, [onSelect, onEdit])
 
   // Init the map once
   useEffect(() => {
@@ -163,24 +162,17 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onM
     markersRef.current = {}
     for (const c of cameras) {
       if (c.latitude == null || c.longitude == null) continue
-      const m = new maplibregl.Marker({ color: markerColor(c), draggable: true })
+      // Read-only position: pins are not draggable — a camera's location is set in its settings.
+      const m = new maplibregl.Marker({ color: markerColor(c) })
         .setLngLat([c.longitude, c.latitude])
         .setPopup(makePopup(c, cbRef))
         .addTo(map)
-      m.getElement().style.cursor = 'grab'
-      m.on('dragend', () => {
-        const p = m.getLngLat()
-        cbRef.current.onMove(c.id, +p.lat.toFixed(6), +p.lng.toFixed(6))
-      })
+      m.getElement().style.cursor = 'pointer'
       markersRef.current[c.id] = m
     }
   }, [cameras])
 
   const unplaced = cameras.filter(c => c.latitude == null || c.longitude == null)
-  const placeAtCenter = (id: number) => {
-    const c = mapRef.current?.getCenter()
-    if (c) cbRef.current.onMove(id, +c.lat.toFixed(6), +c.lng.toFixed(6))
-  }
 
   return (
     <div className="absolute inset-0">
@@ -193,12 +185,12 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onM
           <div className="font-semibold mb-1">מצלמות ללא מיקום ({unplaced.length})</div>
           <div className="flex flex-col gap-0.5 max-h-40 overflow-auto">
             {unplaced.map(c => (
-              <button key={c.id} onClick={() => placeAtCenter(c.id)} className="text-start hover:bg-black/5 rounded px-1.5 py-1 truncate" title={c.name}>
+              <button key={c.id} onClick={() => cbRef.current.onEdit(c)} className="text-start hover:bg-black/5 rounded px-1.5 py-1 truncate" title={c.name}>
                 📍 {c.name}
               </button>
             ))}
           </div>
-          <div className="text-theme-text-muted mt-1">לחץ למיקום במרכז המפה, אז גרור לכיוונון</div>
+          <div className="text-theme-text-muted mt-1">לחץ כדי לקבוע מיקום בהגדרות המצלמה</div>
         </div>
       )}
     </div>

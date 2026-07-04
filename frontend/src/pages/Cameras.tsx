@@ -63,6 +63,8 @@ interface CameraForm {
   source_type: string
   rtsp_url: string
   simulation_source: string
+  latitude: string
+  longitude: string
 }
 
 interface ParkingZone {
@@ -86,6 +88,7 @@ const EMPTY_FORM: CameraForm = {
   manufacturer: '', model: '', is_active: true,
   violation_rules: [], selected_zone_ids: [], assigned_inspector_id: null,
   source_type: 'uploaded_image', rtsp_url: '', simulation_source: '',
+  latitude: '', longitude: '',
 }
 
 export default function Cameras() {
@@ -174,6 +177,8 @@ export default function Cameras() {
       source_type: c.source_type || 'uploaded_image',
       rtsp_url: c.rtsp_url || '',
       simulation_source: (c.connection_config?.simulation_source as string) || '',
+      latitude: c.latitude != null ? String(c.latitude) : '',
+      longitude: c.longitude != null ? String(c.longitude) : '',
     })
     setTab('general')
     setModalOpen(true)
@@ -186,12 +191,19 @@ export default function Cameras() {
     try {
       const cfg = parseJson(form.connection_config)
       if (form.source_type === 'simulation' && form.simulation_source) cfg.simulation_source = form.simulation_source
+      const lat = form.latitude.trim() === '' ? null : Number(form.latitude)
+      const lng = form.longitude.trim() === '' ? null : Number(form.longitude)
+      if ((lat !== null && Number.isNaN(lat)) || (lng !== null && Number.isNaN(lng))) {
+        setTab('general'); alert('קו רוחב / קו אורך לא תקינים'); return
+      }
       const payload = {
         ...form,
         connection_config: cfg,
         params: parseJson(form.params),
         violation_rules: form.violation_rules.length > 0 ? form.violation_rules : null,
         violation_zone: null,
+        latitude: lat,
+        longitude: lng,
       }
       let camId: number
       if (editing) { await camerasApi.update(editing.id, payload); camId = editing.id }
@@ -216,10 +228,6 @@ export default function Cameras() {
     } finally { setSeeding(false) }
   }
 
-  const moveCamera = async (id: number, lat: number, lng: number) => {
-    setCameras(cs => cs.map(c => (c.id === id ? { ...c, latitude: lat, longitude: lng } : c)))
-    try { await camerasApi.update(id, { latitude: lat, longitude: lng }) } catch { load() }
-  }
   const selectFromMap = (id: number) => { const c = cameras.find(x => x.id === id); if (c) setViewing(c) }
   const editFromMap = (id: number) => { const c = cameras.find(x => x.id === id); if (c) openEdit(c) }
 
@@ -298,7 +306,6 @@ export default function Cameras() {
             <CameraMap
               cameras={cameras}
               styleUrl={mapStyleUrl}
-              onMove={moveCamera}
               onSelect={(c) => selectFromMap(c.id)}
               onEdit={(c) => editFromMap(c.id)}
             />
@@ -392,6 +399,14 @@ export default function Cameras() {
                         {inspectors.map(i => <option key={i.id} value={i.id}>{i.full_name}</option>)}
                       </select>
                       <p className="text-theme-xs text-theme-text-muted mt-1">דוחות מהמצלמה יוקצו אוטומטית לפקח זה</p>
+                    </div>
+                    <div>
+                      <label className="label-base">מיקום על המפה</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input type="number" step="any" value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} className="input-base" placeholder="קו רוחב (lat) — 32.3215" />
+                        <input type="number" step="any" value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} className="input-base" placeholder="קו אורך (lng) — 34.8532" />
+                      </div>
+                      <p className="text-theme-xs text-theme-text-muted mt-1">מיקום המצלמה בלוח המצלמות. השאר ריק אם אין מיקום.</p>
                     </div>
                     <label className="flex items-center gap-2 text-theme-sm"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
                   </div>
