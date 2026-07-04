@@ -73,7 +73,7 @@ export default function ViolationRules() {
         <span className="page-header-icon">
           <ShieldAlert className="w-5 h-5" strokeWidth={1.5} />
         </span>
-        <h1 className="page-header-title">כללי הפרת חניה / Violation Rules</h1>
+        <h1 className="page-header-title">כללי הפרת חניה</h1>
       </div>
 
       <p className="text-theme-text-muted">

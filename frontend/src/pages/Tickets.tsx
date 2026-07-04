@@ -11,6 +11,7 @@ import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { ticketStatusBadge } from '../lib/ticketStatus'
+import { formatLocation } from '../lib/format'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -90,7 +91,7 @@ export default function Tickets() {
         valueFormatter: (p) =>
           p.value && p.value !== '11111' ? p.value : he.tickets.plateNotIdentified,
       },
-      { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: (p) => p.value || '—' },
+      { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: (p) => formatLocation(p.value) },
       {
         field: 'status',
         headerName: 'סטטוס',

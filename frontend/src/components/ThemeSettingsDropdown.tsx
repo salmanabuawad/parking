@@ -16,8 +16,8 @@ const fontSizeOpts: { value: FontSize; label: string; size: string }[] = [
 ];
 
 const themeOpts: { value: ThemeId; label: string }[] = [
-  { value: 'ocean', label: '🌊 Ocean' },
-  { value: 'mist', label: '🌫 Mist' },
+  { value: 'ocean', label: '🌊 אוקיינוס' },
+  { value: 'mist', label: '🌫 ערפל' },
 ];
 
 /** Shared panel: theme, brightness, font size (used in Header settings menu and Login). */

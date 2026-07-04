@@ -47,6 +47,7 @@ export function Header({ title, logo }: HeaderProps) {
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-white/80 hover:text-white
                      hover:bg-white/10 transition-all text-sm"
           title="הגדרות תצוגה"
+          aria-label="הגדרות תצוגה"
         >
           <Settings className="w-4 h-4" />
           <span className="hidden sm:inline text-xs">הגדרות</span>
@@ -65,6 +66,8 @@ export function Header({ title, logo }: HeaderProps) {
           onClick={() => { setUserMenuOpen(v => !v); setSettingsOpen(false); }}
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-white/80 hover:text-white
                      hover:bg-white/10 transition-all"
+          title="תפריט משתמש"
+          aria-label="תפריט משתמש"
         >
           <div className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
             <User className="w-4 h-4 text-white" />

@@ -32,7 +32,12 @@ export default function Upload() {
         setGpsError(null)
       },
       (err) => {
-        setGpsError(`GPS: ${err.message}`)
+        const msg =
+          err.code === err.PERMISSION_DENIED ? 'הגישה למיקום נדחתה'
+          : err.code === err.POSITION_UNAVAILABLE ? 'המיקום אינו זמין'
+          : err.code === err.TIMEOUT ? 'תם הזמן לאיתור מיקום'
+          : 'שגיאת GPS'
+        setGpsError(msg)
       },
       { enableHighAccuracy: true, timeout: 15000 }
     )

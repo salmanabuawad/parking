@@ -58,6 +58,7 @@ function NavRow({
       <button
         className={baseClasses}
         onClick={handleClick}
+        disabled={item.disabled}
         style={{ paddingRight: `${12 + indentPx}px` }}
         dir="rtl"
       >

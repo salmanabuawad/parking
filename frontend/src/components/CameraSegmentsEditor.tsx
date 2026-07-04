@@ -139,7 +139,7 @@ export default function CameraSegmentsEditor({ cameraId, rules }: { cameraId: nu
           {rules.map(r => (
             <label key={r.id} className={`text-theme-xs rounded border px-2 py-0.5 cursor-pointer ${selRules.includes(r.id) ? 'bg-green-100 border-green-300' : 'border-theme-card-border'}`}>
               <input type="checkbox" className="me-1" checked={selRules.includes(r.id)} onChange={() => toggleRule(r.id)} />
-              {r.id}
+              {r.label || r.id}
             </label>
           ))}
         </div>

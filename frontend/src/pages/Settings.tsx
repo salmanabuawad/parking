@@ -182,10 +182,10 @@ export default function Settings() {
                 checked={vehicleRegistryEnabled}
                 onChange={(e) => setVehicleRegistryEnabled(e.target.checked)}
               />
-              Enable Israeli vehicle registry lookup
+              אפשר חיפוש במרשם הרכבים הישראלי
             </label>
 
-            <label className="label-base text-theme-text-primary font-semibold">data.gov.il API URL</label>
+            <label className="label-base text-theme-text-primary font-semibold">כתובת API של data.gov.il</label>
             <input
               type="url"
               value={vehicleRegistryApiUrl}
@@ -194,7 +194,7 @@ export default function Settings() {
               dir="ltr"
             />
 
-            <label className="label-base text-theme-text-primary font-semibold">Resource ID</label>
+            <label className="label-base text-theme-text-primary font-semibold">מזהה משאב (Resource ID)</label>
             <input
               type="text"
               value={vehicleRegistryResourceId}
@@ -203,7 +203,7 @@ export default function Settings() {
               dir="ltr"
             />
 
-            <label className="label-base text-theme-text-primary font-semibold">Plate field</label>
+            <label className="label-base text-theme-text-primary font-semibold">שם שדה מספר הרכב</label>
             <input
               type="text"
               value={vehicleRegistryPlateField}
@@ -214,7 +214,7 @@ export default function Settings() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
               <div>
-                <label className="label-base text-theme-text-primary font-semibold">Timeout seconds</label>
+                <label className="label-base text-theme-text-primary font-semibold">פסק זמן (שניות)</label>
                 <input
                   type="number"
                   min={1}
@@ -225,7 +225,7 @@ export default function Settings() {
                 />
               </div>
               <div>
-                <label className="label-base text-theme-text-primary font-semibold">Cache TTL hours</label>
+                <label className="label-base text-theme-text-primary font-semibold">תוקף מטמון (שעות)</label>
                 <input
                   type="number"
                   min={1}

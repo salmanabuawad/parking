@@ -11,6 +11,7 @@ import CameraMap, { STATUS_META } from './CameraMap'
 import CameraLocationPicker from './CameraLocationPicker'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { formatConnectionType } from '../lib/format'
 import { t } from '../i18n'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -247,7 +248,7 @@ export default function Cameras() {
   const colDefs = useMemo<ColDef<Camera>[]>(() => [
     { field: 'name', headerName: 'שם', flex: 1, minWidth: 130 },
     { field: 'location', headerName: 'מיקום', flex: 1, valueFormatter: p => p.value || '—' },
-    { field: 'connection_type', headerName: 'סוג חיבור', width: 120 },
+    { field: 'connection_type', headerName: 'סוג חיבור', width: 120, valueFormatter: p => formatConnectionType(p.value) },
     { headerName: 'יצרן/דגם', flex: 1, valueGetter: p => [p.data?.manufacturer, p.data?.model].filter(Boolean).join(' ') || '—' },
     { headerName: 'אזורים', flex: 1, valueGetter: p => zoneNames(p.data!.id) || '—' },
     { headerName: 'פקח מטפל', width: 150, valueGetter: p => inspectorName(p.data?.assigned_inspector_id) },
