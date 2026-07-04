@@ -354,14 +354,15 @@ def process_one_job() -> bool:
                 video_params=video_params,
             )
             display_plate = fields["plate"]
-            location_str = f"{job.latitude or 0:.6f}, {job.longitude or 0:.6f}"
+            has_gps = bool(job.latitude) and bool(job.longitude)
+            location_str = f"{job.latitude:.6f}, {job.longitude:.6f}" if has_gps else None
             kw = dict(
                 upload_job_id=job.id,
                 license_plate=display_plate,
                 camera_id="mobile",
                 location=location_str,
                 violation_zone=job.violation_zone or "red_white",
-                description=job.description or f"Mobile upload at {location_str}",
+                description=job.description or ("העלאה מהנייד" if not has_gps else f"העלאה מהנייד — {location_str}"),
                 status=fields["ticket_status"],
                 video_path=proc_rel,
                 ticket_image_path=frame_rel,

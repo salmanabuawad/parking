@@ -54,16 +54,16 @@ def resolve_ticket_fields(
             vehicle_data = record_to_vehicle_fields(dc.get("vehicle"))
             if dc.get("corrected") and dc.get("plate"):
                 print(f"[Job {job.id}] plate corrected via registry (OCR alt): {display_plate} -> {dc['plate']}", flush=True)
-                reason = f"Auto-corrected {display_plate} -> {dc['plate']} (OCR alternative confirmed in gov registry)"
+                reason = f"תוקן אוטומטית: {display_plate} ← {dc['plate']} (חלופת OCR אומתה במרשם הרכבים)"
                 display_plate = dc["plate"]
             elif registry_status == "not_in_registry":
                 sug = dc.get("suggestions") or []
                 if sug:
                     registry_raw = {"read": display_plate, "suggestions": sug}
                     hints = ", ".join(f"{s['plate']} ({s['make']})".strip() for s in sug)
-                    reason = f"{display_plate} not in gov registry — possible matches: {hints}"
+                    reason = f"{display_plate} — לא נמצא במרשם הרכבים. התאמות אפשריות: {hints}"
                 else:
-                    reason = f"{display_plate} not in gov registry — manual verification needed"
+                    reason = f"{display_plate} — לא נמצא במרשם הרכבים. נדרשת בדיקה ידנית"
         except Exception as e:
             print(f"[Job {job.id}] registry deep-check failed (non-fatal): {e}", flush=True)
 

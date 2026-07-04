@@ -87,6 +87,33 @@ const AUDIT_ACTION: Record<string, string> = {
   inspector_transfer: "העברה",
 };
 
+// Curb/zone code → Hebrew label
+const ZONE_LABEL: Record<string, string> = {
+  red_white: "אדום-לבן (איסור עצירה/חנייה)",
+  blue_white: "כחול-לבן (חנייה בתשלום)",
+  red_yellow: "אדום-צהוב (תחנת אוטובוס)",
+};
+
+// 0,0 (or empty) = no GPS — a mobile upload without a location fix.
+const isBlankCoords = (s?: string | null) => !s || /^\s*0\.?0*\s*,\s*0\.?0*\s*$/.test(s);
+
+function displayDescription(desc?: string | null): string | null {
+  if (!desc) return null;
+  const m = desc.match(/^\s*mobile upload at\s*(.*)$/i);
+  if (m) return isBlankCoords(m[1]) ? "העלאה מהנייד" : `העלאה מהנייד — ${m[1].trim()}`;
+  return desc;
+}
+
+// The registry note is backend-generated English — render it in Hebrew.
+function displayPlateReason(reason?: string | null): string | null {
+  if (!reason) return null;
+  return reason
+    .replace(/Auto-corrected (.+?) -> (.+?) \(OCR alternative confirmed in gov registry\)/i, "תוקן אוטומטית: $1 ← $2 (חלופת OCR אומתה במרשם)")
+    .replace(/not in gov registry — possible matches:/i, "לא נמצא במרשם הרכבים — התאמות אפשריות:")
+    .replace(/not in gov registry — manual verification needed/i, "לא נמצא במרשם — נדרשת בדיקה ידנית")
+    .replace(/not in gov registry/i, "לא נמצא במרשם הרכבים");
+}
+
 export default function TicketReview() {
   const ticketId = useMemo(() => {
     const parts = window.location.pathname.split("/").filter(Boolean);
@@ -470,7 +497,7 @@ export default function TicketReview() {
                     </span>
                     {ticket.plate_detection_reason && (
                       <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700">
-                        ⚠ {ticket.plate_detection_reason}
+                        ⚠ {displayPlateReason(ticket.plate_detection_reason)}
                       </div>
                     )}
                   </div>
@@ -478,7 +505,7 @@ export default function TicketReview() {
                   <div>
                     <span className="font-semibold text-red-600">לא זוהה</span>
                     {ticket.plate_detection_reason && (
-                      <div className="text-theme-xs text-theme-text-muted mt-1">{ticket.plate_detection_reason}</div>
+                      <div className="text-theme-xs text-theme-text-muted mt-1">{displayPlateReason(ticket.plate_detection_reason)}</div>
                     )}
                   </div>
                 )}
@@ -494,7 +521,7 @@ export default function TicketReview() {
               {/* Violation zone */}
               {ticket.violation_zone && (
                 <Field label="אזור עצירה">
-                  <span>{ticket.violation_zone}</span>
+                  <span>{ZONE_LABEL[ticket.violation_zone] ?? ticket.violation_zone}</span>
                 </Field>
               )}
 
@@ -520,11 +547,11 @@ export default function TicketReview() {
               <div className="border-t border-theme-card-border my-1.5" />
 
               {/* Location */}
-              {ticket.location && (
-                <Field label="מיקום">
-                  <span className="text-theme-sm">{ticket.location}</span>
-                </Field>
-              )}
+              <Field label="מיקום">
+                {isBlankCoords(ticket.location)
+                  ? <span className="text-theme-text-muted text-theme-sm">אין מיקום זמין</span>
+                  : <span className="text-theme-sm">{ticket.location}</span>}
+              </Field>
 
               {/* Capture time */}
               {ticket.captured_at && (
@@ -553,9 +580,9 @@ export default function TicketReview() {
               )}
 
               {/* Description */}
-              {ticket.description && (
+              {displayDescription(ticket.description) && (
                 <Field label="תיאור">
-                  <span className="text-theme-sm">{ticket.description}</span>
+                  <span className="text-theme-sm">{displayDescription(ticket.description)}</span>
                 </Field>
               )}
 
@@ -732,11 +759,6 @@ export default function TicketReview() {
                     {ticket.violation_description_he && (
                       <div className="text-theme-sm mb-1.5 leading-relaxed">
                         {ticket.violation_description_he}
-                      </div>
-                    )}
-                    {ticket.violation_description_en && (
-                      <div className="text-theme-xs text-theme-text-muted italic">
-                        {ticket.violation_description_en}
                       </div>
                     )}
                     <div className="mt-2.5 text-[11px] text-theme-text-muted">

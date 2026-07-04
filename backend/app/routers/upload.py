@@ -71,7 +71,7 @@ async def upload_violation(
         captured_at=captured_dt,
         license_plate=plate_value,
         violation_zone=violation_zone or "red_white",
-        description=description or f"Mobile upload at {lat:.6f}, {lng:.6f}",
+        description=description or ("העלאה מהנייד" if (not lat and not lng) else f"העלאה מהנייד — {lat:.6f}, {lng:.6f}"),
         submitted_by=submitted_by,
     )
 
