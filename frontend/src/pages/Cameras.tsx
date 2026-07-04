@@ -8,6 +8,7 @@ import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
 import CameraZoneView from './CameraZoneView'
 import CameraMap, { STATUS_META } from './CameraMap'
+import CameraLocationPicker from './CameraLocationPicker'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF } from '../lib/gridConfig'
 import { t } from '../i18n'
@@ -402,11 +403,17 @@ export default function Cameras() {
                     </div>
                     <div>
                       <label className="label-base">מיקום על המפה</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
                         <input type="number" step="any" value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} className="input-base" placeholder="קו רוחב (lat) — 32.3215" />
                         <input type="number" step="any" value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} className="input-base" placeholder="קו אורך (lng) — 34.8532" />
                       </div>
-                      <p className="text-theme-xs text-theme-text-muted mt-1">מיקום המצלמה בלוח המצלמות. השאר ריק אם אין מיקום.</p>
+                      <CameraLocationPicker
+                        lat={form.latitude.trim() !== '' && !Number.isNaN(Number(form.latitude)) ? Number(form.latitude) : null}
+                        lng={form.longitude.trim() !== '' && !Number.isNaN(Number(form.longitude)) ? Number(form.longitude) : null}
+                        styleUrl={mapStyleUrl}
+                        onChange={(la, ln) => setForm(f => ({ ...f, latitude: String(la), longitude: String(ln) }))}
+                      />
+                      <p className="text-theme-xs text-theme-text-muted mt-1">לחץ על המפה לקביעת מיקום, או גרור את הסמן. השאר ריק אם אין מיקום.</p>
                     </div>
                     <label className="flex items-center gap-2 text-theme-sm"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
                   </div>
