@@ -67,7 +67,7 @@ function fromLocalInput(v: string): string | undefined {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="mb-2">
+    <div className="min-w-0 mb-1.5">
       <div className="text-[11px] text-theme-text-muted mb-0.5">{label}</div>
       <div>{children}</div>
     </div>
@@ -87,11 +87,16 @@ const AUDIT_ACTION: Record<string, string> = {
   inspector_transfer: "העברה",
 };
 
-// Curb/zone code → Hebrew label
+// Curb/zone code → short Hebrew label (+ full description as tooltip)
 const ZONE_LABEL: Record<string, string> = {
-  red_white: "אדום-לבן (איסור עצירה/חנייה)",
-  blue_white: "כחול-לבן (חנייה בתשלום)",
-  red_yellow: "אדום-צהוב (תחנת אוטובוס)",
+  red_white: "אדום-לבן",
+  blue_white: "כחול-לבן",
+  red_yellow: "אדום-צהוב",
+};
+const ZONE_DESC: Record<string, string> = {
+  red_white: "אדום-לבן — איסור עצירה/חנייה",
+  blue_white: "כחול-לבן — חנייה בתשלום",
+  red_yellow: "אדום-צהוב — תחנת אוטובוס",
 };
 
 // 0,0 (or empty) = no GPS — a mobile upload without a location fix.
@@ -348,10 +353,10 @@ export default function TicketReview() {
   return (
     <div className="page-fill">
     <div className="page-body-scroll">
-    <div dir="rtl" className="p-4 sm:p-6 text-theme-text-primary">
+    <div dir="rtl" className="p-3 sm:p-4 text-theme-text-primary">
 
       {/* Header */}
-      <div className="page-header rounded-lg px-3 py-2 mb-4 flex items-center gap-3 flex-wrap">
+      <div className="page-header rounded-lg px-3 py-2 mb-3 flex items-center gap-3 flex-wrap">
         <span className="page-header-icon">
           <ClipboardCheck className="w-5 h-5" strokeWidth={1.5} />
         </span>
@@ -368,10 +373,11 @@ export default function TicketReview() {
       )}
 
       {/* Side-by-side: video + details */}
-      <div className="flex gap-5 items-start flex-wrap">
+      <div className="flex gap-4 items-start flex-wrap">
 
-        {/* Left column: video + screenshots */}
-        <div className="grow basis-[340px] min-w-[280px] flex flex-col gap-4">
+        {/* Left column: video + screenshots — fixed-ish width so a portrait clip
+            doesn't grab half the page and squeeze the details/analysis panels. */}
+        <div className="grow-0 basis-[420px] min-w-[300px] flex flex-col gap-3">
 
           {/* Video panel */}
           <div>
@@ -383,7 +389,7 @@ export default function TicketReview() {
                   src={videoUrl}
                   controls
                   playsInline
-                  className="w-full block max-h-80"
+                  className="w-full block max-h-64"
                 />
               ) : (
                 <div className="p-8 text-center text-slate-400 bg-neutral-900">
@@ -430,8 +436,8 @@ export default function TicketReview() {
 
           {/* Screenshot gallery — under video */}
           {(screenshots.length > 0 || videoUrl) && (
-            <div className="app-card p-4">
-              <h3 className="text-base font-semibold mb-3">
+            <div className="app-card p-3">
+              <h3 className="text-base font-semibold mb-2">
                 צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
               </h3>
               {screenshots.length === 0 ? (
@@ -477,12 +483,12 @@ export default function TicketReview() {
         </div>{/* end left column */}
 
         {/* Right section: details + violation analysis */}
-        <div className="grow basis-[320px] flex flex-row gap-4 flex-wrap items-start">
+        <div className="grow basis-[320px] flex flex-row gap-3 flex-wrap items-start">
 
           {ticket && (
-            <div className="app-card grow basis-[240px] p-4 sticky top-[88px]">
+            <div className="app-card grow basis-[260px] p-3 sticky top-[80px]">
 
-              {/* Plate */}
+              {/* Plate — full width (carries the registry note) */}
               <Field label="מספר לוחית">
                 {editMode ? (
                   <input
@@ -496,7 +502,7 @@ export default function TicketReview() {
                       {ticket.license_plate}
                     </span>
                     {ticket.plate_detection_reason && (
-                      <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700">
+                      <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason)}>
                         ⚠ {displayPlateReason(ticket.plate_detection_reason)}
                       </div>
                     )}
@@ -505,30 +511,30 @@ export default function TicketReview() {
                   <div>
                     <span className="font-semibold text-red-600">לא זוהה</span>
                     {ticket.plate_detection_reason && (
-                      <div className="text-theme-xs text-theme-text-muted mt-1">{displayPlateReason(ticket.plate_detection_reason)}</div>
+                      <div className="text-theme-xs text-theme-text-muted mt-1 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason)}>{displayPlateReason(ticket.plate_detection_reason)}</div>
                     )}
                   </div>
                 )}
               </Field>
 
-              <div className="border-t border-theme-card-border my-1.5" />
+              {/* Compact 2-column grid for the remaining fields — halves the panel height */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-0 border-t border-theme-card-border pt-2 mt-2">
 
-              {/* Status */}
-              <Field label="סטטוס">
-                {statusBadge && <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>}
-              </Field>
-
-              {/* Violation zone */}
-              {ticket.violation_zone && (
-                <Field label="אזור עצירה">
-                  <span>{ZONE_LABEL[ticket.violation_zone] ?? ticket.violation_zone}</span>
+                {/* Status */}
+                <Field label="סטטוס">
+                  {statusBadge && <span className={`badge ${statusBadge.cls}`}>{statusBadge.label}</span>}
                 </Field>
-              )}
 
-              {/* Fine */}
-              <Field label="קנס">
-                {editMode ? (
-                  <div className="w-32">
+                {/* Violation zone */}
+                {ticket.violation_zone && (
+                  <Field label="אזור עצירה">
+                    <span className="text-theme-sm" title={ZONE_DESC[ticket.violation_zone] ?? ""}>{ZONE_LABEL[ticket.violation_zone] ?? ticket.violation_zone}</span>
+                  </Field>
+                )}
+
+                {/* Fine */}
+                <Field label="קנס">
+                  {editMode ? (
                     <input
                       type="number"
                       value={editFine}
@@ -536,72 +542,73 @@ export default function TicketReview() {
                       placeholder="סכום ₪"
                       className="input-base"
                     />
+                  ) : ticket.fine_amount != null ? (
+                    <span className="font-semibold text-red-600">₪{ticket.fine_amount}</span>
+                  ) : (
+                    <span className="text-theme-text-muted text-theme-sm">לא נקבע</span>
+                  )}
+                </Field>
+
+                {/* Location */}
+                <Field label="מיקום">
+                  {isBlankCoords(ticket.location)
+                    ? <span className="text-theme-text-muted text-theme-sm">אין מיקום זמין</span>
+                    : <span className="text-theme-sm">{ticket.location}</span>}
+                </Field>
+
+                {/* Capture time */}
+                {ticket.captured_at && (
+                  <Field label="זמן צילום">
+                    <span className="text-theme-sm">{new Date(ticket.captured_at).toLocaleString("he-IL")}</span>
+                  </Field>
+                )}
+
+                {/* Violation window — start / end (#5) */}
+                {ticket.violation_start_at && (
+                  <Field label="תחילת עבירה">
+                    <span className="text-theme-sm">{new Date(ticket.violation_start_at).toLocaleString("he-IL")}</span>
+                  </Field>
+                )}
+                {ticket.violation_end_at && (
+                  <Field label="סיום עבירה">
+                    <span className="text-theme-sm">{new Date(ticket.violation_end_at).toLocaleString("he-IL")}</span>
+                  </Field>
+                )}
+
+                {/* Submission time */}
+                {ticket.created_at && (
+                  <Field label="זמן הגשה">
+                    <span className="text-theme-sm">{new Date(ticket.created_at).toLocaleString("he-IL")}</span>
+                  </Field>
+                )}
+
+                {/* Description — full width */}
+                {displayDescription(ticket.description) && (
+                  <div className="col-span-2">
+                    <Field label="תיאור">
+                      <span className="text-theme-sm">{displayDescription(ticket.description)}</span>
+                    </Field>
                   </div>
-                ) : ticket.fine_amount != null ? (
-                  <span className="font-semibold text-red-600">₪{ticket.fine_amount}</span>
-                ) : (
-                  <span className="text-theme-text-muted text-theme-sm">לא נקבע</span>
                 )}
-              </Field>
+              </div>
 
-              <div className="border-t border-theme-card-border my-1.5" />
-
-              {/* Location */}
-              <Field label="מיקום">
-                {isBlankCoords(ticket.location)
-                  ? <span className="text-theme-text-muted text-theme-sm">אין מיקום זמין</span>
-                  : <span className="text-theme-sm">{ticket.location}</span>}
-              </Field>
-
-              {/* Capture time */}
-              {ticket.captured_at && (
-                <Field label="זמן צילום">
-                  {new Date(ticket.captured_at).toLocaleString("he-IL")}
+              {/* Admin notes — full width */}
+              <div className="border-t border-theme-card-border pt-2 mt-2">
+                <Field label="הערות מנהל">
+                  {editMode ? (
+                    <textarea
+                      value={editNotes}
+                      onChange={e => setEditNotes(e.target.value)}
+                      rows={2}
+                      className="input-base min-h-[52px] resize-y"
+                    />
+                  ) : ticket.admin_notes ? (
+                    <span className="text-theme-sm">{ticket.admin_notes}</span>
+                  ) : (
+                    <span className="text-theme-text-muted text-theme-sm">אין הערות</span>
+                  )}
                 </Field>
-              )}
-
-              {/* Violation window — date + time of start / end (#5) */}
-              {ticket.violation_start_at && (
-                <Field label="תחילת עבירה">
-                  {new Date(ticket.violation_start_at).toLocaleString("he-IL")}
-                </Field>
-              )}
-              {ticket.violation_end_at && (
-                <Field label="סיום עבירה">
-                  {new Date(ticket.violation_end_at).toLocaleString("he-IL")}
-                </Field>
-              )}
-
-              {/* Submission time */}
-              {ticket.created_at && (
-                <Field label="זמן הגשה">
-                  {new Date(ticket.created_at).toLocaleString("he-IL")}
-                </Field>
-              )}
-
-              {/* Description */}
-              {displayDescription(ticket.description) && (
-                <Field label="תיאור">
-                  <span className="text-theme-sm">{displayDescription(ticket.description)}</span>
-                </Field>
-              )}
-
-              {/* Admin notes */}
-              <div className="border-t border-theme-card-border my-1.5" />
-              <Field label="הערות מנהל">
-                {editMode ? (
-                  <textarea
-                    value={editNotes}
-                    onChange={e => setEditNotes(e.target.value)}
-                    rows={3}
-                    className="input-base min-h-[72px] resize-y"
-                  />
-                ) : ticket.admin_notes ? (
-                  <span className="text-theme-sm">{ticket.admin_notes}</span>
-                ) : (
-                  <span className="text-theme-text-muted text-theme-sm">אין הערות</span>
-                )}
-              </Field>
+              </div>
 
               {/* Admin action buttons */}
               <div className="border-t border-theme-card-border mt-2 pt-2">
@@ -619,20 +626,20 @@ export default function TicketReview() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-2">
                     {ticket.status !== "approved" && (
-                      <button onClick={() => handleStatusChange("approved")} disabled={saving} className="btn-success grow min-w-[90px]">
+                      <button onClick={() => handleStatusChange("approved")} disabled={saving} className="btn-success grow min-w-0">
                         <Check className="w-4 h-4" />
                         <span>אשר</span>
                       </button>
                     )}
                     {ticket.status !== "rejected" && (
-                      <button onClick={() => handleStatusChange("rejected")} disabled={saving} className="btn-danger grow min-w-[90px]">
+                      <button onClick={() => handleStatusChange("rejected")} disabled={saving} className="btn-danger grow min-w-0">
                         <X className="w-4 h-4" />
                         <span>דחה</span>
                       </button>
                     )}
-                    <button onClick={() => setEditMode(true)} disabled={saving} className="btn-cancel grow min-w-[90px]">
+                    <button onClick={() => setEditMode(true)} disabled={saving} className="btn-cancel grow min-w-0">
                       <Pencil className="w-4 h-4" />
                       <span>ערוך</span>
                     </button>
@@ -644,8 +651,8 @@ export default function TicketReview() {
 
           {/* Inspector approval panel */}
           {ticket && isInspector && (
-            <div className="app-card grow basis-[280px] p-4">
-              <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+            <div className="app-card grow basis-[280px] p-3">
+              <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-green-600" /> אישור פקח
               </h3>
 
@@ -737,7 +744,7 @@ export default function TicketReview() {
 
           {/* Violation analysis */}
           {ticket && ticket.violation_decision && (
-            <div className="app-card grow basis-[240px] p-4">
+            <div className="app-card grow basis-[240px] p-3">
               <h3 className="text-base font-semibold mb-3.5">ניתוח הפרה אוטומטי</h3>
               {(() => {
                 const dec = ticket.violation_decision!;
@@ -772,7 +779,7 @@ export default function TicketReview() {
 
           {/* Audit trail */}
           {ticket && audit.length > 0 && (
-            <div className="app-card grow basis-[240px] p-4">
+            <div className="app-card grow basis-[240px] p-3">
               <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
                 <History className="w-4 h-4 text-theme-text-muted" /> יומן פעולות
               </h3>
