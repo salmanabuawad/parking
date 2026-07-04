@@ -10,7 +10,7 @@ import CameraZoneView from './CameraZoneView'
 import CameraMap, { STATUS_META } from './CameraMap'
 import CameraLocationPicker from './CameraLocationPicker'
 import { useAgGridTheme } from '../lib/agGridTheme'
-import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { formatConnectionType } from '../lib/format'
 import { t } from '../i18n'
 
@@ -321,7 +321,7 @@ export default function Cameras() {
               enableRtl={true}
               rowHeight={46}
               defaultColDef={DEFAULT_COL_DEF}
-              overlayNoRowsTemplate={`<span style="color:#94a3b8">${t('noCameras')}</span>`}
+              overlayNoRowsTemplate={emptyOverlay(t('noCameras'))}
               style={{ width: '100%', height: '100%' }}
             />
           </div>

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
-import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { jobStatusBadge } from '../lib/jobStatus'
-import { LayoutDashboard, RefreshCw } from 'lucide-react'
+import { LayoutDashboard, RefreshCw, Layers, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { uploadApi } from '../api'
@@ -28,15 +29,18 @@ function StatusCell({ value }: { value: string }) {
   return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
-function StatCard({ label, value, accent, active, onClick }: { label: string; value: number; accent: string; active?: boolean; onClick?: () => void }) {
+function StatCard({ label, value, accent, tint, icon, active, onClick }: { label: string; value: number; accent: string; tint: string; icon: ReactNode; active?: boolean; onClick?: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`app-card flex-1 min-w-[110px] px-5 py-4 text-right cursor-pointer transition-shadow ${active ? 'ring-2 ring-theme-accent' : 'hover:shadow-md'}`}
+      className={`app-card flex-1 min-w-[140px] px-4 py-3.5 flex items-center gap-3 text-right cursor-pointer transition-all ${active ? 'ring-2 ring-theme-accent shadow-md' : 'hover:shadow-md hover:-translate-y-0.5'}`}
     >
-      <div className={`text-3xl font-bold ${accent}`}>{value}</div>
-      <div className="text-sm text-theme-text-muted mt-0.5">{label}</div>
+      <span className={`flex items-center justify-center w-11 h-11 rounded-xl shrink-0 ${tint}`}>{icon}</span>
+      <div className="min-w-0">
+        <div className={`text-3xl font-bold leading-none ${accent}`}>{value}</div>
+        <div className="text-sm text-theme-text-muted mt-1 truncate">{label}</div>
+      </div>
     </button>
   )
 }
@@ -146,10 +150,10 @@ export default function Home() {
 
       {/* Stat cards */}
       <div className="flex flex-wrap gap-3">
-        <StatCard label="סה״כ"   value={counts.total}     accent="text-blue-700"  active={statusFilter === null}        onClick={() => setStatusFilter(null)} />
-        <StatCard label="ממתינים" value={counts.pending}   accent="text-amber-600" active={statusFilter === 'queued'}    onClick={() => setStatusFilter((s) => (s === 'queued' ? null : 'queued'))} />
-        <StatCard label="הושלמו"  value={counts.completed} accent="text-green-700" active={statusFilter === 'completed'} onClick={() => setStatusFilter((s) => (s === 'completed' ? null : 'completed'))} />
-        <StatCard label="נכשלו"   value={counts.failed}    accent="text-red-600"   active={statusFilter === 'failed'}    onClick={() => setStatusFilter((s) => (s === 'failed' ? null : 'failed'))} />
+        <StatCard label="סה״כ"   value={counts.total}     accent="text-blue-700"  tint="bg-blue-50 text-blue-600"   icon={<Layers className="w-5 h-5" />}         active={statusFilter === null}        onClick={() => setStatusFilter(null)} />
+        <StatCard label="ממתינים" value={counts.pending}   accent="text-amber-600" tint="bg-amber-50 text-amber-600" icon={<Clock className="w-5 h-5" />}          active={statusFilter === 'queued'}    onClick={() => setStatusFilter((s) => (s === 'queued' ? null : 'queued'))} />
+        <StatCard label="הושלמו"  value={counts.completed} accent="text-green-700" tint="bg-green-50 text-green-600"  icon={<CheckCircle2 className="w-5 h-5" />}    active={statusFilter === 'completed'} onClick={() => setStatusFilter((s) => (s === 'completed' ? null : 'completed'))} />
+        <StatCard label="נכשלו"   value={counts.failed}    accent="text-red-600"   tint="bg-red-50 text-red-600"     icon={<AlertTriangle className="w-5 h-5" />}  active={statusFilter === 'failed'}    onClick={() => setStatusFilter((s) => (s === 'failed' ? null : 'failed'))} />
       </div>
 
       {/* Queue grid */}
@@ -185,7 +189,7 @@ export default function Home() {
               enableRtl={true}
               rowHeight={46}
               defaultColDef={DEFAULT_COL_DEF}
-              overlayNoRowsTemplate={`<span style="color:#94a3b8">${he.home.empty}</span>`}
+              overlayNoRowsTemplate={emptyOverlay(he.home.empty)}
               style={{ width: '100%', height: '100%' }}
             />
           </div>

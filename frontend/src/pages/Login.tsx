@@ -57,7 +57,7 @@ export default function Login() {
           className="px-2.5 py-1.5 rounded-md bg-white/80 border border-gray-200 shadow-sm text-xs font-medium
                      text-gray-600 hover:bg-white hover:border-gray-300 transition-all"
         >
-          {themeId === 'ocean' ? '🌊 Ocean' : '🌫 Mist'}
+          {themeId === 'ocean' ? '🌊 אוקיינוס' : '🌫 ערפל'}
         </button>
 
         {/* Brightness */}

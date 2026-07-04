@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
-import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { jobStatusBadge } from '../lib/jobStatus'
 import { ListOrdered } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
@@ -244,6 +244,7 @@ export default function QueueMaintenance() {
             enableRtl={true}
             rowHeight={48}
             defaultColDef={DEFAULT_COL_DEF}
+            overlayNoRowsTemplate={emptyOverlay('אין עבודות בתור')}
             style={{ width: '100%', height: '100%' }}
           />
         </div>

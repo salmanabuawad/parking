@@ -9,7 +9,7 @@ import { ticketsApi } from '../api'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
-import { DEFAULT_COL_DEF } from '../lib/gridConfig'
+import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { ticketStatusBadge } from '../lib/ticketStatus'
 import { formatLocation } from '../lib/format'
 
@@ -185,6 +185,7 @@ export default function Tickets() {
             enableRtl={true}
             rowHeight={48}
             defaultColDef={DEFAULT_COL_DEF}
+            overlayNoRowsTemplate={emptyOverlay('אין דוחות להצגה')}
             style={{ width: '100%', height: '100%' }}
           />
         </div>
