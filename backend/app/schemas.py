@@ -24,7 +24,7 @@ class CameraBase(BaseModel):
     snapshot_path: Optional[str] = None
     calibration_width: Optional[int] = None
     calibration_height: Optional[int] = None
-    zone_grid: Optional[dict[str, Any]] = None     # {"cols","rows","cells":{"c,r":rule_id}}
+    zone_grid: Optional[dict[str, Any]] = None     # {"cols","rows","cells":{"c,r":[rule_id, ...]}}
     latitude: Optional[float] = None               # map placement (WGS84)
     longitude: Optional[float] = None
     status: Optional[str] = "online"               # online | offline | maintenance | error

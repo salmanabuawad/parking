@@ -80,16 +80,20 @@ def find_section_for_point(db: Session, camera_id, x: float, y: float) -> int | 
     return None
 
 
-def grid_rule_for_point(camera, x: float, y: float) -> str | None:
-    """For a grid zone-map camera, return the violation rule_id painted on the cell containing the
-    point (x, y in calibration pixels), else None. Complements find_section_for_point (polygons):
-    the grid maps a car's position → cell → its violation type."""
+def grid_rules_for_point(camera, x: float, y: float) -> list[str]:
+    """For a grid zone-map camera, return the violation rule_ids painted on the cell containing the
+    point (x, y in calibration pixels) — a cell may carry 0, 1 or many types — else []. Complements
+    find_section_for_point (polygons): the grid maps a car's position → cell → its violation type(s).
+    Accepts both the current list shape and the legacy single-string cell shape."""
     grid = getattr(camera, "zone_grid", None) or {}
     cols, rows = grid.get("cols"), grid.get("rows")
     cells = grid.get("cells") or {}
     cw, ch = getattr(camera, "calibration_width", None), getattr(camera, "calibration_height", None)
     if not (cols and rows and cw and ch):
-        return None
+        return []
     c = min(int(cols) - 1, max(0, int(x * int(cols) / cw)))
     r = min(int(rows) - 1, max(0, int(y * int(rows) / ch)))
-    return cells.get(f"{c},{r}")
+    val = cells.get(f"{c},{r}")
+    if not val:
+        return []
+    return list(val) if isinstance(val, list) else [val]

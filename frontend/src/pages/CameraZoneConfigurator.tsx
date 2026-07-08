@@ -12,7 +12,8 @@ const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899'
 const DISPLAY_W = 720
 
 type Pt = [number, number]
-type GridState = { cols: number; rows: number; cells: Record<string, string> }
+// A cell maps to a list of violation rule-ids (0/1/many painted on the same square).
+type GridState = { cols: number; rows: number; cells: Record<string, string[]> }
 interface Section {
   id: number
   label: string
@@ -20,6 +21,16 @@ interface Section {
   polygon_json?: Pt[] | null
   coordinate_type?: string | null
   display_order?: number
+}
+
+// Cells may load in the legacy single-string shape; normalize every cell to a rule-id array.
+function normalizeCells(cells: Record<string, string | string[]> | undefined | null): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  for (const [k, v] of Object.entries(cells || {})) {
+    const arr = Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
+    if (arr.length) out[k] = arr
+  }
+  return out
 }
 
 function pointInPoly(p: Pt, poly: Pt[]): boolean {
@@ -51,6 +62,8 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const [grid, setGrid] = useState<GridState>({ cols: 24, rows: 14, cells: {} })
   const [activeRule, setActiveRule] = useState<string | null>(rules[0]?.id ?? null)
   const paintingRef = useRef(false)
+  // Whole-drag action, decided on mouse-down from the first cell: add/remove the active rule, or clear.
+  const paintModeRef = useRef<'add' | 'remove' | 'clear'>('add')
   const gridRef = useRef<GridState>(grid)
 
   // Each violation rule gets a stable color (shared with the polygon sections palette).
@@ -74,9 +87,9 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
       setHasRtsp(Boolean(cam.rtsp_url))
       setHasSim(cam.source_type === 'simulation' || Boolean(cam.connection_config?.simulation_source))
       setSections((segs as Section[]).map(s => ({ ...s, polygon_json: (s.polygon_json as Pt[]) || [] })))
-      const zg = cam.zone_grid as GridState | null | undefined
+      const zg = cam.zone_grid as { cols: number; rows: number; cells: Record<string, string | string[]> } | null | undefined
       if (zg && zg.cells && Object.keys(zg.cells).length) {
-        setGrid({ cols: zg.cols, rows: zg.rows, cells: zg.cells })
+        setGrid({ cols: zg.cols, rows: zg.rows, cells: normalizeCells(zg.cells) })
         setMode('grid')
       } else if (cam.calibration_width && cam.calibration_height) {
         const cols = 24
@@ -103,10 +116,15 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
 
     if (mode === 'grid') {
       const cw = canvas.width / grid.cols, ch = canvas.height / grid.rows
-      for (const [key, ruleId] of Object.entries(grid.cells)) {
+      for (const [key, ids] of Object.entries(grid.cells)) {
         const [c, r] = key.split(',').map(Number)
-        ctx.fillStyle = ruleColor(ruleId) + 'aa'
-        ctx.fillRect(c * cw, r * ch, cw, ch)
+        const n = ids.length
+        if (!n) continue
+        // Split the cell into one vertical stripe per violation type painted on it.
+        ids.forEach((rid, i) => {
+          ctx.fillStyle = ruleColor(rid) + 'aa'
+          ctx.fillRect(c * cw + (i * cw) / n, r * ch, cw / n + 0.5, ch)
+        })
       }
       ctx.strokeStyle = 'rgba(255,255,255,0.30)'; ctx.lineWidth = 1; ctx.beginPath()
       for (let c = 0; c <= grid.cols; c++) { ctx.moveTo(c * cw, 0); ctx.lineTo(c * cw, canvas.height) }
@@ -171,10 +189,21 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   }
   const paintAt = (e: React.MouseEvent) => {
     const [c, r] = cellAt(e), key = `${c},${r}`
+    const pm = paintModeRef.current
     setGrid(g => {
       const cells = { ...g.cells }
-      if (activeRule) { if (cells[key] === activeRule) return g; cells[key] = activeRule }
-      else { if (!(key in cells)) return g; delete cells[key] }
+      const cur = cells[key] || []
+      if (pm === 'clear') {
+        if (!(key in cells)) return g
+        delete cells[key]                                   // eraser: remove all types from the cell
+      } else if (pm === 'add') {
+        if (!activeRule || cur.includes(activeRule)) return g
+        cells[key] = [...cur, activeRule]                   // layer the active type onto the cell
+      } else {
+        if (!activeRule || !cur.includes(activeRule)) return g
+        const next = cur.filter(x => x !== activeRule)      // remove just the active type
+        if (next.length) cells[key] = next; else delete cells[key]
+      }
       return { ...g, cells }
     })
   }
@@ -185,19 +214,28 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const changeCols = (cols: number) => {
     const aspectW = calib?.w ?? nat?.w ?? 16, aspectH = calib?.h ?? nat?.h ?? 9
     const rows = Math.max(4, Math.round((cols * aspectH) / aspectW))
-    const cells: Record<string, string> = {}
-    for (const [key, rule] of Object.entries(grid.cells)) {
+    const cells: Record<string, string[]> = {}
+    for (const [key, ids] of Object.entries(grid.cells)) {
       const [c, r] = key.split(',').map(Number)
       const nc = Math.min(cols - 1, Math.floor(((c + 0.5) / grid.cols) * cols))
       const nr = Math.min(rows - 1, Math.floor(((r + 0.5) / grid.rows) * rows))
-      cells[`${nc},${nr}`] = rule
+      const k = `${nc},${nr}`
+      cells[k] = [...new Set([...(cells[k] || []), ...ids])]
     }
     const next = { cols, rows, cells }; setGrid(next); saveGrid(next)
   }
   const clearGrid = () => { const next = { ...grid, cells: {} }; setGrid(next); saveGrid(next) }
 
   const onDown = (e: React.MouseEvent) => {
-    if (mode === 'grid') { paintingRef.current = true; paintAt(e); return }
+    if (mode === 'grid') {
+      paintingRef.current = true
+      const [c, r] = cellAt(e)
+      const cur = grid.cells[`${c},${r}`] || []
+      // Decide the drag action from the first cell so dragging paints (or unpaints) consistently.
+      paintModeRef.current = activeRule == null ? 'clear' : cur.includes(activeRule) ? 'remove' : 'add'
+      paintAt(e)
+      return
+    }
     if (!nat) return
     const [x, y] = toOriginal(e)
     if (drawing) { setDrawing([...drawing, [x, y]]); return }
@@ -324,10 +362,10 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
           )}
           {mode === 'grid' && (
             <div className="flex flex-col gap-2 mt-2">
-              <div className="text-theme-xs text-theme-text-muted">בחר סוג עבירה (צבע) וצבע על הריבועים בגרירה. בחר "מחק" כדי לנקות ריבוע. השמירה אוטומטית.</div>
+              <div className="text-theme-xs text-theme-text-muted">בחר סוג עבירה (צבע) וצבע על הריבועים בגרירה. אפשר לצבוע כמה סוגים על אותו ריבוע (מוצגים כפסים) — צביעה חוזרת עם אותו סוג מסירה אותו. בחר "מחק" לניקוי ריבוע. השמירה אוטומטית.</div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {rules.map(r => {
-                  const count = Object.values(grid.cells).filter(v => v === r.id).length
+                  const count = Object.values(grid.cells).filter(v => v.includes(r.id)).length
                   return (
                     <button key={r.id} type="button" onClick={() => setActiveRule(r.id)} title={r.label}
                       className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs max-w-[180px] ${activeRule === r.id ? 'ring-2 ring-theme-accent' : ''}`}

@@ -12,12 +12,23 @@ const COLORS = ['#ef4444', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899'
 const DISPLAY_W = 720
 
 type Pt = [number, number]
-type GridState = { cols: number; rows: number; cells: Record<string, string> }
+// A cell maps to a list of violation rule-ids (0/1/many painted on the same square).
+type GridState = { cols: number; rows: number; cells: Record<string, string[]> }
 interface Section {
   id: number
   label: string
   violation_rule_ids?: string[] | null
   polygon_json?: Pt[] | null
+}
+
+// Cells may load in the legacy single-string shape; normalize every cell to a rule-id array.
+function normalizeCells(cells: Record<string, string | string[]> | undefined | null): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  for (const [k, v] of Object.entries(cells || {})) {
+    const arr = Array.isArray(v) ? v.filter(Boolean) : v ? [v] : []
+    if (arr.length) out[k] = arr
+  }
+  return out
 }
 
 export default function CameraZoneView({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string; title?: string }[] }) {
@@ -48,8 +59,8 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
         const cam = camRes.data
         setCalib(cam.calibration_width ? { w: cam.calibration_width, h: cam.calibration_height } : null)
         setSections((segs as Section[]).map(s => ({ ...s, polygon_json: (s.polygon_json as Pt[]) || [] })))
-        const zg = cam.zone_grid as GridState | null | undefined
-        setGrid(zg && zg.cells && Object.keys(zg.cells).length ? zg : null)
+        const zg = cam.zone_grid as { cols: number; rows: number; cells: Record<string, string | string[]> } | null | undefined
+        setGrid(zg && zg.cells && Object.keys(zg.cells).length ? { cols: zg.cols, rows: zg.rows, cells: normalizeCells(zg.cells) } : null)
         loadImage()
       } catch { setMsg('שגיאה בטעינה') }
     })()
@@ -68,10 +79,15 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
     // Grid painted cells (colored by violation rule)
     if (grid) {
       const cw = canvas.width / grid.cols, ch = canvas.height / grid.rows
-      for (const [key, ruleId] of Object.entries(grid.cells)) {
+      for (const [key, ids] of Object.entries(grid.cells)) {
         const [c, r] = key.split(',').map(Number)
-        ctx.fillStyle = ruleColor(ruleId) + 'aa'
-        ctx.fillRect(c * cw, r * ch, cw, ch)
+        const n = ids.length
+        if (!n) continue
+        // One vertical stripe per violation type painted on the cell.
+        ids.forEach((rid, i) => {
+          ctx.fillStyle = ruleColor(rid) + 'aa'
+          ctx.fillRect(c * cw + (i * cw) / n, r * ch, cw / n + 0.5, ch)
+        })
       }
     }
 
@@ -95,7 +111,7 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
   }, [sections, grid, nat])
 
   const usedRules = new Set<string>()
-  if (grid) Object.values(grid.cells).forEach(r => usedRules.add(r))
+  if (grid) Object.values(grid.cells).forEach(ids => ids.forEach(r => usedRules.add(r)))
   const resMismatch = nat && calib && (nat.w !== calib.w || nat.h !== calib.h)
 
   return (
@@ -125,7 +141,7 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
             <div className="text-theme-xs font-semibold mb-1">רשת — סוגי עבירה</div>
             <div className="flex flex-col gap-1">
               {[...usedRules].map(rid => {
-                const count = Object.values(grid.cells).filter(v => v === rid).length
+                const count = Object.values(grid.cells).filter(v => v.includes(rid)).length
                 return (
                   <div key={rid} className="flex items-center gap-1 text-theme-xs" title={rules.find(r => r.id === rid)?.label || rid}>
                     <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: ruleColor(rid) }} />
