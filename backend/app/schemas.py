@@ -105,7 +105,7 @@ class InspectorBase(BaseModel):
     badge_number: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
-    role: str = "inspector"            # "inspector" | "supervisor"
+    role: str = "inspector"            # "inspector" (פקח) only
     is_active: bool = True
 
 

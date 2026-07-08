@@ -152,7 +152,7 @@ class Inspector(Base):
     badge_number = Column(String(40), nullable=True)
     phone = Column(String(40), nullable=True)
     email = Column(String(120), nullable=True)
-    role = Column(String(20), default="inspector", nullable=False)  # inspector | supervisor
+    role = Column(String(20), default="inspector", nullable=False)  # inspector (פקח) only
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

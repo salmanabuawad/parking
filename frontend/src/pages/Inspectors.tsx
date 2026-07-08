@@ -41,7 +41,7 @@ export default function Inspectors() {
       if (editing) {
         const payload: any = {
           full_name: form.full_name, badge_number: form.badge_number, phone: form.phone,
-          email: form.email, role: form.role, is_active: form.is_active,
+          email: form.email, role: 'inspector', is_active: form.is_active,
         }
         if (form.password) payload.password = form.password
         await inspectorsApi.update(editing.id, payload)
@@ -49,7 +49,7 @@ export default function Inspectors() {
         await inspectorsApi.create({
           username: form.username, password: form.password, full_name: form.full_name,
           badge_number: form.badge_number, phone: form.phone, email: form.email,
-          role: form.role, is_active: form.is_active,
+          role: 'inspector', is_active: form.is_active,
         })
       }
       startAdd(); load()
@@ -101,13 +101,6 @@ export default function Inspectors() {
               <label className="label-base">דוא"ל</label>
               <input className="input-base" value={form.email || ''} onChange={e => setForm({ ...form, email: e.target.value })} />
             </div>
-            <div>
-              <label className="label-base">תפקיד</label>
-              <select className="input-base" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                <option value="inspector">פקח</option>
-                <option value="supervisor">מפקח</option>
-              </select>
-            </div>
             <label className="flex items-center gap-2 text-theme-sm text-theme-text-primary">
               <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> פעיל
             </label>
@@ -127,7 +120,7 @@ export default function Inspectors() {
             <table className="w-full text-theme-sm">
               <thead>
                 <tr className="text-theme-text-muted border-b border-theme-card-border text-right">
-                  <th className="py-2">שם מלא</th><th>שם משתמש</th><th>תג</th><th>תפקיד</th><th>סטטוס</th><th></th>
+                  <th className="py-2">שם מלא</th><th>שם משתמש</th><th>תג</th><th>סטטוס</th><th></th>
                 </tr>
               </thead>
               <tbody>
@@ -136,7 +129,6 @@ export default function Inspectors() {
                     <td className="py-2 text-theme-text-primary">{i.full_name}</td>
                     <td>{i.username}</td>
                     <td>{i.badge_number || '—'}</td>
-                    <td>{i.role === 'supervisor' ? 'מפקח' : 'פקח'}</td>
                     <td>{i.is_active ? <span className="badge badge-success">פעיל</span> : <span className="badge badge-neutral">לא פעיל</span>}</td>
                     <td className="text-left whitespace-nowrap">
                       <button onClick={() => startEdit(i)} className="btn-icon" title="עריכה"><Pencil className="w-4 h-4" /></button>
@@ -144,7 +136,7 @@ export default function Inspectors() {
                     </td>
                   </tr>
                 ))}
-                {list.length === 0 && <tr><td colSpan={6} className="text-center py-6 text-theme-text-muted">אין פקחים</td></tr>}
+                {list.length === 0 && <tr><td colSpan={5} className="text-center py-6 text-theme-text-muted">אין פקחים</td></tr>}
               </tbody>
             </table>
           )}
