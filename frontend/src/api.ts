@@ -239,6 +239,12 @@ export const camerasApi = {
   snapshotUrl(id: number): string {
     return `${API_BASE.replace(/\/$/, "")}/api/cameras/${id}/snapshot`;
   },
+  // The snapshot endpoint requires auth, which a plain <img src> can't send — fetch it with the
+  // Authorization header and hand back a same-origin object URL the <img>/canvas can use untainted.
+  async snapshotObjectUrl(id: number): Promise<string> {
+    const blob = await fetchBlob(`/cameras/${id}/snapshot?t=${Date.now()}`);
+    return URL.createObjectURL(blob);
+  },
   setSnapshot(id: number, file: File): Promise<any> {
     const fd = new FormData();
     fd.append("file", file);

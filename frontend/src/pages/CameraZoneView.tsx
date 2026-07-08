@@ -34,6 +34,7 @@ function normalizeCells(cells: Record<string, string | string[]> | undefined | n
 export default function CameraZoneView({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string; title?: string }[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
+  const objUrlRef = useRef<string | null>(null)
   const [sections, setSections] = useState<Section[]>([])
   const [grid, setGrid] = useState<GridState | null>(null)
   const [nat, setNat] = useState<{ w: number; h: number } | null>(null)
@@ -45,12 +46,19 @@ export default function CameraZoneView({ cameraId, rules }: { cameraId: number; 
     return i >= 0 ? COLORS[i % COLORS.length] : '#64748b'
   }
 
-  const loadImage = useCallback(() => {
-    const img = new Image()
-    img.onload = () => { imgRef.current = img; setNat({ w: img.naturalWidth, h: img.naturalHeight }); setMsg(null) }
-    img.onerror = () => { imgRef.current = null; setNat(null); setMsg('אין תמונת מצלמה — הגדר תמונת כיול במסך העריכה') }
-    img.src = camerasApi.snapshotUrl(cameraId) + `?t=${Date.now()}`
+  const loadImage = useCallback(async () => {
+    const fail = () => { imgRef.current = null; setNat(null); setMsg('אין תמונת מצלמה — הגדר תמונת כיול במסך העריכה') }
+    try {
+      const url = await camerasApi.snapshotObjectUrl(cameraId)   // fetched with auth (img tags can't)
+      if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current)
+      objUrlRef.current = url
+      const img = new Image()
+      img.onload = () => { imgRef.current = img; setNat({ w: img.naturalWidth, h: img.naturalHeight }); setMsg(null) }
+      img.onerror = fail
+      img.src = url
+    } catch { fail() }
   }, [cameraId])
+  useEffect(() => () => { if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current) }, [])
 
   useEffect(() => {
     (async () => {

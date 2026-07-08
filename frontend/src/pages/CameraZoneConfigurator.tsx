@@ -45,6 +45,7 @@ function pointInPoly(p: Pt, poly: Pt[]): boolean {
 export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: number; rules: { id: string; label: string; title?: string }[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement | null>(null)
+  const objUrlRef = useRef<string | null>(null)
   const imgFileRef = useRef<HTMLInputElement>(null)
   const vidFileRef = useRef<HTMLInputElement>(null)
   const dragRef = useRef<{ idx: number } | null>(null)
@@ -72,12 +73,19 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     return i >= 0 ? COLORS[i % COLORS.length] : '#64748b'
   }
 
-  const loadImage = useCallback(() => {
-    const img = new Image()
-    img.onload = () => { imgRef.current = img; setNat({ w: img.naturalWidth, h: img.naturalHeight }); setMsg(null) }
-    img.onerror = () => { imgRef.current = null; setNat(null); setMsg('אין תמונת מצלמה — העלה תמונה/וידאו או צלם מ-RTSP') }
-    img.src = camerasApi.snapshotUrl(cameraId) + `?t=${Date.now()}`
+  const noImg = () => { imgRef.current = null; setNat(null); setMsg('אין תמונת מצלמה — העלה תמונה/וידאו או צלם מ-RTSP') }
+  const loadImage = useCallback(async () => {
+    try {
+      const url = await camerasApi.snapshotObjectUrl(cameraId)   // fetched with auth (img tags can't)
+      if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current)
+      objUrlRef.current = url
+      const img = new Image()
+      img.onload = () => { imgRef.current = img; setNat({ w: img.naturalWidth, h: img.naturalHeight }); setMsg(null) }
+      img.onerror = noImg
+      img.src = url
+    } catch { noImg() }
   }, [cameraId])
+  useEffect(() => () => { if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current) }, [])
 
   const load = useCallback(async () => {
     try {
