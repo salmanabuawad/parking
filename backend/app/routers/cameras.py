@@ -7,6 +7,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 
 from app.config import settings
+from app.auth import get_current_user
 from app.dependencies import get_camera_repo, get_camera_video_repo
 from app.repositories import CameraRepository, CameraVideoRepository
 from app.schemas import CameraCreate, CameraUpdate, CameraResponse
@@ -22,6 +23,7 @@ _blurred_cache: Dict[int, bytes] = {}
 def list_cameras(
     active_only: bool = False,
     camera_repo: CameraRepository = Depends(get_camera_repo),
+    _=Depends(get_current_user),
 ):
     """List all cameras. Use ?active_only=true to filter active only."""
     return camera_repo.get_all(active_only=active_only)
@@ -33,6 +35,7 @@ def get_camera_video(
     refresh: bool = False,
     camera_repo: CameraRepository = Depends(get_camera_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    _=Depends(get_current_user),
 ):
     """Stream blurred video from DB for this camera. Use ?refresh=1 to force reprocess."""
     global _blurred_cache
@@ -58,7 +61,7 @@ def get_camera_video(
 
 
 @router.get("/{camera_id}/snapshot")
-def get_camera_snapshot(camera_id: int, camera_repo: CameraRepository = Depends(get_camera_repo)):
+def get_camera_snapshot(camera_id: int, camera_repo: CameraRepository = Depends(get_camera_repo), _=Depends(get_current_user)):
     """Return the camera's calibration snapshot JPEG (saved frame; else a live RTSP grab)."""
     cam = camera_repo.get(camera_id)
     if not cam:
@@ -86,6 +89,7 @@ async def set_camera_snapshot(
     camera_id: int,
     file: Optional[UploadFile] = File(None),
     camera_repo: CameraRepository = Depends(get_camera_repo),
+    _=Depends(get_current_user),
 ):
     """Set the calibration snapshot from an uploaded image, an uploaded video (one frame extracted),
     or a live RTSP grab (no file). Saves the JPEG + records its pixel resolution."""
@@ -138,7 +142,7 @@ async def set_camera_snapshot(
 
 
 @router.get("/{camera_id}", response_model=CameraResponse)
-def get_camera(camera_id: int, camera_repo: CameraRepository = Depends(get_camera_repo)):
+def get_camera(camera_id: int, camera_repo: CameraRepository = Depends(get_camera_repo), _=Depends(get_current_user)):
     """Get a camera by ID."""
     cam = camera_repo.get(camera_id)
     if not cam:
@@ -150,6 +154,7 @@ def get_camera(camera_id: int, camera_repo: CameraRepository = Depends(get_camer
 def create_camera(
     data: CameraCreate,
     camera_repo: CameraRepository = Depends(get_camera_repo),
+    _=Depends(get_current_user),
 ):
     """Add a new camera. Connection config examples:
     - IP: {"ip": "192.168.1.100", "port": 554}
@@ -165,7 +170,8 @@ def create_camera(
 class ZoneGridIn(BaseModel):
     cols: int
     rows: int
-    cells: dict[str, str] = {}   # "c,r" -> violation rule_id (color); sparse (only painted cells)
+    # "c,r" -> list of violation rule_ids painted on that cell (0/1/many). Sparse (only painted cells).
+    cells: dict[str, list[str]] = {}
 
 
 @router.put("/{camera_id}/zone-grid", response_model=CameraResponse)
@@ -173,16 +179,22 @@ def set_zone_grid(
     camera_id: int,
     payload: ZoneGridIn,
     camera_repo: CameraRepository = Depends(get_camera_repo),
+    _=Depends(get_current_user),
 ):
-    """Save the grid zone-map — image cells painted with a violation type. Stored as
-    {cols, rows, cells:{"c,r": rule_id}}; a car's position maps to a cell → its violation type.
-    Empty cell values are dropped so the map stays sparse."""
+    """Save the grid zone-map — image cells painted with violation types. Stored as
+    {cols, rows, cells:{"c,r": [rule_id, ...]}}; a car's position maps to a cell → its violation
+    type(s). A cell may carry several types. Empty cells are dropped and ids de-duped so the map
+    stays sparse."""
     cam = camera_repo.get(camera_id)
     if not cam:
         raise HTTPException(status_code=404, detail="Camera not found")
     cols = max(1, min(200, int(payload.cols)))
     rows = max(1, min(200, int(payload.rows)))
-    cells = {k: v for k, v in (payload.cells or {}).items() if v}
+    cells: dict[str, list[str]] = {}
+    for key, ids in (payload.cells or {}).items():
+        deduped = list(dict.fromkeys(rid for rid in (ids or []) if rid))
+        if deduped:
+            cells[key] = deduped
     return camera_repo.update(camera_id, zone_grid={"cols": cols, "rows": rows, "cells": cells})
 
 
@@ -191,6 +203,7 @@ def update_camera(
     camera_id: int,
     data: CameraUpdate,
     camera_repo: CameraRepository = Depends(get_camera_repo),
+    _=Depends(get_current_user),
 ):
     """Update camera config."""
     cam = camera_repo.update(camera_id, **data.model_dump(exclude_unset=True))
@@ -200,7 +213,7 @@ def update_camera(
 
 
 @router.delete("/{camera_id}", status_code=204)
-def delete_camera(camera_id: int, camera_repo: CameraRepository = Depends(get_camera_repo)):
+def delete_camera(camera_id: int, camera_repo: CameraRepository = Depends(get_camera_repo), _=Depends(get_current_user)):
     """Remove a camera."""
     if not camera_repo.delete(camera_id):
         raise HTTPException(status_code=404, detail="Camera not found")

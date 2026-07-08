@@ -60,8 +60,9 @@ class Camera(Base):
     snapshot_path = Column(String(255), nullable=True)     # saved calibration frame (videos/snapshots/...)
     calibration_width = Column(Integer, nullable=True)     # snapshot resolution; polygons are stored in these px
     calibration_height = Column(Integer, nullable=True)
-    # Grid zone-map: paint image cells with a violation type (color). Shape:
-    # {"cols": N, "rows": M, "cells": {"c,r": "RULE_ID", ...}}. A car's position → cell → violation type.
+    # Grid zone-map: paint image cells with violation types (colors). Shape:
+    # {"cols": N, "rows": M, "cells": {"c,r": ["RULE_ID", ...], ...}}. A car's position → cell →
+    # its violation type(s); a cell may carry 0, 1 or many types.
     zone_grid = Column(JSON, nullable=True)
     # Geographic placement (WGS84) for the cameras map view
     latitude = Column(Float, nullable=True)
@@ -344,7 +345,12 @@ class AppConfig(Base):
     # --- Enforcement / system settings (editable from UI) ---
     violation_dwell_seconds = Column(Integer, default=300, nullable=False)    # standing time that counts as a violation
     required_video_seconds = Column(Integer, default=10, nullable=False)      # required clip length for a valid report
-    video_retention_days = Column(Integer, default=90, nullable=False)        # how long processed videos are kept
+    evidence_video_pre_seconds = Column(Integer, default=5, nullable=False)   # seconds before violation window
+    evidence_video_post_seconds = Column(Integer, default=5, nullable=False)  # seconds after violation window
+    video_retention_days = Column(Integer, default=90, nullable=False)        # legacy processed video retention
+    original_video_retention_days = Column(Integer, default=180, nullable=False)
+    processed_video_retention_days = Column(Integer, default=90, nullable=False)
+    ticket_candidate_retention_days = Column(Integer, default=365, nullable=False)
     video_timestamp_overlay = Column(Boolean, default=True, nullable=False)   # burn a real-time clock into result videos
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
