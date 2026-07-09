@@ -502,7 +502,7 @@ export default function TicketReview() {
                       {ticket.license_plate}
                     </span>
                     {ticket.plate_detection_reason && (
-                      <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason)}>
+                      <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason) || undefined}>
                         ⚠ {displayPlateReason(ticket.plate_detection_reason)}
                       </div>
                     )}
@@ -511,7 +511,7 @@ export default function TicketReview() {
                   <div>
                     <span className="font-semibold text-red-600">לא זוהה</span>
                     {ticket.plate_detection_reason && (
-                      <div className="text-theme-xs text-theme-text-muted mt-1 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason)}>{displayPlateReason(ticket.plate_detection_reason)}</div>
+                      <div className="text-theme-xs text-theme-text-muted mt-1 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason) || undefined}>{displayPlateReason(ticket.plate_detection_reason)}</div>
                     )}
                   </div>
                 )}

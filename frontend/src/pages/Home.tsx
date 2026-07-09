@@ -190,7 +190,6 @@ export default function Home() {
               rowHeight={46}
               defaultColDef={DEFAULT_COL_DEF}
               overlayNoRowsTemplate={emptyOverlay(he.home.empty)}
-              style={{ width: '100%', height: '100%' }}
             />
           </div>
         )}

@@ -186,7 +186,6 @@ export default function Tickets() {
             rowHeight={48}
             defaultColDef={DEFAULT_COL_DEF}
             overlayNoRowsTemplate={emptyOverlay('אין דוחות להצגה')}
-            style={{ width: '100%', height: '100%' }}
           />
         </div>
       )}

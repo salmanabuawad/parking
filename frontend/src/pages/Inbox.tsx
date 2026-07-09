@@ -79,7 +79,6 @@ export default function Inbox() {
             rowHeight={48}
             defaultColDef={DEFAULT_COL_DEF}
             overlayNoRowsTemplate={emptyOverlay('אין דוחות בתיבה')}
-            style={{ width: '100%', height: '100%' }}
           />
         </div>
       )}

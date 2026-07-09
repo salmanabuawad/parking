@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, Form
 logger = logging.getLogger(__name__)
 
 from app.config import settings
+from app.auth import get_current_user
 from app.dependencies import get_upload_job_repo
 from app.repositories import UploadJobRepository
 
@@ -86,6 +87,7 @@ async def upload_violation(
 def list_jobs(
     limit: int = 50,
     job_repo: UploadJobRepository = Depends(get_upload_job_repo),
+    _=Depends(get_current_user),
 ):
     """List recent upload jobs (newest first). Includes source, target for maintenance."""
     jobs = job_repo.list_recent(limit=limit)
@@ -108,6 +110,7 @@ def list_jobs(
 def reset_stuck_jobs(
     stuck_minutes: int = 5,
     job_repo: UploadJobRepository = Depends(get_upload_job_repo),
+    _=Depends(get_current_user),
 ):
     """Reset jobs stuck in 'processing' (worker crashed) back to queued. Use stuck_minutes=0 for immediate reset."""
     count = job_repo.reset_stuck_processing(stuck_minutes=stuck_minutes)
@@ -118,6 +121,7 @@ def reset_stuck_jobs(
 def rerun_job(
     job_id: int,
     job_repo: UploadJobRepository = Depends(get_upload_job_repo),
+    _=Depends(get_current_user),
 ):
     """Reset job to queued so worker reprocesses it. Works for failed/completed jobs."""
     job = job_repo.get(job_id)
@@ -149,6 +153,7 @@ def get_job_status(
 def reset_stuck_alias(
     stuck_minutes: int = 5,
     job_repo: UploadJobRepository = Depends(get_upload_job_repo),
+    _=Depends(get_current_user),
 ):
     count = job_repo.reset_stuck_processing(stuck_minutes=stuck_minutes)
     return {"reset_count": count, "message": f"Reset {count} stuck job(s) to queued"}

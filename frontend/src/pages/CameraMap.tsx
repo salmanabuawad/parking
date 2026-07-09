@@ -7,7 +7,7 @@ import rtlTextUrl from '@mapbox/mapbox-gl-rtl-text/mapbox-gl-rtl-text.min.js?url
 // reversed. Register the RTL-text plugin once (module load) so map labels read correctly.
 try {
   if ((maplibregl as any).getRTLTextPluginStatus?.() === 'unavailable') {
-    maplibregl.setRTLTextPlugin(rtlTextUrl, () => {}, true)
+    maplibregl.setRTLTextPlugin(rtlTextUrl, true)
   }
 } catch { /* already registered */ }
 

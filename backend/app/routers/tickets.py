@@ -65,6 +65,8 @@ def _ticket_dict(t) -> dict:
         # Violation window (auto-filled, inspector-editable)
         "violation_start_at": t.violation_start_at.isoformat() if getattr(t, "violation_start_at", None) else None,
         "violation_end_at": t.violation_end_at.isoformat() if getattr(t, "violation_end_at", None) else None,
+        "violation_started_at": t.violation_start_at.isoformat() if getattr(t, "violation_start_at", None) else None,
+        "violation_ended_at": t.violation_end_at.isoformat() if getattr(t, "violation_end_at", None) else None,
         # Inspector approval
         "approved_by_inspector_id": getattr(t, "approved_by_inspector_id", None),
         "assigned_inspector_id": getattr(t, "assigned_inspector_id", None),
@@ -90,21 +92,12 @@ def _ticket_dict(t) -> dict:
     }
 
 
-@router.get("")
-def list_tickets(
-    status: Optional[str] = None,
-    ticket_repo: TicketRepository = Depends(get_ticket_repo),
-):
-    tickets = ticket_repo.list_all()
-    if status:
-        tickets = [t for t in tickets if t.status == status]
-    return [_ticket_dict(t) for t in tickets]
-
 
 @router.get("/{ticket_id}/detail")
 def get_ticket_detail(
     ticket_id: int,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -206,6 +199,7 @@ def get_ticket_video(
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
     upload_job_repo: Optional[UploadJobRepository] = Depends(get_upload_job_repo),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -255,6 +249,7 @@ def get_ticket_raw_video(
     ticket_id: int,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -275,6 +270,7 @@ def get_ticket_raw_video(
 def get_ticket_original_video(
     ticket_id: int,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -297,6 +293,7 @@ def reprocess_ticket_video(
     db=Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     video_repo: CameraVideoRepository = Depends(get_camera_video_repo),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -343,23 +340,12 @@ def list_tickets(
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     _=Depends(get_current_user),
 ):
+    """Authenticated ticket list. One implementation only; includes review/workflow fields."""
     all_tickets = ticket_repo.list_all()
     if status:
-        all_tickets = [t for t in all_tickets if t.status == status]
-    return [
-        {
-            "id": t.id,
-            "license_plate": t.license_plate,
-            "status": t.status,
-            "location": t.location,
-            "violation_zone": t.violation_zone,
-            "captured_at": t.captured_at.isoformat() if t.captured_at else None,
-            "created_at": t.created_at.isoformat() if t.created_at else None,
-            "description": t.description,
-            "fine_amount": t.fine_amount,
-        }
-        for t in all_tickets
-    ]
+        all_tickets = [t for t in all_tickets if t.status == status or getattr(t, "review_status", None) == status]
+    return [_ticket_dict(t) for t in all_tickets]
+
 
 
 @router.patch("/{ticket_id}")
@@ -368,6 +354,7 @@ def update_ticket(
     payload: dict,
     db=Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
 ):
     """Update ticket status, fine, admin notes, or license plate. Used for approve/reject/edit."""
     from datetime import datetime, timezone
@@ -524,6 +511,7 @@ def list_screenshots(
     ticket_id: int,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     db=Depends(get_db),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
@@ -553,6 +541,7 @@ def get_screenshot_image(
     screenshot_id: int,
     db=Depends(get_db),
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
 ):
     ticket = ticket_repo.get(ticket_id)
     if not ticket:

@@ -124,6 +124,18 @@ RULES = [
         "description_en": "Red circular sign with one diagonal bar (no parking). Brief stops allowed, but leaving the vehicle is prohibited.",
         "fine_ils": 750,
     },
+    {
+        "rule_id": "IL-STATIC-016",
+        "title_he": "שני גלגלים על המדרכה",
+        "title_en": "Two wheels on sidewalk",
+        "legal_basis_he": "חניה כאשר שני גלגלים או יותר נמצאים על המדרכה או בשטח הולכי רגל, לפי הוראות התמרור/חוק העזר המקומי.",
+        "legal_basis_en": "Parking with two or more wheels on the sidewalk or pedestrian area, according to signage/municipal bylaw.",
+        "description_he": "הרכב חונה כך ששני גלגלים נמצאים על המדרכה. יש להציג תמונה כללית, מספר רכב ברור, תחילת עבירה וסיום עבירה.",
+        "description_en": "Vehicle parked with two wheels on the sidewalk. Requires context image, clear plate image, violation start and end evidence.",
+        "fine_ils": 500,
+        "default_min_stay_seconds": 30,
+        "default_evidence_video_seconds": 20,
+    },
 ]
 
 

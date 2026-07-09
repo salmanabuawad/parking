@@ -110,9 +110,8 @@ def update_ticket_by_inspector(
     if data.get("approve") is True:
         # Resolve the 4 role-tagged evidence screenshots to the ticket FK columns (#7.4), then gate.
         _resolve_evidence_screenshots(db, ticket)
-        from app.config import settings
-        if getattr(settings, "require_evidence_images", False):
-            validate_ticket_before_approval(ticket)
+        # Requirement #7.4: approval always requires the four evidence images.
+        validate_ticket_before_approval(ticket)
         now = datetime.now(timezone.utc)
         ticket.inspector_decision = "approved"
         ticket.review_status = "approved"

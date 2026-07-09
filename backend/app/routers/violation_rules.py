@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
+from app.auth import get_current_user
 from app.models import ViolationRule
 
 router = APIRouter(prefix="/violation-rules", tags=["violation-rules"])
@@ -28,6 +29,13 @@ class ViolationRuleResponse(BaseModel):
     legal_basis_he: Optional[str] = None
     legal_basis_en: Optional[str] = None
     fine_ils: Optional[int] = None
+    default_min_stay_seconds: int = 30
+    default_evidence_video_seconds: int = 20
+    requires_start_image: bool = True
+    requires_end_image: bool = True
+    requires_clear_plate_image: bool = True
+    requires_context_image: bool = True
+    requires_continuous_video: bool = True
     is_active: bool
 
     class Config:
@@ -42,17 +50,24 @@ class ViolationRuleUpdate(BaseModel):
     legal_basis_he: Optional[str] = None
     legal_basis_en: Optional[str] = None
     fine_ils: Optional[int] = None
+    default_min_stay_seconds: Optional[int] = None
+    default_evidence_video_seconds: Optional[int] = None
+    requires_start_image: Optional[bool] = None
+    requires_end_image: Optional[bool] = None
+    requires_clear_plate_image: Optional[bool] = None
+    requires_context_image: Optional[bool] = None
+    requires_continuous_video: Optional[bool] = None
     is_active: Optional[bool] = None
 
 
 @router.get("", response_model=List[ViolationRuleResponse])
-def list_rules(db: Session = Depends(get_db)):
+def list_rules(db: Session = Depends(get_db), _=Depends(get_current_user)):
     """List all violation rules (active and inactive)."""
     return db.query(ViolationRule).order_by(ViolationRule.rule_id).all()
 
 
 @router.patch("/{rule_id}", response_model=ViolationRuleResponse)
-def update_rule(rule_id: str, payload: ViolationRuleUpdate, db: Session = Depends(get_db)):
+def update_rule(rule_id: str, payload: ViolationRuleUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Update a violation rule (e.g. toggle is_active, change fine amount)."""
     rule = db.query(ViolationRule).filter(ViolationRule.rule_id == rule_id).first()
     if not rule:

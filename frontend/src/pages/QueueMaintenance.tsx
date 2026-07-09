@@ -245,7 +245,6 @@ export default function QueueMaintenance() {
             rowHeight={48}
             defaultColDef={DEFAULT_COL_DEF}
             overlayNoRowsTemplate={emptyOverlay('אין עבודות בתור')}
-            style={{ width: '100%', height: '100%' }}
           />
         </div>
       )}
