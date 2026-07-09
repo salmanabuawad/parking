@@ -53,9 +53,7 @@ interface Camera {
   longitude?: number | null
   status?: string | null
   city?: string | null
-  active_days?: string[] | null
-  active_from_time?: string | null
-  active_to_time?: string | null
+  active_schedule?: Record<string, { from?: string; to?: string }> | null
 }
 
 interface CameraForm {
@@ -76,9 +74,7 @@ interface CameraForm {
   simulation_source: string
   latitude: string
   longitude: string
-  active_days: string[]
-  active_from_time: string
-  active_to_time: string
+  active_schedule: Record<string, { from: string; to: string }>
 }
 
 interface ParkingZone {
@@ -103,7 +99,7 @@ const EMPTY_FORM: CameraForm = {
   violation_rules: [], selected_zone_ids: [], assigned_inspector_id: null,
   source_type: 'uploaded_image', rtsp_url: '', simulation_source: '',
   latitude: '', longitude: '',
-  active_days: [], active_from_time: '', active_to_time: '',
+  active_schedule: {},
 }
 
 export default function Cameras() {
@@ -179,9 +175,17 @@ export default function Cameras() {
   }
 
   const toggleDay = (key: string) => {
+    setForm(f => {
+      const sched = { ...f.active_schedule }
+      if (key in sched) delete sched[key]
+      else sched[key] = { from: '', to: '' }
+      return { ...f, active_schedule: sched }
+    })
+  }
+  const setDayTime = (key: string, which: 'from' | 'to', val: string) => {
     setForm(f => ({
       ...f,
-      active_days: f.active_days.includes(key) ? f.active_days.filter(d => d !== key) : [...f.active_days, key],
+      active_schedule: { ...f.active_schedule, [key]: { ...(f.active_schedule[key] || { from: '', to: '' }), [which]: val } },
     }))
   }
 
@@ -201,9 +205,9 @@ export default function Cameras() {
       simulation_source: (c.connection_config?.simulation_source as string) || '',
       latitude: c.latitude != null ? String(c.latitude) : '',
       longitude: c.longitude != null ? String(c.longitude) : '',
-      active_days: c.active_days || [],
-      active_from_time: c.active_from_time || '',
-      active_to_time: c.active_to_time || '',
+      active_schedule: Object.fromEntries(
+        Object.entries(c.active_schedule || {}).map(([k, v]) => [k, { from: v?.from || '', to: v?.to || '' }])
+      ),
     })
     setTab('general')
     setModalOpen(true)
@@ -229,9 +233,7 @@ export default function Cameras() {
         violation_zone: null,
         latitude: lat,
         longitude: lng,
-        active_days: form.active_days.length ? form.active_days : null,
-        active_from_time: form.active_from_time || null,
-        active_to_time: form.active_to_time || null,
+        active_schedule: Object.keys(form.active_schedule).length ? form.active_schedule : null,
       }
       let camId: number
       if (editing) { await camerasApi.update(editing.id, payload); camId = editing.id }
@@ -348,7 +350,6 @@ export default function Cameras() {
               rowHeight={46}
               defaultColDef={DEFAULT_COL_DEF}
               overlayNoRowsTemplate={emptyOverlay(t('noCameras'))}
-              style={{ width: '100%', height: '100%' }}
             />
           </div>
         )}
@@ -444,26 +445,35 @@ export default function Cameras() {
                     </div>
                     <div>
                       <label className="label-base">ימי ושעות פעילות</label>
-                      <div className="flex flex-wrap gap-1.5 mb-2">
-                        {DAYS.map(d => (
-                          <button
-                            key={d.key}
-                            type="button"
-                            onClick={() => toggleDay(d.key)}
-                            aria-pressed={form.active_days.includes(d.key)}
-                            className={`w-9 h-9 rounded-md border text-theme-sm font-medium transition-colors ${form.active_days.includes(d.key) ? 'bg-theme-accent text-white border-theme-accent' : 'bg-white text-theme-text-primary border-theme-card-border hover:bg-black/5'}`}
-                          >
-                            {d.label}
-                          </button>
-                        ))}
+                      <div className="flex flex-col gap-1.5">
+                        {DAYS.map(d => {
+                          const on = d.key in form.active_schedule
+                          const hrs = form.active_schedule[d.key] || { from: '', to: '' }
+                          return (
+                            <div key={d.key} className="flex items-center gap-2 flex-wrap">
+                              <button
+                                type="button"
+                                onClick={() => toggleDay(d.key)}
+                                aria-pressed={on}
+                                className={`w-9 h-9 rounded-md border text-theme-sm font-medium shrink-0 transition-colors ${on ? 'bg-theme-accent text-white border-theme-accent' : 'bg-white text-theme-text-primary border-theme-card-border hover:bg-black/5'}`}
+                              >
+                                {d.label}
+                              </button>
+                              {on ? (
+                                <>
+                                  <span className="text-theme-sm text-theme-text-muted">משעה</span>
+                                  <input type="time" value={hrs.from} onChange={e => setDayTime(d.key, 'from', e.target.value)} className="input-base w-32" />
+                                  <span className="text-theme-sm text-theme-text-muted">עד</span>
+                                  <input type="time" value={hrs.to} onChange={e => setDayTime(d.key, 'to', e.target.value)} className="input-base w-32" />
+                                </>
+                              ) : (
+                                <span className="text-theme-xs text-theme-text-muted">לא פעיל</span>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-theme-sm text-theme-text-muted">משעה</span>
-                        <input type="time" value={form.active_from_time} onChange={e => setForm({ ...form, active_from_time: e.target.value })} className="input-base w-32" />
-                        <span className="text-theme-sm text-theme-text-muted">עד שעה</span>
-                        <input type="time" value={form.active_to_time} onChange={e => setForm({ ...form, active_to_time: e.target.value })} className="input-base w-32" />
-                      </div>
-                      <p className="text-theme-xs text-theme-text-muted mt-1">השאר ריק לפעילות בכל הימים / כל השעות</p>
+                      <p className="text-theme-xs text-theme-text-muted mt-1">בחר ימים והגדר שעות לכל יום. יום ללא שעות = פעיל כל היום. ללא ימים = פעיל תמיד.</p>
                     </div>
                     <label className="flex items-center gap-2 text-theme-sm"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
                   </div>

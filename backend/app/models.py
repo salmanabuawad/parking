@@ -70,7 +70,11 @@ class Camera(Base):
     # Operational status for the fleet dashboard: online | offline | maintenance | error
     status = Column(String(20), default="online", nullable=True)
     city = Column(String(30), nullable=True, index=True)   # fleet dashboard grouping (netanya, haifa, …)
-    # Enforcement schedule — working days + hours (empty/null = active always)
+    # Enforcement schedule — per-day working hours. A day present = a working day with those hours
+    # (empty from/to = all day). {} / null = active always. e.g.
+    # {"SUN": {"from":"07:00","to":"19:00"}, "MON": {"from":"08:00","to":"16:00"}}
+    active_schedule = Column(JSON, nullable=True)
+    # Legacy flat schedule (superseded by active_schedule; kept for backward compat)
     active_days = Column(JSON, nullable=True)              # ["SUN","MON","TUE","WED","THU","FRI","SAT"]
     active_from_time = Column(String(10), nullable=True)   # "07:00"
     active_to_time = Column(String(10), nullable=True)     # "19:00"

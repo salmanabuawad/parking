@@ -103,16 +103,22 @@ _DOW = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]  # datetime.weekday(): 
 
 
 def camera_active_at(camera, dt) -> bool:
-    """Is the camera enforcing at datetime `dt`? Gated by its working days (active_days) and hours
-    (active_from_time/active_to_time). An empty schedule means always active. The window is read in
-    Israel local wall-clock time (schedule times are local); overnight windows (from > to) are handled."""
+    """Is the camera enforcing at datetime `dt`? Per-day schedule in camera.active_schedule
+    ({"SUN": {"from":"07:00","to":"19:00"}, ...}): a day present is a working day with those hours
+    (empty from/to = all that day); a day absent is off. An empty schedule means always active.
+    Falls back to the legacy flat active_days + active_from_time/active_to_time. Times are read in
+    Israel local wall-clock; overnight windows (from > to) are handled."""
     if camera is None or dt is None:
         return True
-    days = getattr(camera, "active_days", None) or []
-    frm = getattr(camera, "active_from_time", None)
-    to = getattr(camera, "active_to_time", None)
-    if not days and not (frm and to):
-        return True
+
+    sched = getattr(camera, "active_schedule", None) or {}
+    if not sched:
+        days = getattr(camera, "active_days", None) or []
+        frm0 = getattr(camera, "active_from_time", None)
+        to0 = getattr(camera, "active_to_time", None)
+        if not days and not (frm0 and to0):
+            return True
+        sched = {d: {"from": frm0, "to": to0} for d in (days or _DOW)}
 
     local = dt
     try:
@@ -122,11 +128,11 @@ def camera_active_at(camera, dt) -> bool:
     except Exception:
         local = dt
 
-    if days and _DOW[local.weekday()] not in days:
-        return False
+    day = sched.get(_DOW[local.weekday()])
+    if not isinstance(day, dict):
+        return False  # not a working day
+    frm, to = day.get("from"), day.get("to")
     if frm and to:
         hhmm = local.strftime("%H:%M")
-        within = (frm <= hhmm <= to) if frm <= to else (hhmm >= frm or hhmm <= to)
-        if not within:
-            return False
+        return (frm <= hhmm <= to) if frm <= to else (hhmm >= frm or hhmm <= to)
     return True

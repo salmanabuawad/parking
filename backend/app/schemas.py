@@ -29,9 +29,10 @@ class CameraBase(BaseModel):
     longitude: Optional[float] = None
     status: Optional[str] = "online"               # online | offline | maintenance | error
     city: Optional[str] = None                     # fleet dashboard grouping
-    active_days: Optional[list[str]] = None        # working days ["SUN",...]; empty/null = always
-    active_from_time: Optional[str] = None         # working hours start "07:00"
-    active_to_time: Optional[str] = None           # working hours end "19:00"
+    active_schedule: Optional[dict[str, Any]] = None   # {"SUN": {"from":"07:00","to":"19:00"}, ...}
+    active_days: Optional[list[str]] = None        # legacy flat schedule (superseded by active_schedule)
+    active_from_time: Optional[str] = None
+    active_to_time: Optional[str] = None
 
 
 class CameraCreate(CameraBase):
@@ -60,6 +61,7 @@ class CameraUpdate(BaseModel):
     longitude: Optional[float] = None
     status: Optional[str] = None
     city: Optional[str] = None
+    active_schedule: Optional[dict[str, Any]] = None
     active_days: Optional[list[str]] = None
     active_from_time: Optional[str] = None
     active_to_time: Optional[str] = None
