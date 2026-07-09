@@ -306,11 +306,10 @@ def process_one_job() -> bool:
         # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
         camera_allowed_rules, camera_violation_zone, camera_assigned_inspector, camera_off_schedule = _camera_context(db, job)
 
-        # Enforcement schedule: a camera raises tickets only during its working days/hours.
+        # Enforcement schedule: outside a camera's working days/hours, still make a ticket but
+        # auto-reject it (visible, not silently dropped) — see status/admin_notes in _finalize_ticket.
         if camera_off_schedule:
-            print(f"[Job {job.id}] camera outside working days/hours at {job.captured_at} — no ticket raised", flush=True)
-            job_repo.update(job.id, status="completed", error_message="מחוץ לשעות פעילות המצלמה — לא נוצר דוח")
-            return True
+            print(f"[Job {job.id}] camera outside working days/hours at {job.captured_at} — ticket(s) auto-rejected", flush=True)
 
         violation_data: dict = _run_violation_analysis(
             video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at
@@ -373,7 +372,7 @@ def process_one_job() -> bool:
                 location=location_str,
                 violation_zone=job.violation_zone or "red_white",
                 description=job.description or ("העלאה מהנייד" if not has_gps else f"העלאה מהנייד — {location_str}"),
-                status=fields["ticket_status"],
+                status=("rejected" if camera_off_schedule else fields["ticket_status"]),
                 video_path=proc_rel,
                 ticket_image_path=frame_rel,
                 original_video_path=original_video_rel,
@@ -385,6 +384,8 @@ def process_one_job() -> bool:
                 assigned_inspector_id=(None if fields["ticket_status"] == "exempt" else camera_assigned_inspector),
                 video_params=video_params if video_params else None,
             )
+            if camera_off_schedule:
+                kw["admin_notes"] = "נדחה אוטומטית: הצילום בוצע מחוץ לימי/שעות הפעילות של המצלמה"
             if fields["reason"]:
                 kw["plate_detection_reason"] = fields["reason"]
             if sig_hex:

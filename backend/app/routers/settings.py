@@ -164,6 +164,15 @@ def update_settings(
     if body.video_retention_days is not None:
         cfg.video_retention_days = max(0, min(3650, int(body.video_retention_days)))
 
+    if body.original_video_retention_days is not None:
+        cfg.original_video_retention_days = max(0, min(3650, int(body.original_video_retention_days)))
+
+    if body.processed_video_retention_days is not None:
+        cfg.processed_video_retention_days = max(0, min(3650, int(body.processed_video_retention_days)))
+
+    if body.ticket_candidate_retention_days is not None:
+        cfg.ticket_candidate_retention_days = max(0, min(3650, int(body.ticket_candidate_retention_days)))
+
     if body.video_timestamp_overlay is not None:
         cfg.video_timestamp_overlay = bool(body.video_timestamp_overlay)
 

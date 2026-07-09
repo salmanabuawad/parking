@@ -31,6 +31,9 @@ export default function Settings() {
   const [blurExpandRatio, setBlurExpandRatio] = useState(0.18)
   const [evidencePreSeconds, setEvidencePreSeconds] = useState(5)
   const [evidencePostSeconds, setEvidencePostSeconds] = useState(5)
+  const [originalRetentionDays, setOriginalRetentionDays] = useState(180)
+  const [processedRetentionDays, setProcessedRetentionDays] = useState(90)
+  const [candidateRetentionDays, setCandidateRetentionDays] = useState(365)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -51,6 +54,9 @@ export default function Settings() {
       setBlurExpandRatio(data.blur_expand_ratio ?? 0.18)
       setEvidencePreSeconds(data.evidence_video_pre_seconds ?? 5)
       setEvidencePostSeconds(data.evidence_video_post_seconds ?? 5)
+      setOriginalRetentionDays(data.original_video_retention_days ?? 180)
+      setProcessedRetentionDays(data.processed_video_retention_days ?? 90)
+      setCandidateRetentionDays(data.ticket_candidate_retention_days ?? 365)
     }).catch(() => {})
   }, [])
 
@@ -73,6 +79,9 @@ export default function Settings() {
         blur_expand_ratio: blurExpandRatio,
         evidence_video_pre_seconds: evidencePreSeconds,
         evidence_video_post_seconds: evidencePostSeconds,
+        original_video_retention_days: originalRetentionDays,
+        processed_video_retention_days: processedRetentionDays,
+        ticket_candidate_retention_days: candidateRetentionDays,
       })
       setSettings(data)
     } catch (err) {
@@ -160,6 +169,21 @@ export default function Settings() {
               <label className="label-base text-theme-text-primary">שמירת סרטונים (ימים)</label>
               <input type="number" min={0} value={videoRetentionDays}
                 onChange={(e) => setVideoRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
+            </div>
+            <div>
+              <label className="label-base text-theme-text-primary">שמירת סרטון מקור (ימים)</label>
+              <input type="number" min={0} value={originalRetentionDays}
+                onChange={(e) => setOriginalRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
+            </div>
+            <div>
+              <label className="label-base text-theme-text-primary">שמירת סרטון מעובד (ימים)</label>
+              <input type="number" min={0} value={processedRetentionDays}
+                onChange={(e) => setProcessedRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
+            </div>
+            <div>
+              <label className="label-base text-theme-text-primary">שמירת מועמדים לדוח (ימים)</label>
+              <input type="number" min={0} value={candidateRetentionDays}
+                onChange={(e) => setCandidateRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
             </div>
             <label className="flex items-center gap-2 text-theme-text-primary self-end pb-2">
               <input type="checkbox" checked={videoTimestampOverlay} onChange={(e) => setVideoTimestampOverlay(e.target.checked)} />
