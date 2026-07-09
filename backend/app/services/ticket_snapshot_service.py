@@ -97,3 +97,36 @@ def grid_rules_for_point(camera, x: float, y: float) -> list[str]:
     if not val:
         return []
     return list(val) if isinstance(val, list) else [val]
+
+
+_DOW = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]  # datetime.weekday(): Mon=0 … Sun=6
+
+
+def camera_active_at(camera, dt) -> bool:
+    """Is the camera enforcing at datetime `dt`? Gated by its working days (active_days) and hours
+    (active_from_time/active_to_time). An empty schedule means always active. The window is read in
+    Israel local wall-clock time (schedule times are local); overnight windows (from > to) are handled."""
+    if camera is None or dt is None:
+        return True
+    days = getattr(camera, "active_days", None) or []
+    frm = getattr(camera, "active_from_time", None)
+    to = getattr(camera, "active_to_time", None)
+    if not days and not (frm and to):
+        return True
+
+    local = dt
+    try:
+        if getattr(dt, "tzinfo", None) is not None:
+            from zoneinfo import ZoneInfo
+            local = dt.astimezone(ZoneInfo("Asia/Jerusalem"))
+    except Exception:
+        local = dt
+
+    if days and _DOW[local.weekday()] not in days:
+        return False
+    if frm and to:
+        hhmm = local.strftime("%H:%M")
+        within = (frm <= hhmm <= to) if frm <= to else (hhmm >= frm or hhmm <= to)
+        if not within:
+            return False
+    return True

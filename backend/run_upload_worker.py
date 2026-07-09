@@ -81,11 +81,13 @@ def _run_violation_analysis(video_bytes: bytes, violation_zone: str | None, job_
         return {}
 
 
-def _camera_context(db, job) -> tuple[list | None, str | None, int | None]:
-    """Resolve a job's camera rules / zone / handling-inspector (all empty for mobile uploads)."""
+def _camera_context(db, job) -> tuple[list | None, str | None, int | None, bool]:
+    """Resolve a job's camera rules / zone / handling-inspector (all empty for mobile uploads).
+    The 4th value is True when the job's camera is OUTSIDE its working days/hours at capture time."""
     allowed_rules: list | None = None
     violation_zone: str | None = job.violation_zone
     assigned_inspector: int | None = None
+    off_schedule = False
     if job.camera_id and job.camera_id not in ("", "mobile"):
         try:
             from app.models import Camera as CameraModel
@@ -100,9 +102,11 @@ def _camera_context(db, job) -> tuple[list | None, str | None, int | None]:
                     zone_codes = [z.zone_code for z in cam.zones if z.is_active]
                     if zone_codes:
                         violation_zone = zone_codes[0]
+                from app.services.ticket_snapshot_service import camera_active_at
+                off_schedule = not camera_active_at(cam, job.captured_at)
         except (ValueError, TypeError, Exception) as cam_err:
             print(f"[Job {job.id}] Camera lookup skipped: {cam_err}", flush=True)
-    return allowed_rules, violation_zone, assigned_inspector
+    return allowed_rules, violation_zone, assigned_inspector, off_schedule
 
 
 def _ensure_h264(video_bytes: bytes, job_id: int) -> bytes:
@@ -300,7 +304,13 @@ def process_one_job() -> bool:
                 overall_blurred = b""
 
         # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
-        camera_allowed_rules, camera_violation_zone, camera_assigned_inspector = _camera_context(db, job)
+        camera_allowed_rules, camera_violation_zone, camera_assigned_inspector, camera_off_schedule = _camera_context(db, job)
+
+        # Enforcement schedule: a camera raises tickets only during its working days/hours.
+        if camera_off_schedule:
+            print(f"[Job {job.id}] camera outside working days/hours at {job.captured_at} — no ticket raised", flush=True)
+            job_repo.update(job.id, status="completed", error_message="מחוץ לשעות פעילות המצלמה — לא נוצר דוח")
+            return True
 
         violation_data: dict = _run_violation_analysis(
             video_bytes, camera_violation_zone, job.id, camera_allowed_rules, job.captured_at

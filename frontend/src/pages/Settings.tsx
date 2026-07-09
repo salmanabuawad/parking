@@ -28,6 +28,9 @@ export default function Settings() {
   const [requiredVideoSeconds, setRequiredVideoSeconds] = useState(10)
   const [videoRetentionDays, setVideoRetentionDays] = useState(90)
   const [videoTimestampOverlay, setVideoTimestampOverlay] = useState(true)
+  const [blurExpandRatio, setBlurExpandRatio] = useState(0.18)
+  const [evidencePreSeconds, setEvidencePreSeconds] = useState(5)
+  const [evidencePostSeconds, setEvidencePostSeconds] = useState(5)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -45,6 +48,9 @@ export default function Settings() {
       setRequiredVideoSeconds(data.required_video_seconds ?? 10)
       setVideoRetentionDays(data.video_retention_days ?? 90)
       setVideoTimestampOverlay(data.video_timestamp_overlay ?? true)
+      setBlurExpandRatio(data.blur_expand_ratio ?? 0.18)
+      setEvidencePreSeconds(data.evidence_video_pre_seconds ?? 5)
+      setEvidencePostSeconds(data.evidence_video_post_seconds ?? 5)
     }).catch(() => {})
   }, [])
 
@@ -64,6 +70,9 @@ export default function Settings() {
         required_video_seconds: requiredVideoSeconds,
         video_retention_days: videoRetentionDays,
         video_timestamp_overlay: videoTimestampOverlay,
+        blur_expand_ratio: blurExpandRatio,
+        evidence_video_pre_seconds: evidencePreSeconds,
+        evidence_video_post_seconds: evidencePostSeconds,
       })
       setSettings(data)
     } catch (err) {
@@ -138,6 +147,16 @@ export default function Settings() {
                 onChange={(e) => setRequiredVideoSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
             </div>
             <div>
+              <label className="label-base text-theme-text-primary">שניות הקלטה לפני העבירה</label>
+              <input type="number" min={0} max={120} value={evidencePreSeconds}
+                onChange={(e) => setEvidencePreSeconds(Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))} className="input-base" />
+            </div>
+            <div>
+              <label className="label-base text-theme-text-primary">שניות הקלטה אחרי העבירה</label>
+              <input type="number" min={0} max={120} value={evidencePostSeconds}
+                onChange={(e) => setEvidencePostSeconds(Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))} className="input-base" />
+            </div>
+            <div>
               <label className="label-base text-theme-text-primary">שמירת סרטונים (ימים)</label>
               <input type="number" min={0} value={videoRetentionDays}
                 onChange={(e) => setVideoRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
@@ -164,6 +183,18 @@ export default function Settings() {
               step={2}
               value={blurSize}
               onChange={(e) => setBlurSize(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))}
+              className="input-base"
+            />
+          </div>
+          <div className="w-64 mb-4">
+            <label className="label-base text-theme-text-primary">יחס הרחבת אזור הטשטוש (0–1)</label>
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              value={blurExpandRatio}
+              onChange={(e) => setBlurExpandRatio(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
               className="input-base"
             />
           </div>

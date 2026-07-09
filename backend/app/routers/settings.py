@@ -33,6 +33,11 @@ class SettingsUpdate(BaseModel):
     violation_dwell_seconds: Optional[int] = None
     required_video_seconds: Optional[int] = None
     video_retention_days: Optional[int] = None
+    evidence_video_pre_seconds: Optional[int] = None
+    evidence_video_post_seconds: Optional[int] = None
+    original_video_retention_days: Optional[int] = None
+    processed_video_retention_days: Optional[int] = None
+    ticket_candidate_retention_days: Optional[int] = None
     video_timestamp_overlay: Optional[bool] = None
 
 
@@ -66,6 +71,11 @@ def _serialize(cfg: AppConfig) -> dict:
         "violation_dwell_seconds": cfg.violation_dwell_seconds,
         "required_video_seconds": cfg.required_video_seconds,
         "video_retention_days": cfg.video_retention_days,
+        "evidence_video_pre_seconds": cfg.evidence_video_pre_seconds,
+        "evidence_video_post_seconds": cfg.evidence_video_post_seconds,
+        "original_video_retention_days": cfg.original_video_retention_days,
+        "processed_video_retention_days": cfg.processed_video_retention_days,
+        "ticket_candidate_retention_days": cfg.ticket_candidate_retention_days,
         "video_timestamp_overlay": cfg.video_timestamp_overlay,
     }
 
@@ -144,6 +154,12 @@ def update_settings(
 
     if body.required_video_seconds is not None:
         cfg.required_video_seconds = max(0, min(3600, int(body.required_video_seconds)))
+
+    if body.evidence_video_pre_seconds is not None:
+        cfg.evidence_video_pre_seconds = max(0, min(120, int(body.evidence_video_pre_seconds)))
+
+    if body.evidence_video_post_seconds is not None:
+        cfg.evidence_video_post_seconds = max(0, min(120, int(body.evidence_video_post_seconds)))
 
     if body.video_retention_days is not None:
         cfg.video_retention_days = max(0, min(3650, int(body.video_retention_days)))
