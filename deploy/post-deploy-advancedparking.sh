@@ -57,6 +57,11 @@ echo "Seeding violation rules..."
 sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && '$BACKEND_DIR/.venv/bin/python' seed_violation_rules.py" 2>/dev/null || \
   echo "  (seed_violation_rules.py not found or failed — run manually if needed)"
 
+# Seed default cities (idempotent — only inserts missing keys, never overwrites admin edits)
+echo "Seeding cities..."
+sudo -u "$APP_USER" bash -c "cd '$BACKEND_DIR' && '$BACKEND_DIR/.venv/bin/python' seed_cities.py" 2>/dev/null || \
+  echo "  (seed_cities.py not found or failed — run manually if needed)"
+
 # Create videos directories
 mkdir -p "$BACKEND_DIR/videos"/{raw,processed,frames,screenshots}
 chown -R "$APP_USER:$APP_USER" "$BACKEND_DIR/videos"
