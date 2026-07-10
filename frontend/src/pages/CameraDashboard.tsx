@@ -96,16 +96,20 @@ export default function CameraDashboard() {
 
       {/* City switcher */}
       {cities.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {cities.map(c => (
-            <button
-              key={c.key}
-              onClick={() => { setCityKey(c.key); setFilter(null) }}
-              className={`px-3 py-1.5 rounded-lg text-theme-sm border transition-colors ${cityKey === c.key ? 'bg-theme-accent text-white border-theme-accent' : 'border-theme-card-border text-theme-text-muted hover:bg-black/5'}`}
-            >
-              {c.label}{cityCount[c.key] ? <span className="opacity-80"> ({cityCount[c.key]})</span> : null}
-            </button>
-          ))}
+        <div className="flex items-center gap-2">
+          <label htmlFor="city-select" className="text-theme-sm text-theme-text-muted">עיר:</label>
+          <select
+            id="city-select"
+            value={cityKey}
+            onChange={e => { setCityKey(e.target.value); setFilter(null) }}
+            className="input-base sm:w-64"
+          >
+            {cities.map(c => (
+              <option key={c.key} value={c.key}>
+                {c.label}{cityCount[c.key] ? ` (${cityCount[c.key]})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 
