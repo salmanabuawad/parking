@@ -74,6 +74,7 @@ interface CameraForm {
   simulation_source: string
   latitude: string
   longitude: string
+  city: string
   active_schedule: Record<string, { from: string; to: string }>
 }
 
@@ -98,7 +99,7 @@ const EMPTY_FORM: CameraForm = {
   manufacturer: '', model: '', is_active: true,
   violation_rules: [], selected_zone_ids: [], assigned_inspector_id: null,
   source_type: 'uploaded_image', rtsp_url: '', simulation_source: '',
-  latitude: '', longitude: '',
+  latitude: '', longitude: '', city: '',
   active_schedule: {},
 }
 
@@ -119,23 +120,26 @@ export default function Cameras() {
   const [seeding, setSeeding] = useState(false)
   const [view, setView] = useState<'list' | 'map'>('list')
   const [mapStyleUrl, setMapStyleUrl] = useState<string | null>(null)
+  const [cities, setCities] = useState<{ key: string; label: string }[]>([])
 
   const load = async () => {
     setLoading(true)
     try {
-      const [camsResult, rulesResult, zonesResult, inspectorsResult, simsResult, mapCfg] = await Promise.all([
+      const [camsResult, rulesResult, zonesResult, inspectorsResult, simsResult, mapCfg, citiesResult] = await Promise.all([
         camerasApi.list(),
         violationRulesApi.list(),
         parkingZonesApi.list(),
         inspectorsApi.list(true).catch(() => []),
         simulationApi.sources().catch(() => []),
         mapConfigApi.get().catch(() => ({ maptiler_key: '', style_url: null as string | null })),
+        simulationApi.cities().catch(() => []),
       ])
       const cams: Camera[] = camsResult.data
       setCameras(cams)
       setInspectors(inspectorsResult as { id: number; full_name: string }[])
       setSimSources(simsResult as SimulationSource[])
       setMapStyleUrl(mapCfg.style_url || null)
+      setCities((citiesResult as { key: string; label: string }[]).map(c => ({ key: c.key, label: c.label })))
       setAvailableRules(
         rulesResult.data
           .filter((r: any) => r.is_active)
@@ -205,6 +209,7 @@ export default function Cameras() {
       simulation_source: (c.connection_config?.simulation_source as string) || '',
       latitude: c.latitude != null ? String(c.latitude) : '',
       longitude: c.longitude != null ? String(c.longitude) : '',
+      city: c.city || '',
       active_schedule: Object.fromEntries(
         Object.entries(c.active_schedule || {}).map(([k, v]) => [k, { from: v?.from || '', to: v?.to || '' }])
       ),
@@ -233,6 +238,7 @@ export default function Cameras() {
         violation_zone: null,
         latitude: lat,
         longitude: lng,
+        city: form.city || null,
         active_schedule: Object.keys(form.active_schedule).length ? form.active_schedule : null,
       }
       let camId: number
@@ -276,6 +282,7 @@ export default function Cameras() {
   const colDefs = useMemo<ColDef<Camera>[]>(() => [
     { field: 'name', headerName: 'שם', flex: 1, minWidth: 130 },
     { field: 'location', headerName: 'מיקום', flex: 1, valueFormatter: p => p.value || '—' },
+    { field: 'city', headerName: 'עיר', width: 110, valueFormatter: p => cities.find(c => c.key === p.value)?.label || p.value || '—' },
     { field: 'connection_type', headerName: 'סוג חיבור', width: 120, valueFormatter: p => formatConnectionType(p.value) },
     { headerName: 'יצרן/דגם', flex: 1, valueGetter: p => [p.data?.manufacturer, p.data?.model].filter(Boolean).join(' ') || '—' },
     { headerName: 'אזורים', flex: 1, valueGetter: p => zoneNames(p.data!.id) || '—' },
@@ -304,7 +311,7 @@ export default function Cameras() {
       ) : null,
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [inspectors, availableZones, cameraZoneMap])
+  ], [inspectors, availableZones, cameraZoneMap, cities])
 
   return (
     <div className="page-container">
@@ -390,6 +397,14 @@ export default function Cameras() {
                         <label className="label-base">{t('location')}</label>
                         <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} className="input-base" placeholder={t('locationPlaceholder')} />
                       </div>
+                    </div>
+                    <div>
+                      <label className="label-base">עיר</label>
+                      <select className="input-base sm:w-64" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })}>
+                        <option value="">— בחר עיר —</option>
+                        {cities.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                      </select>
+                      <p className="text-theme-xs text-theme-text-muted mt-1">קובע לאיזו עיר משויכת המצלמה בלוח המצלמות</p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
