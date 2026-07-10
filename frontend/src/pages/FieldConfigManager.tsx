@@ -148,7 +148,8 @@ export default function FieldConfigManager() {
       editable: true,
       type: 'numericColumn',
       cellStyle: { textAlign: 'right' },
-      valueParser: (p) => { const n = parseInt(p.newValue, 10); return isNaN(n) ? p.oldValue : Math.max(1, n) },
+      valueFormatter: (p) => (p.value ? p.value : 'אוטו'),   // 0 = auto/flex width
+      valueParser: (p) => { const n = parseInt(p.newValue, 10); return isNaN(n) ? p.oldValue : Math.max(0, n) },
     },
     {
       field: 'padding',
@@ -234,7 +235,7 @@ export default function FieldConfigManager() {
         </span>
         <div className="flex-1 min-w-0">
           <h1 className="page-header-title">הגדרות שדות גריד</h1>
-          <p className="page-header-label opacity-90">שליטה על רוחב, סדר ונראות עמודות בכל גריד</p>
+          <p className="page-header-label opacity-90">שליטה על רוחב, סדר ונראות עמודות בכל גריד · רוחב "אוטו" (0) = עמודה גמישה</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {dirtyMap.size > 0 && (

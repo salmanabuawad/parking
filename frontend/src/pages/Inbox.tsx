@@ -9,6 +9,8 @@ import { ticketsApi } from '../api'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { formatLocation } from '../lib/format'
 import { useRtl } from '../hooks/useRtl'
+import { useFieldConfig } from '../lib/useFieldConfig'
+import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -55,6 +57,9 @@ export default function Inbox() {
     { headerName: 'פעולה', width: 110, sortable: false, filter: false, cellRenderer: ReviewCell },
   ], [])
 
+  const cfgVer = useFieldConfigVersion()
+  const [gridColDefs] = useFieldConfig(cols, 'inbox')
+
   return (
     <div className="page-container">
       <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
@@ -71,9 +76,10 @@ export default function Inbox() {
       ) : (
         <div className="grid-card">
           <AgGridReact<Ticket>
+            key={`inbox-${cfgVer}`}
             theme={agTheme}
             rowData={rows}
-            columnDefs={cols}
+            columnDefs={gridColDefs}
             quickFilterText={quick}
             enableRtl
             rowHeight={48}

@@ -11,6 +11,8 @@ import api from '../api'
 import { uploadApi, settingsApi } from '../api'
 import { t } from '../i18n'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
+import { useFieldConfig } from '../lib/useFieldConfig'
+import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -174,6 +176,9 @@ export default function QueueMaintenance() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fsVer])
 
+  const cfgVer = useFieldConfigVersion()
+  const [gridColDefs] = useFieldConfig(colDefs, 'queue-maintenance')
+
   return (
     <div className="page-container">
       {/* Page header */}
@@ -237,9 +242,10 @@ export default function QueueMaintenance() {
       ) : (
         <div className="grid-card">
           <AgGridReact<UploadJob>
+            key={`queue-maintenance-${cfgVer}`}
             theme={agTheme}
             rowData={jobs}
-            columnDefs={colDefs}
+            columnDefs={gridColDefs}
             quickFilterText={quickFilter}
             enableRtl={true}
             rowHeight={48}

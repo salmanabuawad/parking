@@ -1,7 +1,7 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { ColDef } from 'ag-grid-community'
-import { FieldConfiguration } from '../api'
-import { loadFieldConfigurations, applyFieldConfigToColumn, getFieldConfigCache, isFieldConfigCacheLoaded } from './fieldConfigUtils'
+import { FieldConfiguration, fieldConfigApi } from '../api'
+import { loadFieldConfigurations, applyFieldConfigToColumn, getFieldConfigCache, isFieldConfigCacheLoaded, addConfigsToCache } from './fieldConfigUtils'
 import { useFieldConfigVersion } from '../context/FieldConfigContext'
 import { subscribeFontSize, getFontSizeWidthMultiplier } from './fontSizeStore'
 
@@ -63,6 +63,62 @@ export function useFieldConfig<T = any>(columnDefs: ColDef<T>[], gridName?: stri
       .catch((e) => console.error('[useFieldConfig]', e))
       .finally(() => setLoading(false))
   }, [gridName, configVersion])
+
+  // Auto-register: the first time a grid mounts, any of its columns missing from the config table
+  // are inserted with their current appearance (fixed columns keep their pixel width; flex columns
+  // register as width_chars=0 = "auto"). This populates the field-config manager for every grid
+  // without a manual seed, and is idempotent — subsequent mounts find nothing missing.
+  const registeredRef = useRef(false)
+  useEffect(() => {
+    if (!gridName || loading || registeredRef.current) return
+    const cache = getFieldConfigCache()
+    if (!cache) return
+    registeredRef.current = true
+
+    const multiplier = getFontSizeWidthMultiplier() || 1
+    const missing: Omit<FieldConfiguration, 'id'>[] = []
+    columnDefs.forEach((colDef, index) => {
+      const fieldName = (colDef.field || (colDef as any).colId) as string | undefined
+      if (!fieldName) return                              // action / unidentified columns: not managed
+      if (cache.get(`${gridName}:${fieldName}`)) return   // already registered
+
+      const numericWidth = typeof (colDef as any).width === 'number' ? (colDef as any).width : null
+      let width_chars = 0                                 // 0 = keep original flex/auto sizing
+      let padding = 8
+      if (numericWidth != null) {
+        const target = numericWidth / multiplier          // px at multiplier 1
+        width_chars = Math.max(1, Math.round((target - 16) / 8))
+        padding = Math.max(0, Math.round((target - width_chars * 8) / 2))  // absorb the remainder → exact round-trip
+      }
+      const pinned = (colDef as any).pinned
+      missing.push({
+        grid_name: gridName,
+        field_name: fieldName,
+        hebrew_name: (colDef.headerName as string) || fieldName,
+        width_chars,
+        padding,
+        pinned: pinned === 'left' || pinned === 'right' || pinned === true,
+        pin_side: pinned === 'left' || pinned === 'right' ? pinned : null,
+        visible: (colDef as any).hide ? false : true,
+        column_order: index,
+      })
+    })
+    if (missing.length === 0) return
+
+    fieldConfigApi.upsertBulk(missing)
+      .then(() => {
+        addConfigsToCache(missing as FieldConfiguration[])
+        setFieldConfigs((prev) => {
+          const next = new Map(prev)
+          for (const c of missing) {
+            next.set(`${gridName}:${c.field_name}`, c as FieldConfiguration)
+            next.set(c.field_name, c as FieldConfiguration)
+          }
+          return next
+        })
+      })
+      .catch((e) => console.error('[useFieldConfig auto-register]', e))
+  }, [gridName, loading, columnDefs])
 
   const configuredColumnDefs = useMemo(() => {
     if (loading) return columnDefs

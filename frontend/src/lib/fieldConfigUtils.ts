@@ -65,16 +65,24 @@ export function calculateWidthFromChars(chars: number, padding = 8): number {
 
 export function applyFieldConfigToColumn(colDef: any, config: FieldConfiguration, opts?: { largeFontMultiplier?: number }): any {
   const multiplier = (opts?.largeFontMultiplier ?? 1) * 1.0
-  const base = calculateWidthFromChars(config.width_chars, config.padding)
-  const width = Math.round(base * multiplier)
 
   const result: any = {
     ...colDef,
-    width,
-    minWidth: width,
-    maxWidth: width,
-    resizable: false,
     headerName: config.hebrew_name || colDef.headerName,
+  }
+
+  // width_chars > 0 → lock the column to a fixed width. width_chars <= 0 is a "flex/auto" marker:
+  // keep the column's original sizing (flex or its own width) untouched so responsive grids that
+  // mix flex and fixed columns still fill their width. This lets every column be registered/managed
+  // without forcing flex columns into a wrong fixed width.
+  if (config.width_chars && config.width_chars > 0) {
+    const base = calculateWidthFromChars(config.width_chars, config.padding)
+    const width = Math.round(base * multiplier)
+    result.width = width
+    result.minWidth = width
+    result.maxWidth = width
+    result.resizable = false
+    delete result.flex   // an explicit fixed width overrides any flex on the original colDef
   }
 
   if (config.pinned && config.pin_side) {
@@ -89,6 +97,17 @@ export function applyFieldConfigToColumn(colDef: any, config: FieldConfiguration
   if (config.visible === false) result.hide = true
 
   return result
+}
+
+// Merge newly-registered rows into the in-memory cache (used by grid auto-registration) so the
+// manager and other grids see them without a full reload.
+export function addConfigsToCache(configs: FieldConfiguration[]): void {
+  if (!fieldConfigCache) fieldConfigCache = new Map()
+  for (const c of configs) {
+    fieldConfigCache.set(createConfigKey(c.grid_name, c.field_name), c)
+    fieldConfigCache.set(c.field_name, c)
+  }
+  isCacheLoaded = true
 }
 
 export function clearFieldConfigCache(): void {

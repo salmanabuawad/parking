@@ -12,6 +12,8 @@ import { uploadApi } from '../api'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
+import { useFieldConfig } from '../lib/useFieldConfig'
+import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -135,6 +137,9 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fsVer, navigate])
 
+  const cfgVer = useFieldConfigVersion()
+  const [gridColDefs] = useFieldConfig(colDefs, 'home')
+
   return (
     <div className="page-container">
       {/* Page header */}
@@ -182,9 +187,10 @@ export default function Home() {
         ) : (
           <div className="grid-card">
             <AgGridReact<UploadJob>
+              key={`home-${cfgVer}`}
               theme={agTheme}
               rowData={visibleJobs}
-              columnDefs={colDefs}
+              columnDefs={gridColDefs}
               quickFilterText={quickFilter}
               enableRtl={true}
               rowHeight={46}

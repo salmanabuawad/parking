@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import './index.css'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
+import { FieldConfigProvider } from './context/FieldConfigContext'
 import App, { AppErrorBoundary } from './App'
 
 const rootEl = document.getElementById('root')
@@ -14,7 +15,9 @@ if (!rootEl) {
       <AppErrorBoundary>
         <ThemeProvider>
           <AuthProvider>
-            <App />
+            <FieldConfigProvider>
+              <App />
+            </FieldConfigProvider>
           </AuthProvider>
         </ThemeProvider>
       </AppErrorBoundary>

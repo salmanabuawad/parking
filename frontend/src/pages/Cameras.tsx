@@ -13,6 +13,8 @@ import { useAgGridTheme } from '../lib/agGridTheme'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { formatConnectionType } from '../lib/format'
 import { t } from '../i18n'
+import { useFieldConfig } from '../lib/useFieldConfig'
+import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -284,9 +286,9 @@ export default function Cameras() {
     { field: 'location', headerName: 'מיקום', flex: 1, valueFormatter: p => p.value || '—' },
     { field: 'city', headerName: 'עיר', width: 110, valueFormatter: p => cities.find(c => c.key === p.value)?.label || p.value || '—' },
     { field: 'connection_type', headerName: 'סוג חיבור', width: 120, valueFormatter: p => formatConnectionType(p.value) },
-    { headerName: 'יצרן/דגם', flex: 1, valueGetter: p => [p.data?.manufacturer, p.data?.model].filter(Boolean).join(' ') || '—' },
-    { headerName: 'אזורים', flex: 1, valueGetter: p => zoneNames(p.data!.id) || '—' },
-    { headerName: 'פקח מטפל', width: 150, valueGetter: p => inspectorName(p.data?.assigned_inspector_id) },
+    { colId: 'manufacturer_model', headerName: 'יצרן/דגם', flex: 1, valueGetter: p => [p.data?.manufacturer, p.data?.model].filter(Boolean).join(' ') || '—' },
+    { colId: 'zones', headerName: 'אזורים', flex: 1, valueGetter: p => zoneNames(p.data!.id) || '—' },
+    { colId: 'inspector', headerName: 'פקח מטפל', width: 150, valueGetter: p => inspectorName(p.data?.assigned_inspector_id) },
     {
       field: 'status', headerName: 'מצב', width: 130,
       valueGetter: p => p.data?.status || (p.data?.is_active ? 'online' : 'offline'),
@@ -312,6 +314,9 @@ export default function Cameras() {
     },
   // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [inspectors, availableZones, cameraZoneMap, cities])
+
+  const cfgVer = useFieldConfigVersion()
+  const [gridColDefs] = useFieldConfig(colDefs, 'cameras')
 
   return (
     <div className="page-container">
@@ -350,9 +355,10 @@ export default function Cameras() {
         ) : (
           <div className="grid-card">
             <AgGridReact<Camera>
+              key={`cameras-${cfgVer}`}
               theme={agTheme}
               rowData={cameras}
-              columnDefs={colDefs}
+              columnDefs={gridColDefs}
               enableRtl={true}
               rowHeight={46}
               defaultColDef={DEFAULT_COL_DEF}

@@ -12,6 +12,8 @@ import { useRtl } from '../hooks/useRtl'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { ticketStatusBadge } from '../lib/ticketStatus'
 import { formatLocation } from '../lib/format'
+import { useFieldConfig } from '../lib/useFieldConfig'
+import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
@@ -128,6 +130,9 @@ export default function Tickets() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fsVer])
 
+  const cfgVer = useFieldConfigVersion()
+  const [gridColDefs] = useFieldConfig(colDefs, 'tickets')
+
   const onFilterChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setQuickFilter(e.target.value)
   }, [])
@@ -177,10 +182,11 @@ export default function Tickets() {
       ) : (
         <div className="grid-card">
           <AgGridReact<Ticket>
+            key={`tickets-${cfgVer}`}
             ref={gridRef}
             theme={agTheme}
             rowData={tickets}
-            columnDefs={colDefs}
+            columnDefs={gridColDefs}
             quickFilterText={quickFilter}
             enableRtl={true}
             rowHeight={48}
