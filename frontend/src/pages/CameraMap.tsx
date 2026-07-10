@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import rtlTextUrl from '@mapbox/mapbox-gl-rtl-text/mapbox-gl-rtl-text.min.js?url'
@@ -60,6 +60,12 @@ const OSM_STYLE: maplibregl.StyleSpecification = {
   layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
 }
 
+// Esri World Imagery — free, no-token, Web-Mercator XYZ high-res aerial (great over the Golan /
+// Buq'ata where street data is sparse). Added as a raster layer on top of the base style and
+// toggled on/off. Note Esri's tile order is /{z}/{y}/{x}.
+const ESRI_SAT_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+const SAT_LAYER = 'esri-sat'
+
 interface Cbs {
   onSelect: (cam: MapCamera) => void
   onEdit: (cam: MapCamera) => void
@@ -112,6 +118,10 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onS
   const cbRef = useRef<Cbs>({ onSelect, onEdit })
   useEffect(() => { cbRef.current = { onSelect, onEdit } }, [onSelect, onEdit])
 
+  // Aerial (Esri satellite) vs street basemap. Default to aerial — real imagery of curbs/parking.
+  const [satellite, setSatellite] = useState(true)
+  const satelliteRef = useRef(true)
+
   // Init the map once
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
@@ -124,9 +134,23 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onS
       dragRotate: false,
     })
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
+
+    // (Re)attach the Esri satellite raster on top of whatever base style is loaded. setStyle wipes
+    // custom layers, so run this on every 'styledata' — idempotent (guards on existence).
+    const ensureSat = () => {
+      if (!map.isStyleLoaded()) return
+      if (!map.getSource(SAT_LAYER)) {
+        map.addSource(SAT_LAYER, { type: 'raster', tiles: [ESRI_SAT_TILES], tileSize: 256, maxzoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics' })
+      }
+      if (!map.getLayer(SAT_LAYER)) {
+        map.addLayer({ id: SAT_LAYER, type: 'raster', source: SAT_LAYER, layout: { visibility: satelliteRef.current ? 'visible' : 'none' } })
+      }
+    }
+    map.on('styledata', ensureSat)
+
     // Flexbox can settle the container size a tick after mount — nudge MapLibre so it doesn't
     // render into a 0-height canvas and appear blank until the first interaction.
-    map.on('load', () => map.resize())
+    map.on('load', () => { map.resize(); ensureSat() })
     const rz = window.setTimeout(() => map.resize(), 60)
     mapRef.current = map
     return () => { window.clearTimeout(rz); map.remove(); mapRef.current = null; markersRef.current = {} }
@@ -172,6 +196,13 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onS
     }
   }, [cameras])
 
+  const setSat = (v: boolean) => {
+    satelliteRef.current = v
+    setSatellite(v)
+    const map = mapRef.current
+    if (map && map.getLayer(SAT_LAYER)) map.setLayoutProperty(SAT_LAYER, 'visibility', v ? 'visible' : 'none')
+  }
+
   const unplaced = cameras.filter(c => c.latitude == null || c.longitude == null)
 
   return (
@@ -180,6 +211,18 @@ export default function CameraMap({ cameras, styleUrl, center, zoom, bounds, onS
           position:relative, which beats layered Tailwind utilities and collapses an `absolute inset-0`
           container to 0 height. An inline width/height fills the parent regardless. */}
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+
+      {/* Basemap toggle: aerial (Esri) vs streets */}
+      <div className="absolute bottom-2 start-2 z-10 flex rounded-lg overflow-hidden shadow-lg text-theme-sm font-medium" dir="rtl">
+        <button type="button" onClick={() => setSat(true)}
+          className={`px-3 py-1.5 transition-colors ${satellite ? 'bg-theme-accent text-white' : 'bg-white/95 text-theme-text-primary hover:bg-white'}`}>
+          🛰 לוויין
+        </button>
+        <button type="button" onClick={() => setSat(false)}
+          className={`px-3 py-1.5 transition-colors ${!satellite ? 'bg-theme-accent text-white' : 'bg-white/95 text-theme-text-primary hover:bg-white'}`}>
+          🗺 מפה
+        </button>
+      </div>
       {unplaced.length > 0 && (
         <div className="absolute top-2 start-2 z-10 bg-white/95 rounded-lg shadow-lg p-2 max-w-[230px] text-theme-xs" dir="rtl">
           <div className="font-semibold mb-1">מצלמות ללא מיקום ({unplaced.length})</div>
