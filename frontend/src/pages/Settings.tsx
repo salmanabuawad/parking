@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Settings as SettingsIcon } from 'lucide-react'
-import { settingsApi } from '../api'
+import { Settings as SettingsIcon, ArrowUp, ArrowDown } from 'lucide-react'
+import { settingsApi, simulationApi } from '../api'
 import { t } from '../i18n'
 import { useTheme } from '../context/ThemeContext'
 
@@ -35,6 +35,8 @@ export default function Settings() {
   const [processedRetentionDays, setProcessedRetentionDays] = useState(90)
   const [candidateRetentionDays, setCandidateRetentionDays] = useState(365)
   const [saving, setSaving] = useState(false)
+  const [cityList, setCityList] = useState<{ key: string; label: string }[]>([])
+  const [savingCities, setSavingCities] = useState(false)
 
   useEffect(() => {
     settingsApi.get().then(({ data }) => {
@@ -59,6 +61,34 @@ export default function Settings() {
       setCandidateRetentionDays(data.ticket_candidate_retention_days ?? 365)
     }).catch(() => {})
   }, [])
+
+  // Cities come back in the currently-saved order; the card below lets the admin reorder them.
+  useEffect(() => {
+    simulationApi.cities()
+      .then((cs) => setCityList(cs.map((c) => ({ key: c.key, label: c.label }))))
+      .catch(() => {})
+  }, [])
+
+  const moveCity = (idx: number, dir: -1 | 1) => {
+    setCityList((prev) => {
+      const j = idx + dir
+      if (j < 0 || j >= prev.length) return prev
+      const next = [...prev]
+      ;[next[idx], next[j]] = [next[j], next[idx]]
+      return next
+    })
+  }
+
+  const saveCityOrder = async () => {
+    setSavingCities(true)
+    try {
+      await settingsApi.update({ city_order: cityList.map((c) => c.key) })
+    } catch (err) {
+      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('failedToSave'))
+    } finally {
+      setSavingCities(false)
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -300,6 +330,31 @@ export default function Settings() {
             className="btn-primary"
           >
             {saving ? t('saving') : t('save')}
+          </button>
+        </div>
+      )}
+
+      {/* City order — controls the order of cities in the fleet dashboard + camera dropdowns */}
+      {cityList.length > 0 && (
+        <div className="app-card p-5 space-y-3">
+          <div>
+            <label className="label-base text-theme-text-primary font-semibold">סדר הערים ברשימות</label>
+            <p className="text-theme-text-muted text-theme-sm">קובע את סדר הערים בתפריטי הבחירה (לוח המצלמות, הגדרת מצלמה).</p>
+          </div>
+          <ul className="flex flex-col gap-2 max-w-sm">
+            {cityList.map((c, i) => (
+              <li key={c.key} className="flex items-center gap-2 rounded-lg border border-theme-card-border px-3 py-2">
+                <span className="w-6 text-theme-text-muted text-theme-sm">{i + 1}.</span>
+                <span className="flex-1 text-theme-text-primary">{c.label}</span>
+                <button type="button" onClick={() => moveCity(i, -1)} disabled={i === 0}
+                  className="btn-icon disabled:opacity-30" title="הזז למעלה"><ArrowUp className="w-4 h-4" /></button>
+                <button type="button" onClick={() => moveCity(i, 1)} disabled={i === cityList.length - 1}
+                  className="btn-icon disabled:opacity-30" title="הזז למטה"><ArrowDown className="w-4 h-4" /></button>
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={saveCityOrder} disabled={savingCities} className="btn-primary">
+            {savingCities ? t('saving') : t('save')}
           </button>
         </div>
       )}

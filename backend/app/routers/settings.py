@@ -39,6 +39,7 @@ class SettingsUpdate(BaseModel):
     processed_video_retention_days: Optional[int] = None
     ticket_candidate_retention_days: Optional[int] = None
     video_timestamp_overlay: Optional[bool] = None
+    city_order: Optional[list[str]] = None
 
 
 def _get_config(db: Session) -> AppConfig:
@@ -77,6 +78,7 @@ def _serialize(cfg: AppConfig) -> dict:
         "processed_video_retention_days": cfg.processed_video_retention_days,
         "ticket_candidate_retention_days": cfg.ticket_candidate_retention_days,
         "video_timestamp_overlay": cfg.video_timestamp_overlay,
+        "city_order": cfg.city_order or [],
     }
 
 
@@ -175,6 +177,17 @@ def update_settings(
 
     if body.video_timestamp_overlay is not None:
         cfg.video_timestamp_overlay = bool(body.video_timestamp_overlay)
+
+    if body.city_order is not None:
+        # Store a de-duplicated list of non-empty city keys, preserving the given order.
+        seen: set[str] = set()
+        order: list[str] = []
+        for k in body.city_order:
+            key = str(k).strip()
+            if key and key not in seen:
+                seen.add(key)
+                order.append(key)
+        cfg.city_order = order
 
     db.commit()
     db.refresh(cfg)

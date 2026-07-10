@@ -12,10 +12,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_db
 from app.dependencies import get_camera_repo
-from app.models import Camera
+from app.models import AppConfig, Camera
 from app.repositories import CameraRepository
 from app.services import city_streets, simulation as sim
 
@@ -209,12 +211,20 @@ def _city_bounds(c: dict) -> list[list[float]]:
 
 
 @router.get("/cities")
-def list_cities():
-    """Cities available on the fleet dashboard (center is [lng, lat] for MapLibre)."""
+def list_cities(db: Session = Depends(get_db)):
+    """Cities available on the fleet dashboard (center is [lng, lat] for MapLibre).
+
+    Ordered by the admin-configured city_order (AppConfig); any city not listed there keeps its
+    natural definition order, after the configured ones."""
+    cfg = db.query(AppConfig).first()
+    order = cfg.city_order if (cfg and isinstance(cfg.city_order, list)) else []
+    rank = {k: i for i, k in enumerate(order)}
+    # stable sort: configured keys first (by their position), unlisted keys keep CITIES insertion order
+    keys = sorted(CITIES.keys(), key=lambda k: rank.get(k, len(rank)))
     return [
-        {"key": k, "label": c["label"], "center": [c["center"][1], c["center"][0]],
-         "zoom": c["zoom"], "bounds": _city_bounds(c)}
-        for k, c in CITIES.items()
+        {"key": k, "label": CITIES[k]["label"], "center": [CITIES[k]["center"][1], CITIES[k]["center"][0]],
+         "zoom": CITIES[k]["zoom"], "bounds": _city_bounds(CITIES[k])}
+        for k in keys
     ]
 
 

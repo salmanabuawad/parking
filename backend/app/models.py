@@ -360,6 +360,7 @@ class AppConfig(Base):
     processed_video_retention_days = Column(Integer, default=90, nullable=False)
     ticket_candidate_retention_days = Column(Integer, default=365, nullable=False)
     video_timestamp_overlay = Column(Boolean, default=True, nullable=False)   # burn a real-time clock into result videos
+    city_order = Column(JSON, nullable=True)   # admin-defined order of city keys for the fleet/camera dropdowns
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
