@@ -173,7 +173,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-theme-text-muted mt-6">
-          © {new Date().getFullYear()} Advanced Parking
+          © {new Date().getFullYear()} Kortex Digital · כל הזכויות שמורות
         </p>
       </div>
     </div>

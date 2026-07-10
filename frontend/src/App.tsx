@@ -187,6 +187,12 @@ function AppShell() {
             const path = ID_TO_PATH[id]
             if (path) navigate(path)
           }}
+          footer={
+            <div className="text-center leading-tight" dir="ltr">
+              <div>© {new Date().getFullYear()} Kortex Digital</div>
+              <div className="text-white/40" dir="rtl">כל הזכויות שמורות</div>
+            </div>
+          }
         />
 
         <main className="app-content bg-theme-content">
