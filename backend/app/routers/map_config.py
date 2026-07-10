@@ -8,9 +8,11 @@ falls back to plain OSM raster tiles.
 """
 import json
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.database import get_db
 from app.services import map_cache
 
 router = APIRouter(prefix="/map", tags=["map"])
@@ -76,18 +78,20 @@ def map_sprite(name: str):
 
 
 @router.post("/cache")
-def warm_cache(body: dict | None = None):
+def warm_cache(body: dict | None = None, db: Session = Depends(get_db)):
     """Pre-download map data for cities so the whole map is on disk. Body {cities:[...]} → those
     cities; omitted → all. Idempotent (cached resources are skipped)."""
     if not settings.maptiler_key:
         raise HTTPException(status_code=400, detail="No MAPTILER_KEY configured")
-    from app.routers.simulation import CITIES, _city_bounds, _street_bbox
     from app.services import city_streets
-    wanted = (body or {}).get("cities") or list(CITIES.keys())
+    from app.services.cities import load_cities, street_bbox
+    cmap = {c.key: c for c in load_cities(db, include_inactive=True)}
+    wanted = (body or {}).get("cities") or list(cmap.keys())
     out = {}
     for key in wanted:
-        if key in CITIES:
-            stats = map_cache.warm_city(_city_bounds(CITIES[key]))
-            stats["streets"] = len(city_streets.get_streets(key, _street_bbox(key)))  # real OSM names
+        c = cmap.get(key)
+        if c and c.bounds:
+            stats = map_cache.warm_city(c.bounds)
+            stats["streets"] = len(city_streets.get_streets(key, street_bbox(c)))  # real OSM names
             out[key] = stats
     return {"cities": out, "cache": map_cache.cache_size()}

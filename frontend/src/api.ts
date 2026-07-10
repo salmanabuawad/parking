@@ -273,9 +273,9 @@ export const simulationApi = {
       body: JSON.stringify(sources ? { sources } : {}),
     });
   },
-  // Cities available on the fleet dashboard (center is [lng, lat]; bounds [[w,s],[e,n]]).
+  // Active cities for the fleet dashboard / camera dropdowns (center [lng, lat]; bounds [[w,s],[e,n]]).
   cities(): Promise<{ key: string; label: string; center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }[]> {
-    return fetchJson("/simulation/cities");
+    return fetchJson("/cities");
   },
   // Generate demo cameras per city (varied status, on-land). count omitted → scaled by city size;
   // cities omitted → all cities.
@@ -283,6 +283,47 @@ export const simulationApi = {
     return fetchJson("/simulation/generate-fleet", { method: "POST", body: JSON.stringify({ ...(count ? { count } : {}), ...(cities ? { cities } : {}) }) });
   },
 };
+
+export interface City {
+  id: number
+  key: string
+  label: string
+  center: [number, number]        // [lng, lat] for MapLibre
+  center_lat: number
+  center_lng: number
+  zoom: number
+  bounds: [[number, number], [number, number]] | null
+  sort_order: number
+  is_active: boolean
+}
+
+export interface CityInput {
+  label: string
+  center_lat: number
+  center_lng: number
+  zoom: number
+  bounds: [[number, number], [number, number]] | null
+  is_active: boolean
+}
+
+// Admin-managed cities (add / edit / reorder) for the fleet dashboard and camera city dropdowns.
+export const citiesApi = {
+  list(includeInactive = false): Promise<City[]> {
+    return fetchJson(`/cities${includeInactive ? "?include_inactive=true" : ""}`)
+  },
+  create(body: CityInput): Promise<City> {
+    return fetchJson("/cities", { method: "POST", body: JSON.stringify(body) })
+  },
+  update(id: number, body: CityInput): Promise<City> {
+    return fetchJson(`/cities/${id}`, { method: "PUT", body: JSON.stringify(body) })
+  },
+  remove(id: number): Promise<{ ok: boolean }> {
+    return fetchJson(`/cities/${id}`, { method: "DELETE" })
+  },
+  reorder(order: number[]): Promise<{ ok: boolean }> {
+    return fetchJson("/cities/reorder", { method: "POST", body: JSON.stringify({ order }) })
+  },
+}
 
 export const mapConfigApi = {
   // Basemap config for the cameras map. maptiler_key empty → frontend uses OSM fallback.

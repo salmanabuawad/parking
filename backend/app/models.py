@@ -365,6 +365,28 @@ class AppConfig(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class City(Base):
+    """A city/area shown on the fleet dashboard and in the camera city dropdowns. Admin-managed
+    (add / edit / reorder), replacing the former hardcoded list.
+
+    `bounds` is [[west, south], [east, north]] (lng/lat) for MapLibre maxBounds; `key` is a stable
+    slug that cameras.city references."""
+
+    __tablename__ = "cities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String(60), unique=True, index=True, nullable=False)
+    label = Column(String(120), nullable=False)
+    center_lat = Column(Float, nullable=False)
+    center_lng = Column(Float, nullable=False)
+    zoom = Column(Float, default=13, nullable=False)
+    bounds = Column(JSON, nullable=True)                 # [[w, s], [e, n]]
+    sort_order = Column(Integer, default=0, nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
 class ViolationRule(Base):
     """Israeli traffic violation rule definitions (editable from admin UI)."""
 

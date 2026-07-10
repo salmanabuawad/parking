@@ -12,14 +12,13 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import get_db
 from app.dependencies import get_camera_repo
-from app.models import AppConfig, Camera
+from app.models import Camera
 from app.repositories import CameraRepository
 from app.services import city_streets, simulation as sim
+from app.services.cities import load_cities, random_point_in, street_bbox
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
 
@@ -127,105 +126,8 @@ def _city_camera_count(key: str, override: int | None) -> int:
         return max(1, min(1000, override))
     return max(FLEET_FLOOR, round(CITY_SIZE.get(key, 100) * FLEET_SCALE))
 
-# City demo areas: a map center (lat, lng) + zoom and a set of ON-LAND anchor points across real
-# neighborhoods; cameras scatter around anchors with a small jitter. `lng_min`/`lng_max` are
-# water-avoidance clamps — coastal cities keep pins east of the sea, Tiberias west of the Kinneret.
-CITIES: dict[str, dict] = {
-    "netanya": {
-        "label": "נתניה", "center": (32.3215, 34.8532), "zoom": 13, "lng_min": 34.855,
-        "anchors": [
-            (32.3286, 34.8590), (32.3240, 34.8615), (32.3320, 34.8600), (32.3340, 34.8635),
-            (32.3190, 34.8600), (32.3155, 34.8640), (32.3110, 34.8615), (32.3070, 34.8648),
-            (32.3040, 34.8605), (32.3270, 34.8648), (32.3210, 34.8662), (32.3140, 34.8632),
-        ],
-    },
-    "haifa": {
-        "label": "חיפה", "center": (32.7940, 34.9950), "zoom": 12, "lng_min": 34.978,
-        "anchors": [
-            (32.7940, 34.9896), (32.8080, 34.9970), (32.8160, 35.0010), (32.7870, 35.0030),
-            (32.7830, 35.0130), (32.8010, 34.9950), (32.7780, 35.0080), (32.8050, 35.0060),
-            (32.7920, 34.9990), (32.8120, 35.0040), (32.7990, 35.0100), (32.7890, 35.0050),
-        ],
-    },
-    "tel-aviv": {
-        "label": "תל אביב", "center": (32.0853, 34.7818), "zoom": 13, "lng_min": 34.775,
-        "anchors": [
-            (32.0809, 34.7806), (32.0900, 34.7835), (32.0990, 34.7865), (32.0760, 34.7835),
-            (32.0850, 34.7895), (32.0950, 34.7925), (32.1080, 34.7985), (32.0720, 34.7815),
-            (32.0690, 34.7905), (32.1030, 34.7905), (32.0880, 34.7955), (32.0800, 34.7885),
-        ],
-    },
-    "jerusalem": {
-        "label": "ירושלים", "center": (31.7780, 35.2100), "zoom": 12,
-        "anchors": [
-            (31.7683, 35.2137), (31.7850, 35.2100), (31.7900, 35.2010), (31.7760, 35.2240),
-            (31.7620, 35.2120), (31.7810, 35.2200), (31.7950, 35.2240), (31.7700, 35.1960),
-            (31.7580, 35.2210), (31.7880, 35.1980), (31.7990, 35.2130), (31.7720, 35.2300),
-        ],
-    },
-    "tiberias": {
-        "label": "טבריה", "center": (32.7900, 35.5290), "zoom": 14, "lng_max": 35.532,
-        "anchors": [
-            (32.7922, 35.5285), (32.7965, 35.5268), (32.7885, 35.5293), (32.7850, 35.5255),
-            (32.8000, 35.5275), (32.7805, 35.5268), (32.7765, 35.5290), (32.7925, 35.5250),
-            (32.7980, 35.5240), (32.7835, 35.5275), (32.7900, 35.5298), (32.7860, 35.5245),
-        ],
-    },
-    "bukata": {  # Druze village in the northern Golan Heights (built-up area per OSM ~33.200, 35.779)
-        "label": "בוקעאתא", "center": (33.2007, 35.7794), "zoom": 15,
-        "anchors": [
-            (33.2005, 35.7770), (33.2020, 35.7790), (33.1990, 35.7755), (33.2015, 35.7745),
-            (33.1995, 35.7800), (33.2030, 35.7775), (33.1980, 35.7785), (33.2008, 35.7810),
-        ],
-    },
-}
-
-
-def _city_point(key: str) -> tuple[float, float]:
-    c = CITIES[key]
-    lat0, lng0 = random.choice(c["anchors"])
-    lat = lat0 + random.uniform(-0.0025, 0.0025)
-    lng = lng0 + random.uniform(-0.0025, 0.0025)
-    if c.get("lng_min") is not None:
-        lng = max(c["lng_min"], lng)
-    if c.get("lng_max") is not None:
-        lng = min(c["lng_max"], lng)
-    return round(lat, 6), round(lng, 6)
-
-
-def _street_bbox(key: str):
-    """Tight bbox around a city's anchors, used to fetch its real street names from OSM."""
-    c = CITIES[key]
-    lats = [a[0] for a in c["anchors"]]
-    lngs = [a[1] for a in c["anchors"]]
-    pad = 0.004
-    return [[min(lngs) - pad, min(lats) - pad], [max(lngs) + pad, max(lats) + pad]]
-
-
-def _city_bounds(c: dict) -> list[list[float]]:
-    """Padded bounding box around a city's anchors, as [[west, south], [east, north]] (lng/lat) for
-    MapLibre maxBounds — so the map can't pan or zoom out past the city."""
-    lats = [a[0] for a in c["anchors"]]
-    lngs = [a[1] for a in c["anchors"]]
-    return [[min(lngs) - 0.025, min(lats) - 0.020], [max(lngs) + 0.025, max(lats) + 0.020]]
-
-
-@router.get("/cities")
-def list_cities(db: Session = Depends(get_db)):
-    """Cities available on the fleet dashboard (center is [lng, lat] for MapLibre).
-
-    Ordered by the admin-configured city_order (AppConfig); any city not listed there keeps its
-    natural definition order, after the configured ones."""
-    cfg = db.query(AppConfig).first()
-    order = cfg.city_order if (cfg and isinstance(cfg.city_order, list)) else []
-    rank = {k: i for i, k in enumerate(order)}
-    # stable sort: configured keys first (by their position), unlisted keys keep CITIES insertion order
-    keys = sorted(CITIES.keys(), key=lambda k: rank.get(k, len(rank)))
-    return [
-        {"key": k, "label": CITIES[k]["label"], "center": [CITIES[k]["center"][1], CITIES[k]["center"][0]],
-         "zoom": CITIES[k]["zoom"], "bounds": _city_bounds(CITIES[k])}
-        for k in keys
-    ]
+# Cities (center, zoom, bounds) now live in the DB `cities` table — see app.services.cities and the
+# /cities router. Demo-fleet placement derives points from each city's bounds.
 
 
 class FleetRequest(BaseModel):
@@ -243,10 +145,11 @@ def generate_fleet(
     fleet dashboard. Tagged connection_config.generated=true + city=<key>; clear=true first removes the
     previous generated batch for the requested cities so they don't accumulate."""
     body = body or FleetRequest()
-    keys = [k for k in (body.cities or list(CITIES.keys())) if k in CITIES]
+    db = camera_repo.db
+    cmap = {c.key: c for c in load_cities(db)}          # active cities, keyed by slug
+    keys = [k for k in (body.cities or list(cmap.keys())) if k in cmap]
     if not keys:
         raise HTTPException(status_code=400, detail="No valid cities requested")
-    db = camera_repo.db
 
     removed = 0
     if body.clear:
@@ -263,8 +166,9 @@ def generate_fleet(
 
     objs = []
     for key in keys:
-        label = CITIES[key]["label"]
-        streets = city_streets.get_streets(key, _street_bbox(key))  # real OSM street names (cached)
+        city = cmap[key]
+        label = city.label
+        streets = city_streets.get_streets(key, street_bbox(city))  # real OSM street names (cached)
         for i in range(1, _city_camera_count(key, body.count) + 1):
             status = random.choice(FLEET_STATUS_POOL)
             if streets:
@@ -273,7 +177,7 @@ def generate_fleet(
                 lng = round(st["lng"] + random.uniform(-0.00015, 0.00015), 6)
                 location = f"{st['name']} {random.randint(1, 120)}, {label}"
             else:
-                lat, lng = _city_point(key)
+                lat, lng = random_point_in(city)
                 location = label
             objs.append(Camera(
                 name=f"{label} {i:03d}",
