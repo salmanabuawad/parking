@@ -263,6 +263,7 @@ class Ticket(Base):
     evidence_video_sha256 = Column(String(64), nullable=True)
     best_frame_sha256 = Column(String(64), nullable=True)
     plate_crop_sha256 = Column(String(64), nullable=True)
+    duplicate_of_ticket_id = Column(Integer, nullable=True)   # #14 — set when flagged a duplicate_candidate
 
     anpr_track_results = relationship(
         "AnprTrackResult",
@@ -361,6 +362,7 @@ class AppConfig(Base):
     processed_video_retention_days = Column(Integer, default=90, nullable=False)
     ticket_candidate_retention_days = Column(Integer, default=365, nullable=False)
     video_timestamp_overlay = Column(Boolean, default=True, nullable=False)   # burn a real-time clock into result videos
+    duplicate_ticket_window_seconds = Column(Integer, default=300, nullable=False)   # #14 — dedup capture-time window
     city_order = Column(JSON, nullable=True)   # admin-defined order of city keys for the fleet/camera dropdowns
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

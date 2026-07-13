@@ -437,6 +437,21 @@ def process_one_job() -> bool:
                         setattr(ticket, k, v)
                     db.commit()
 
+            # #14 — flag a cross-upload duplicate (same plate + camera near the same capture time).
+            try:
+                from app.services.vehicle_exemption_service import find_duplicate_ticket
+                _win = int(getattr(cfg, "duplicate_ticket_window_seconds", 300) or 300) if cfg else 300
+                _dup = find_duplicate_ticket(
+                    db, plate=display_plate, camera_id=kw.get("camera_id"),
+                    at=job.captured_at, within_seconds=_win, exclude_id=ticket.id,
+                )
+                if _dup is not None:
+                    ticket_repo.update(ticket.id, review_status="duplicate_candidate",
+                                       duplicate_of_ticket_id=_dup.id)
+                    print(f"[Job {job.id}] ticket {ticket.id} flagged duplicate of {_dup.id}", flush=True)
+            except Exception as _dup_err:
+                print(f"[Job {job.id}] duplicate check failed (non-fatal): {_dup_err}", flush=True)
+
             try:
                 _ss = extract_frames(video_bytes_out, count=5, base_time=job.captured_at) if video_bytes_out else []
                 ss_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"

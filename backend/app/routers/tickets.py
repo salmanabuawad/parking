@@ -108,6 +108,7 @@ def get_ticket_detail(
     d.update({
         "camera_id": getattr(ticket, "camera_id", None),
         "camera_section_id": getattr(ticket, "camera_section_id", None),
+        "duplicate_of_ticket_id": getattr(ticket, "duplicate_of_ticket_id", None),
         "suspected_vehicle_track_id": getattr(ticket, "suspected_vehicle_track_id", None),
         "suspected_vehicle_box": getattr(ticket, "suspected_vehicle_box", None),
         "camera_config_snapshot": getattr(ticket, "camera_config_snapshot", None),

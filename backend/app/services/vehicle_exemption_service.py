@@ -32,18 +32,36 @@ def find_duplicate_ticket(
     *,
     plate: str | None,
     camera_id=None,
+    section_id: int | None = None,
+    at: datetime | None = None,
     within_seconds: int = 300,
     exclude_id: int | None = None,
 ) -> Ticket | None:
-    """Return an existing recent ticket for the same plate (+camera) within the window, else None."""
+    """Return an existing ticket for the same normalized plate + camera (+ section) whose CAPTURE
+    time is within `within_seconds` of `at`, else None (#14). Matching on the capture moment — not
+    row-creation — catches re-uploads / overlapping clips of the same violation event."""
     norm = normalize_israeli_plate(plate)
     if not norm:
         return None
-    since = datetime.now(timezone.utc) - timedelta(seconds=within_seconds)
-    for t in db.query(Ticket).filter(Ticket.created_at >= since).all():
+    at = at or datetime.now(timezone.utc)
+    lo, hi = at - timedelta(seconds=within_seconds), at + timedelta(seconds=within_seconds)
+    q = (
+        db.query(Ticket)
+        .filter(Ticket.captured_at.isnot(None), Ticket.captured_at >= lo, Ticket.captured_at <= hi)
+        .order_by(Ticket.id)
+    )
+    for t in q.all():
         if exclude_id and t.id == exclude_id:
             continue
-        same_plate = normalize_israeli_plate(t.license_plate) == norm or normalize_israeli_plate(getattr(t, "inspector_plate", None)) == norm
-        if same_plate and (camera_id is None or str(t.camera_id) == str(camera_id)):
-            return t
+        same_plate = (
+            normalize_israeli_plate(t.license_plate) == norm
+            or normalize_israeli_plate(getattr(t, "inspector_plate", None)) == norm
+        )
+        if not same_plate:
+            continue
+        if camera_id is not None and str(t.camera_id) != str(camera_id):
+            continue
+        if section_id is not None and getattr(t, "camera_section_id", None) not in (None, section_id):
+            continue
+        return t
     return None
