@@ -231,6 +231,7 @@ def process_one_job() -> bool:
         _det_roi_y0 = 0.26
         _max_frames = 150
         _min_votes_stable = 1
+        _blur_except_plate = True
         if cfg:
             _db_backend = str(getattr(cfg, "anpr_detector_backend", "enterprise") or "enterprise").lower()
             if _db_backend in {"hsv", "yolo", "enterprise"}:
@@ -238,6 +239,7 @@ def process_one_job() -> bool:
             _ocr_every = max(3, min(12, int(getattr(cfg, "anpr_ocr_every_n_frames", 5) or 5)))
             _det_zoom = max(1.0, min(4.0, float(getattr(cfg, "enterprise_detection_zoom", 1.75) or 1.75)))
             _det_roi_y0 = max(0.0, min(0.85, float(getattr(cfg, "enterprise_detection_roi_y_start", 0.26) or 0.26)))
+            _blur_except_plate = bool(getattr(cfg, "blur_except_plate", True))
         _plate_yolo_path = str(_plate_model) if _plate_model.is_file() else "models/license_plate_detector.pt"
 
         cars: list = []
@@ -271,6 +273,7 @@ def process_one_job() -> bool:
                 anpr_min_votes_stable=_min_votes_stable,
                 clock_start_epoch=(job.captured_at.timestamp() if job.captured_at else None),
                 video_timestamp_overlay=bool(getattr(cfg, "video_timestamp_overlay", True)) if cfg else True,
+                blur_except_plate=_blur_except_plate,
             )
             # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
             try:

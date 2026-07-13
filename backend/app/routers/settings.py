@@ -18,6 +18,7 @@ class SettingsUpdate(BaseModel):
     blur_expand_ratio: Optional[float] = None
     temporal_blur_enabled: Optional[bool] = None
     temporal_blur_max_misses: Optional[int] = None
+    blur_except_plate: Optional[bool] = None
     use_violation_pipeline: Optional[bool] = None
     anpr_detector_backend: Optional[str] = None
     anpr_ocr_every_n_frames: Optional[int] = None
@@ -58,6 +59,7 @@ def _serialize(cfg: AppConfig) -> dict:
         "blur_expand_ratio": cfg.blur_expand_ratio,
         "temporal_blur_enabled": cfg.temporal_blur_enabled,
         "temporal_blur_max_misses": cfg.temporal_blur_max_misses,
+        "blur_except_plate": cfg.blur_except_plate,
         "use_violation_pipeline": cfg.use_violation_pipeline,
         "anpr_detector_backend": cfg.anpr_detector_backend,
         "anpr_ocr_every_n_frames": cfg.anpr_ocr_every_n_frames,
@@ -109,6 +111,9 @@ def update_settings(
 
     if body.temporal_blur_max_misses is not None:
         cfg.temporal_blur_max_misses = max(0, min(30, int(body.temporal_blur_max_misses)))
+
+    if body.blur_except_plate is not None:
+        cfg.blur_except_plate = bool(body.blur_except_plate)
 
     if body.use_violation_pipeline is not None:
         cfg.use_violation_pipeline = body.use_violation_pipeline

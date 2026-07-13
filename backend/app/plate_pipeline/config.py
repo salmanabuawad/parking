@@ -120,6 +120,9 @@ class PipelineConfig:
     blur_expand_ratio: float = BLUR_EXPAND_RATIO
     temporal_blur_enabled: bool = TEMPORAL_BLUR_ENABLED
     temporal_blur_max_misses: int = TEMPORAL_BLUR_MAX_MISSES
+    # Keep only the enforced plate sharp (blur the rest of the frame incl. the car body), instead of
+    # keeping the whole violating car sharp.
+    blur_except_plate: bool = False
     multi_plate_max_per_frame: int = MULTI_PLATE_MAX_PER_FRAME
     preview_enabled: bool = PREVIEW_ENABLED
     preview_max_w_ratio: float = PREVIEW_MAX_W_RATIO

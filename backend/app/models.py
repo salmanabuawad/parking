@@ -327,6 +327,7 @@ class AppConfig(Base):
     blur_expand_ratio = Column(Float, default=0.18, nullable=False)
     temporal_blur_enabled = Column(Boolean, default=True, nullable=False)
     temporal_blur_max_misses = Column(Integer, default=6, nullable=False)
+    blur_except_plate = Column(Boolean, default=True, nullable=False)   # keep only the plate sharp; blur the rest
     use_violation_pipeline = Column(Boolean, default=True, nullable=False)
     # ANPR pipeline tuning (used by upload worker -> plate_pipeline PipelineConfig)
     anpr_detector_backend = Column(String(20), default="enterprise", nullable=False)

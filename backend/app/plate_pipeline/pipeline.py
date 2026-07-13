@@ -718,6 +718,35 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
     fps = (get_video_info(cfg.input_path) or {}).get("fps", 25) or 25
     _clock_on = bool(getattr(cfg, "video_timestamp_overlay", False)) and getattr(cfg, "clock_start_epoch", None) is not None
 
+    def _expand_xywh(box, ratio, bound):
+        x, y, w, h = box
+        dx, dy = int(round(w * ratio)), int(round(h * ratio))
+        nx, ny, nw, nh = x - dx, y - dy, w + 2 * dx, h + 2 * dy
+        nx, ny = max(0, nx), max(0, ny)
+        if bound is not None:
+            bx, by, bw, bh = bound
+            nx, ny = max(nx, bx), max(ny, by)
+            nw, nh = min(nw, bx + bw - nx), min(nh, by + bh - ny)
+        return (nx, ny, max(0, nw), max(0, nh))
+
+    def _densify_plate_boxes(plate_by_frame, car_by_frame, n_frames, expand=0.15):
+        # OCR runs every N frames, so plate boxes are sparse; carry the nearest known box
+        # forward/backward (expanded + clamped inside the car) so the kept-sharp plate never flickers.
+        if not plate_by_frame:
+            return {}
+        known = sorted(plate_by_frame.keys())
+        dense = {}
+        for fidx in range(n_frames):
+            if fidx in plate_by_frame:
+                src = fidx
+            else:
+                prev = [k for k in known if k <= fidx]
+                src = prev[-1] if prev else known[0]
+            dense[fidx] = _expand_xywh(plate_by_frame[src], expand, car_by_frame.get(fidx))
+        return dense
+
+    keep_plate = bool(getattr(cfg, "blur_except_plate", False))
+
     tracks_render: list[dict[str, Any]] = []
     track_results: list[dict[str, Any]] = []
     for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
@@ -732,10 +761,17 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         track_results.append(rd)
         overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
         out_frames = []
+        # Which region stays sharp: the enforced plate box (densified across frames) when
+        # blur_except_plate is on, else the whole violating car. Falls back to the car box on
+        # frames where no plate box is known so the subject is never fully blurred.
+        dense_plate = _densify_plate_boxes(vs["plate_by_frame"], vs["car_by_frame"], len(frames)) if keep_plate else {}
         for fidx, frame in enumerate(frames):
-            # Restore the whole violating car (not just the plate box) so the plate number stays
-            # sharp/readable even when the plate box is loose or OCR pinned it imperfectly.
-            boxes = [vs["car_by_frame"][fidx]] if fidx in vs["car_by_frame"] else []
+            if keep_plate and fidx in dense_plate:
+                boxes = [dense_plate[fidx]]
+            elif fidx in vs["car_by_frame"]:
+                boxes = [vs["car_by_frame"][fidx]]
+            else:
+                boxes = []
             of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size,
                                              box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
             # Zoomed plate-preview window (top-left) so a reviewer can read the plate directly,

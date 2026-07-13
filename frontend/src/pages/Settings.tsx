@@ -38,6 +38,7 @@ export default function Settings() {
   const [videoRetentionDays, setVideoRetentionDays] = useState(90)
   const [videoTimestampOverlay, setVideoTimestampOverlay] = useState(true)
   const [blurExpandRatio, setBlurExpandRatio] = useState(0.18)
+  const [blurExceptPlate, setBlurExceptPlate] = useState(true)
   const [evidencePreSeconds, setEvidencePreSeconds] = useState(5)
   const [evidencePostSeconds, setEvidencePostSeconds] = useState(5)
   const [originalRetentionDays, setOriginalRetentionDays] = useState(180)
@@ -61,6 +62,7 @@ export default function Settings() {
       setVideoRetentionDays(data.video_retention_days ?? 90)
       setVideoTimestampOverlay(data.video_timestamp_overlay ?? true)
       setBlurExpandRatio(data.blur_expand_ratio ?? 0.18)
+      setBlurExceptPlate(data.blur_except_plate ?? true)
       setEvidencePreSeconds(data.evidence_video_pre_seconds ?? 5)
       setEvidencePostSeconds(data.evidence_video_post_seconds ?? 5)
       setOriginalRetentionDays(data.original_video_retention_days ?? 180)
@@ -86,6 +88,7 @@ export default function Settings() {
         video_retention_days: videoRetentionDays,
         video_timestamp_overlay: videoTimestampOverlay,
         blur_expand_ratio: blurExpandRatio,
+        blur_except_plate: blurExceptPlate,
         evidence_video_pre_seconds: evidencePreSeconds,
         evidence_video_post_seconds: evidencePostSeconds,
         original_video_retention_days: originalRetentionDays,
@@ -254,6 +257,14 @@ export default function Settings() {
                   className="input-base"
                 />
               </div>
+              <label className="flex items-center gap-2 mb-4 text-theme-text-primary">
+                <input
+                  type="checkbox"
+                  checked={blurExceptPlate}
+                  onChange={(e) => setBlurExceptPlate(e.target.checked)}
+                />
+                טשטש את כל הסרטון חוץ ממספר הרכב הרלוונטי
+              </label>
               <label className="flex items-center gap-2 mb-4 text-theme-text-primary">
                 <input
                   type="checkbox"

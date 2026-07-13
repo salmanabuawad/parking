@@ -48,6 +48,7 @@ def rerender_ticket_video(db, ticket, *, box_color, plate_override: str | None =
         box_color_bgr=tuple(box_color),
         clock_start_epoch=(clk.timestamp() if clk else None),
         video_timestamp_overlay=bool(getattr(cfg, "video_timestamp_overlay", True)) if cfg else True,
+        blur_except_plate=bool(getattr(cfg, "blur_except_plate", True)) if cfg else True,
     )
     result = _run_pipeline_vehicle_multi(pc, overlay_plate_override=plate_override or ticket.license_plate)
     tracks = result.get("tracks_render") or []
