@@ -65,11 +65,18 @@ function fromLocalInput(v: string): string | undefined {
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
+// Compact date+time (no seconds) so details fields stay one line in the tight 3-col grid.
+function fmtDateTime(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="min-w-0 mb-1.5">
-      <div className="text-[11px] text-theme-text-muted mb-0.5">{label}</div>
-      <div>{children}</div>
+    <div className="min-w-0 mb-1">
+      <div className="text-[11px] text-theme-text-muted leading-tight">{label}</div>
+      <div className="leading-tight">{children}</div>
     </div>
   );
 }
@@ -352,11 +359,10 @@ export default function TicketReview() {
 
   return (
     <div className="page-fill">
-    <div className="page-body-scroll">
-    <div dir="rtl" className="p-3 sm:p-4 text-theme-text-primary">
+    <div dir="rtl" className="h-full flex flex-col min-h-0 gap-2 p-2 sm:p-3 text-theme-text-primary">
 
       {/* Header */}
-      <div className="page-header rounded-lg px-3 py-2 mb-3 flex items-center gap-3 flex-wrap">
+      <div className="page-header rounded-lg px-3 py-2 shrink-0 flex items-center gap-3 flex-wrap">
         <span className="page-header-icon">
           <ClipboardCheck className="w-5 h-5" strokeWidth={1.5} />
         </span>
@@ -367,38 +373,41 @@ export default function TicketReview() {
       </div>
 
       {state === "error" && (
-        <div className="mb-3 rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-theme-sm">
+        <div className="shrink-0 rounded-lg border border-red-200 bg-red-50 text-red-700 px-3 py-2 text-theme-sm">
           שגיאה: {error}
         </div>
       )}
 
-      {/* Side-by-side: video + details */}
-      <div className="flex gap-4 items-start flex-wrap">
+      {/* Side-by-side: video + details — fills remaining height so the page never scrolls */}
+      <div className="flex-1 min-h-0 flex gap-3 items-stretch">
 
-        {/* Left column: video + screenshots — fixed-ish width so a portrait clip
-            doesn't grab half the page and squeeze the details/analysis panels. */}
-        <div className="grow-0 basis-[420px] min-w-[300px] flex flex-col gap-3">
+        {/* Left column: video + screenshots — fills column height; the video scales to fit so a
+            tall clip doesn't push the page past one viewport. */}
+        <div className="grow-0 basis-[42%] max-w-[540px] min-w-[300px] flex flex-col gap-2 min-h-0">
 
-          {/* Video panel */}
-          <div>
-            <div className="rounded-xl overflow-hidden border border-theme-card-border bg-black">
+          {/* Video panel — grows to fill the remaining height */}
+          <div className="flex-1 min-h-0 flex flex-col">
+            <div className="flex-1 min-h-0 flex flex-col rounded-xl overflow-hidden border border-theme-card-border bg-black">
               {videoUrl ? (
-                <video
-                  ref={videoRef}
-                  key={videoUrl}
-                  src={videoUrl}
-                  controls
-                  playsInline
-                  className="w-full block max-h-64"
-                />
+                <div className="flex-1 min-h-0 relative">
+                  <video
+                    ref={videoRef}
+                    key={videoUrl}
+                    src={videoUrl}
+                    controls
+                    playsInline
+                    preload="auto"
+                    className="absolute inset-0 w-full h-full object-contain"
+                  />
+                </div>
               ) : (
-                <div className="p-8 text-center text-slate-400 bg-neutral-900">
+                <div className="flex-1 min-h-0 flex items-center justify-center text-center text-slate-400 bg-neutral-900">
                   {state === "loading" ? "טוען וידאו…" : "אין וידאו זמין"}
                 </div>
               )}
               <canvas ref={canvasRef} className="hidden" />
               {videoUrl && (
-                <div className="px-3 py-2.5 bg-slate-800 flex items-center gap-2.5">
+                <div className="shrink-0 px-3 py-2 bg-slate-800 flex items-center gap-2.5">
                   <button onClick={captureScreenshot} disabled={capturing || state !== "ready"} className="btn-primary">
                     <Camera className="w-4 h-4" />
                     <span>{capturing ? "שומר…" : "צלם תמונה"}</span>
@@ -436,28 +445,28 @@ export default function TicketReview() {
 
           {/* Screenshot gallery — under video */}
           {(screenshots.length > 0 || videoUrl) && (
-            <div className="app-card p-3">
-              <h3 className="text-base font-semibold mb-2">
+            <div className="app-card p-2 shrink-0">
+              <h3 className="text-sm font-semibold mb-1">
                 צילומי מסך {screenshots.length > 0 ? `(${screenshots.length})` : ""}
               </h3>
               {screenshots.length === 0 ? (
-                <p className="text-theme-text-muted text-theme-sm m-0">עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
+                <p className="text-theme-text-muted text-theme-xs m-0">עדיין אין צילומים — לחץ "📸 צלם תמונה" בעת השמעת הוידאו</p>
               ) : (
                 <>
-                  <div className="flex gap-2.5 flex-wrap">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
                     {screenshots.map((s) => (
                       <div
                         key={s.id}
                         onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-                        className={`cursor-pointer rounded-lg overflow-hidden bg-slate-100 border-2 ${expanded === s.id ? "border-theme-accent" : "border-transparent"}`}
+                        className={`shrink-0 cursor-pointer rounded-lg overflow-hidden bg-slate-100 border-2 ${expanded === s.id ? "border-theme-accent" : "border-transparent"}`}
                       >
                         <img
                           src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
                           alt={`Screenshot ${s.id}`}
-                          className="w-[140px] h-20 object-cover block"
+                          className="w-[104px] h-14 object-cover block"
                           loading="lazy"
                         />
-                        <div className="text-[11px] text-center px-1 py-0.5 text-theme-text-muted leading-tight">
+                        <div className="text-[10px] text-center px-1 py-0.5 text-theme-text-muted leading-tight truncate w-[104px]">
                           {s.frame_time_seconds != null && ticket?.captured_at
                             ? new Date(new Date(ticket.captured_at).getTime() + s.frame_time_seconds * 1000)
                                 .toLocaleString("he-IL", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -467,11 +476,11 @@ export default function TicketReview() {
                     ))}
                   </div>
                   {expanded !== null && (
-                    <div className="mt-3 rounded-lg overflow-hidden border border-theme-card-border">
+                    <div className="mt-2 rounded-lg overflow-hidden border border-theme-card-border">
                       <img
                         src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
                         alt="Expanded screenshot"
-                        className="w-full block"
+                        className="w-full block max-h-28 object-contain bg-black"
                       />
                     </div>
                   )}
@@ -482,11 +491,12 @@ export default function TicketReview() {
 
         </div>{/* end left column */}
 
-        {/* Right section: details + violation analysis */}
-        <div className="grow basis-[320px] flex flex-row gap-3 flex-wrap items-start">
+        {/* Right section: details (wide, 3-col field grid → short) beside analysis/audit. Scrolls
+            internally only if a heavy ticket overflows, so the page itself never scrolls. */}
+        <div className="flex-1 min-h-0 flex flex-row gap-3 flex-wrap items-start content-start overflow-y-auto">
 
           {ticket && (
-            <div className="app-card grow basis-[260px] p-3 sticky top-[80px]">
+            <div className="app-card grow basis-[400px] p-2.5">
 
               {/* Plate — full width (carries the registry note) */}
               <Field label="מספר לוחית">
@@ -517,8 +527,8 @@ export default function TicketReview() {
                 )}
               </Field>
 
-              {/* Compact 2-column grid for the remaining fields — halves the panel height */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0 border-t border-theme-card-border pt-2 mt-2">
+              {/* Compact multi-column grid for the remaining fields — wide + short so it fits one screen */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-0 border-t border-theme-card-border pt-2 mt-2">
 
                 {/* Status */}
                 <Field label="סטטוס">
@@ -559,26 +569,26 @@ export default function TicketReview() {
                 {/* Capture time */}
                 {ticket.captured_at && (
                   <Field label="זמן צילום">
-                    <span className="text-theme-sm">{new Date(ticket.captured_at).toLocaleString("he-IL")}</span>
+                    <span className="text-theme-sm">{fmtDateTime(ticket.captured_at)}</span>
                   </Field>
                 )}
 
                 {/* Violation window — start / end (#5) */}
                 {ticket.violation_start_at && (
                   <Field label="תחילת עבירה">
-                    <span className="text-theme-sm">{new Date(ticket.violation_start_at).toLocaleString("he-IL")}</span>
+                    <span className="text-theme-sm">{fmtDateTime(ticket.violation_start_at)}</span>
                   </Field>
                 )}
                 {ticket.violation_end_at && (
                   <Field label="סיום עבירה">
-                    <span className="text-theme-sm">{new Date(ticket.violation_end_at).toLocaleString("he-IL")}</span>
+                    <span className="text-theme-sm">{fmtDateTime(ticket.violation_end_at)}</span>
                   </Field>
                 )}
 
                 {/* Submission time */}
                 {ticket.created_at && (
                   <Field label="זמן הגשה">
-                    <span className="text-theme-sm">{new Date(ticket.created_at).toLocaleString("he-IL")}</span>
+                    <span className="text-theme-sm">{fmtDateTime(ticket.created_at)}</span>
                   </Field>
                 )}
 
@@ -804,7 +814,6 @@ export default function TicketReview() {
 
         </div>{/* end right column */}
       </div>
-    </div>
     </div>
     </div>
   );
