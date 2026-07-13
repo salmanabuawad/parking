@@ -1,7 +1,7 @@
 import { Component, type ReactNode, useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert, Inbox, Users, ShieldCheck, MapPin, SlidersHorizontal,
+  LayoutDashboard, FileText, ListOrdered, Camera, Settings, ShieldAlert, Inbox, Users, ShieldCheck, MapPin, SlidersHorizontal, History,
 } from 'lucide-react'
 
 const routerFutureFlags = { v7_startTransition: true, v7_relativeSplatPath: true }
@@ -34,6 +34,7 @@ import InboxPage        from './pages/Inbox'
 import Inspectors       from './pages/Inspectors'
 import Exemptions       from './pages/Exemptions'
 import FieldConfigManager from './pages/FieldConfigManager'
+import AuditLog         from './pages/AuditLog'
 import Login            from './pages/Login'
 import { he }           from './i18n/he'
 
@@ -87,6 +88,7 @@ function buildNavItems(userType?: string): NavItem[] {
     { id: 'exemptions', label: 'פטורים', icon: <ShieldCheck className="w-4 h-4" /> },
     { id: 'settings', label: he.app.settings, icon: <Settings className="w-4 h-4" /> },
     { id: 'field-config', label: 'הגדרות שדות', icon: <SlidersHorizontal className="w-4 h-4" /> },
+    { id: 'audit', label: 'יומן ביקורת', icon: <History className="w-4 h-4" /> },
   ]
 }
 
@@ -103,6 +105,7 @@ const ID_TO_PATH: Record<string, string> = {
   exemptions:       '/exemptions',
   settings:         '/settings',
   'field-config':   '/field-config',
+  audit:            '/audit',
 }
 
 /* Map pathname → active nav id */
@@ -118,6 +121,7 @@ function pathnameToActiveId(pathname: string): string {
   if (pathname.startsWith('/exemptions'))       return 'exemptions'
   if (pathname.startsWith('/settings'))         return 'settings'
   if (pathname.startsWith('/field-config'))     return 'field-config'
+  if (pathname.startsWith('/audit'))            return 'audit'
   return 'home'
 }
 
@@ -210,6 +214,7 @@ function AppShell() {
             <Route path="/exemptions"      element={<Exemptions />} />
             <Route path="/settings"        element={<SettingsPage />} />
             <Route path="/field-config"    element={<FieldConfigManager />} />
+            <Route path="/audit"           element={<AuditLog />} />
             <Route path="*"               element={<Navigate to="/" replace />} />
           </Routes>
         </main>

@@ -427,6 +427,20 @@ def process_one_job() -> bool:
                 kw["suspected_vehicle_track_id"] = str(anpr_track["track_id"])[:40]
             ticket = ticket_repo.create(**kw)
 
+            # #12 — audit ticket creation, the registry lookup, and any manual-review flag.
+            try:
+                from app.services.audit_log_service import write_ticket_audit
+                write_ticket_audit(db, ticket_id=ticket.id, action_type="ticket_created",
+                                   new_value={"license_plate": display_plate, "status": kw.get("status")})
+                if fields.get("registry_status"):
+                    write_ticket_audit(db, ticket_id=ticket.id, action_type="registry_lookup",
+                                       new_value={"status": fields["registry_status"]})
+                if fields.get("review_status") == "manual_review_required":
+                    write_ticket_audit(db, ticket_id=ticket.id, action_type="manual_review",
+                                       notes=fields.get("reason"))
+            except Exception as _aud_err:
+                print(f"[Job {job.id}] creation audit failed (non-fatal): {_aud_err}", flush=True)
+
             if anpr_track:
                 try:
                     from app.repositories.anpr_track_repo import AnprTrackRepository

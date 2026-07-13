@@ -205,8 +205,26 @@ export const ticketsApi = {
       body: JSON.stringify(payload),
     });
   },
+  reject(ticketId: number | string, rejectionReason: string, notes?: string): Promise<any> {
+    return fetchJson(`/tickets/${ticketId}/reject`, {
+      method: "PATCH",
+      body: JSON.stringify({ rejection_reason: rejectionReason, notes: notes || null }),
+    });
+  },
   audit(ticketId: number | string): Promise<any[]> {
     return fetchJson(`/tickets/${ticketId}/audit`);
+  },
+};
+
+// Fleet-wide audit trail (#16) — recent actions across all tickets.
+export const auditApi = {
+  list(params?: { limit?: number; ticket_id?: number; action_type?: string }): Promise<any[]> {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.ticket_id) qs.set("ticket_id", String(params.ticket_id));
+    if (params?.action_type) qs.set("action_type", params.action_type);
+    const s = qs.toString();
+    return fetchJson(`/audit${s ? `?${s}` : ""}`);
   },
 };
 
