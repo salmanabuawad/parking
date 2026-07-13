@@ -1,5 +1,5 @@
 """Pydantic schemas for API."""
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Any
 from datetime import datetime
 
@@ -142,9 +142,9 @@ class InspectorResponse(InspectorBase):
 
 # Camera segment (מקטע) schemas
 class CameraSegmentBase(BaseModel):
-    label: str
+    label: str = Field(min_length=1, max_length=200)
     violation_rule_ids: Optional[list[str]] = None   # e.g. ["IL-STATIC-001", "IL-STATIC-005"]
-    display_order: int = 0
+    display_order: int = Field(default=0, ge=0)
     is_active: bool = True
     # Geometry (#4) — where in the frame the segment sits
     coordinate_type: Optional[str] = "pixels"        # pixels | normalized | polygon
@@ -154,12 +154,25 @@ class CameraSegmentBase(BaseModel):
     y2: Optional[float] = None
     polygon_json: Optional[list] = None
     # Per-segment overrides + schedule (#1, #4)
-    min_stay_seconds: Optional[int] = None
-    evidence_video_seconds: Optional[int] = None
+    min_stay_seconds: Optional[int] = Field(default=None, ge=0, le=86400)
+    evidence_video_seconds: Optional[int] = Field(default=None, ge=1, le=3600)
     active_days: Optional[list[str]] = None          # ["SUN","MON",...]
     active_from_time: Optional[str] = None           # "07:00"
     active_to_time: Optional[str] = None             # "19:00"
     holiday_policy: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_geometry_and_rules(self):
+        # A zone may carry 0, 1, or many violation types (#4/#10) — no minimum enforced here.
+        if self.polygon_json:
+            if len(self.polygon_json) < 3:
+                raise ValueError("פוליגון מקטע חייב להכיל לפחות 3 נקודות")
+        elif None not in (self.x1, self.y1, self.x2, self.y2):
+            if self.x2 <= self.x1 or self.y2 <= self.y1:
+                raise ValueError("קואורדינטות המקטע אינן תקינות")
+        else:
+            raise ValueError("יש להגדיר מלבן או פוליגון למקטע")
+        return self
 
 
 class CameraSegmentCreate(CameraSegmentBase):

@@ -57,6 +57,8 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const [hasSim, setHasSim] = useState(false)
   const [drawing, setDrawing] = useState<Pt[] | null>(null)
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [newZoneRules, setNewZoneRules] = useState<string[]>([])   // marked violation-type group → applied to the next new zone
+
   const [msg, setMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'polygon' | 'grid'>('polygon')
@@ -279,8 +281,9 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
       const created = await cameraSegmentsApi.create(cameraId, {
         label: `מקטע ${sections.length + 1}`, coordinate_type: 'polygon',
         polygon_json: drawing, display_order: sections.length,
+        violation_rule_ids: newZoneRules,   // new zone carries the marked group (#4)
       })
-      setSections([...sections, { ...created, polygon_json: drawing }])
+      setSections([...sections, { ...created, polygon_json: drawing, violation_rule_ids: newZoneRules }])
       setSelectedId(created.id); setDrawing(null); setMsg(null)
     } finally { setBusy(false) }
   }
@@ -356,16 +359,38 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
             />
           </div>
           {mode === 'polygon' && (
-            <div className="flex flex-wrap items-center gap-2 mt-2">
-              {!drawing ? (
-                <button type="button" onClick={() => { setDrawing([]); setSelectedId(null) }} disabled={!nat || busy} className="btn-primary"><Plus className="w-4 h-4" /> מקטע חדש</button>
-              ) : (
-                <>
-                  <span className="text-theme-xs text-theme-text-muted">לחץ להוספת נקודות, לחיצה כפולה לסיום ({drawing.length})</span>
-                  <button type="button" onClick={finishDrawing} disabled={drawing.length < 3} className="btn-success"><Check className="w-4 h-4" /> סיים</button>
-                  <button type="button" onClick={() => setDrawing(null)} className="btn-cancel"><X className="w-4 h-4" /> בטל</button>
-                </>
-              )}
+            <div className="flex flex-col gap-2 mt-2">
+              {/* Mark violation types (a group) → the next new zone is created carrying them (#4). */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-theme-xs font-semibold">סוגי עבירה לאזור חדש:</span>
+                {rules.map(r => {
+                  const on = newZoneRules.includes(r.id)
+                  return (
+                    <button key={r.id} type="button" title={r.label}
+                      onClick={() => setNewZoneRules(g => on ? g.filter(x => x !== r.id) : [...g, r.id])}
+                      className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-theme-xs max-w-[180px] ${on ? 'bg-green-100 border-green-400' : 'border-theme-card-border'}`}>
+                      <span className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: ruleColor(r.id) }} />
+                      <span className="truncate min-w-0">{r.title || r.id}</span>
+                      {on && <Check className="w-3 h-3 shrink-0 text-green-700" />}
+                    </button>
+                  )
+                })}
+                {rules.length === 0 && <span className="text-theme-xs text-amber-600">אין כללי הפרה</span>}
+                {newZoneRules.length > 0 && (
+                  <button type="button" onClick={() => setNewZoneRules([])} className="text-theme-xs text-theme-text-muted underline">נקה בחירה</button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {!drawing ? (
+                  <button type="button" onClick={() => { setDrawing([]); setSelectedId(null) }} disabled={!nat || busy} className="btn-primary"><Plus className="w-4 h-4" /> מקטע חדש{newZoneRules.length ? ` (${newZoneRules.length} סוגי עבירה)` : ''}</button>
+                ) : (
+                  <>
+                    <span className="text-theme-xs text-theme-text-muted">לחץ להוספת נקודות, לחיצה כפולה לסיום ({drawing.length}){newZoneRules.length ? ` · האזור ייווצר עם ${newZoneRules.length} סוגי עבירה` : ''}</span>
+                    <button type="button" onClick={finishDrawing} disabled={drawing.length < 3} className="btn-success"><Check className="w-4 h-4" /> סיים</button>
+                    <button type="button" onClick={() => setDrawing(null)} className="btn-cancel"><X className="w-4 h-4" /> בטל</button>
+                  </>
+                )}
+              </div>
             </div>
           )}
           {mode === 'grid' && (
