@@ -149,7 +149,8 @@ server {
     ssl_certificate_key $SSL_KEY;
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers HIGH:!aNULL:!MD5;
-    client_max_body_size 100M;
+    client_max_body_size 1G;          # large mobile video evidence uploads
+    client_body_timeout 300s;         # allow slow mobile connections to finish large uploads
 
     location = /index.html {
         root $FRONTEND_DIST;
