@@ -59,4 +59,22 @@ def rerender_ticket_video(db, ticket, *, box_color, plate_override: str | None =
     if not vb:
         return False
     (videos_dir / ticket.video_path).write_bytes(vb)
+    # Keep the evidence hash + RSA signature consistent with the re-rendered (red-box) video so the
+    # integrity record still matches what is served (rule 8).
+    try:
+        import hashlib
+        from datetime import datetime, timezone
+        ticket.evidence_video_sha256 = hashlib.sha256(vb).hexdigest()
+        from app.services.video_signing import sign_processed_video
+        sig_hex, _pub, sig_fp = sign_processed_video(
+            vb, job_id=(ticket.upload_job_id or 0), ticket_id=ticket.id,
+            captured_at=ticket.captured_at, keys_dir=videos_dir,
+        )
+        ticket.video_signature = sig_hex
+        ticket.video_signature_key = sig_fp
+        ticket.video_signed_at = datetime.now(timezone.utc)
+        (videos_dir / ticket.video_path).with_suffix(".mp4.sig").write_text(sig_hex)
+        db.commit()
+    except Exception:
+        db.rollback()
     return True

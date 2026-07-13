@@ -36,6 +36,8 @@ def resolve_ticket_fields(
     display_plate: str,
     candidates,
     video_params,
+    rule_code: str | None = None,
+    section_id: int | None = None,
 ) -> dict[str, Any]:
     """Return the resolved ticket fields (plate may be corrected). Every step is non-fatal."""
     reason: str | None = None
@@ -81,7 +83,7 @@ def resolve_ticket_fields(
     # 3) Immutable config snapshots (rule 8).
     try:
         from app.services.ticket_snapshot_service import build_ticket_snapshots
-        snapshots = build_ticket_snapshots(db, camera_id=job.camera_id, section_id=None, rule_code=None)
+        snapshots = build_ticket_snapshots(db, camera_id=job.camera_id, section_id=section_id, rule_code=rule_code)
     except Exception as e:
         print(f"[Job {job.id}] snapshot build failed (non-fatal): {e}", flush=True)
         snapshots = {}

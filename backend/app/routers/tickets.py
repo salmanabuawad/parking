@@ -102,7 +102,23 @@ def get_ticket_detail(
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    return _ticket_dict(ticket)
+    d = _ticket_dict(ticket)
+    # Immutable snapshots + evidence-integrity hashes (rule 8). Detail-only so list payloads stay
+    # lean; review/export read the frozen config from here, not live tables.
+    d.update({
+        "camera_id": getattr(ticket, "camera_id", None),
+        "camera_section_id": getattr(ticket, "camera_section_id", None),
+        "suspected_vehicle_track_id": getattr(ticket, "suspected_vehicle_track_id", None),
+        "suspected_vehicle_box": getattr(ticket, "suspected_vehicle_box", None),
+        "camera_config_snapshot": getattr(ticket, "camera_config_snapshot", None),
+        "camera_section_snapshot": getattr(ticket, "camera_section_snapshot", None),
+        "violation_rule_snapshot": getattr(ticket, "violation_rule_snapshot", None),
+        "system_config_snapshot": getattr(ticket, "system_config_snapshot", None),
+        "original_video_sha256": getattr(ticket, "original_video_sha256", None),
+        "evidence_video_sha256": getattr(ticket, "evidence_video_sha256", None),
+        "best_frame_sha256": getattr(ticket, "best_frame_sha256", None),
+    })
+    return d
 
 
 def _is_processed_path(video_path: Optional[str]) -> bool:

@@ -361,9 +361,10 @@ def process_one_job() -> bool:
             # Resolve plate/registry/exemption/snapshot/window fields (logic lives in the service).
             video_params = extract_video_params(str(proc_path))
             from app.services.ticket_finalization import resolve_ticket_fields
+            _rule_code = (violation_data or {}).get("violation_rule_id")
             fields = resolve_ticket_fields(
                 db, job=job, cfg=cfg, display_plate=display_plate, candidates=candidates,
-                video_params=video_params,
+                video_params=video_params, rule_code=_rule_code,
             )
             display_plate = fields["plate"]
             has_gps = bool(job.latitude) and bool(job.longitude)
@@ -371,7 +372,7 @@ def process_one_job() -> bool:
             kw = dict(
                 upload_job_id=job.id,
                 license_plate=display_plate,
-                camera_id="mobile",
+                camera_id=(str(job.camera_id) if job.camera_id not in (None, "", "mobile") else "mobile"),
                 location=location_str,
                 violation_zone=job.violation_zone or "red_white",
                 description=job.description or ("העלאה מהנייד" if not has_gps else f"העלאה מהנייד — {location_str}"),
@@ -407,6 +408,19 @@ def process_one_job() -> bool:
             for _sf, _sv in fields["snapshots"].items():
                 if _sv is not None:
                     kw[_sf] = _sv
+            # Evidence-integrity hashes (rule 8) + suspected-vehicle track (#10).
+            try:
+                import hashlib as _hl
+                if video_bytes:
+                    kw["original_video_sha256"] = _hl.sha256(video_bytes).hexdigest()
+                if video_bytes_out:
+                    kw["evidence_video_sha256"] = _hl.sha256(video_bytes_out).hexdigest()
+                if ticket_jpeg:
+                    kw["best_frame_sha256"] = _hl.sha256(ticket_jpeg).hexdigest()
+            except Exception:
+                pass
+            if anpr_track and anpr_track.get("track_id") is not None:
+                kw["suspected_vehicle_track_id"] = str(anpr_track["track_id"])[:40]
             ticket = ticket_repo.create(**kw)
 
             if anpr_track:
