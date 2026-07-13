@@ -361,12 +361,10 @@ export default function TicketReview() {
     <div className="page-fill">
     <div dir="rtl" className="h-full flex flex-col min-h-0 gap-2 p-2 sm:p-3 text-theme-text-primary">
 
-      {/* Header */}
-      <div className="page-header rounded-lg px-3 py-2 shrink-0 flex items-center gap-3 flex-wrap">
-        <span className="page-header-icon">
-          <ClipboardCheck className="w-5 h-5" strokeWidth={1.5} />
-        </span>
-        <h1 className="page-header-title">בדיקת דוח #{ticketId}</h1>
+      {/* Header — slim */}
+      <div className="page-header rounded-lg px-3 py-1 shrink-0 flex items-center gap-2 flex-wrap">
+        <ClipboardCheck className="w-4 h-4 text-white/90 shrink-0" strokeWidth={1.75} />
+        <h1 className="page-header-title text-theme-sm">בדיקת דוח #{ticketId}</h1>
         <div className="flex-1" />
         <Link to="/queue" className="text-white/90 hover:text-white text-theme-sm">← תור עיבוד</Link>
         <Link to="/tickets" className="text-white/90 hover:text-white text-theme-sm">← כל הדוחות</Link>
