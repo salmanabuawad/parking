@@ -51,7 +51,7 @@ def _clock_text(epoch: float, frame_idx: int, fps: float) -> str:
         t = _dt.datetime.fromtimestamp(base, tz=_dt.timezone.utc).astimezone(ZoneInfo("Asia/Jerusalem"))
     except Exception:
         t = _dt.datetime.fromtimestamp(base)
-    return t.strftime("%d/%m/%Y %H:%M:%S")
+    return t.strftime("%d/%m/%Y %H:%M:%S") + f".{t.microsecond // 1000:03d}"
 
 
 def _dedupe_boxes(detections: list[PlateDetection], max_count: int) -> list[PlateDetection]:
@@ -746,6 +746,14 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         return dense
 
     keep_plate = bool(getattr(cfg, "blur_except_plate", False))
+    _ov_parts = []
+    if getattr(cfg, "overlay_camera_id", None):
+        _ov_parts.append(f"CAM {cfg.overlay_camera_id}")
+    if getattr(cfg, "overlay_ticket_id", None):
+        _ov_parts.append(f"#{cfg.overlay_ticket_id}")
+    _overlay_label = " | ".join(_ov_parts) or None   # ASCII sep (OpenCV Hershey font has no middot)
+    _plate_inset = bool(getattr(cfg, "plate_inset_enabled", True))
+    _ts_pos = getattr(cfg, "timestamp_overlay_position", "top_right")
 
     tracks_render: list[dict[str, Any]] = []
     track_results: list[dict[str, Any]] = []
@@ -776,11 +784,11 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                                              box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
             # Zoomed plate-preview window (top-left) so a reviewer can read the plate directly,
             # plus the detected plate number overlaid at the bottom.
-            if vs["best_crop"] is not None:
+            if _plate_inset and vs["best_crop"] is not None:
                 of = engine.draw_preview(of, vs["best_crop"])
             cv2.putText(of, overlay_text, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
             if _clock_on:
-                of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps))
+                of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps), position=_ts_pos, label=_overlay_label)
             out_frames.append(of)
         tmp = Path(tempfile.mktemp(suffix=".mp4"))
         try:

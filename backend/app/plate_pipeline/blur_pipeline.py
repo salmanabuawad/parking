@@ -126,20 +126,28 @@ def render_privacy_frame_tracks(
     return out
 
 
-def overlay_timestamp(frame: np.ndarray, text: str) -> np.ndarray:
-    """Burn a real-time clock (top-right) with a dark backing strip so it stays legible.
-
-    Placed top-right to avoid the plate-preview window (top-left) and plate label (bottom).
-    """
+def overlay_timestamp(frame: np.ndarray, text: str, *, position: str = "top_right", label: str | None = None) -> np.ndarray:
+    """Burn a real-time clock with a dark backing strip so it stays legible. `position` is one of
+    top_right | top_left | bottom_right | bottom_left; `label` (e.g. camera/ticket id) is drawn as a
+    smaller second line. Default top-right avoids the plate-preview window and bottom plate label."""
     out = frame
     h, w = out.shape[:2]
     scale = max(0.5, min(1.0, w / 900.0))
     thick = 2 if w >= 640 else 1
-    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
-    x = max(4, w - tw - 14)
-    y = 8
-    cv2.rectangle(out, (x - 6, y), (min(w, x + tw + 8), y + th + 12), (0, 0, 0), -1)
-    cv2.putText(out, text, (x, y + th + 4), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 255, 255), thick, cv2.LINE_AA)
+    lines = [text] + ([label] if label else [])
+    sizes = [cv2.getTextSize(ln, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)[0] for ln in lines]
+    tw = max(s[0] for s in sizes)
+    th = max(s[1] for s in sizes)
+    line_h = th + 10
+    block_h = line_h * len(lines) + 6
+    pos = (position or "top_right").lower()
+    x = 8 if "left" in pos else max(4, w - tw - 14)
+    y = 8 if "top" in pos else max(4, h - block_h - 4)
+    cv2.rectangle(out, (x - 6, y), (min(w, x + tw + 8), y + block_h), (0, 0, 0), -1)
+    yy = y
+    for ln in lines:
+        yy += line_h
+        cv2.putText(out, ln, (x, yy - 4), cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 255, 255), thick, cv2.LINE_AA)
     return out
 
 

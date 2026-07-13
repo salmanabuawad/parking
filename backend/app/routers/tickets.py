@@ -448,7 +448,10 @@ def approve_ticket_as_inspector(
     # #10 — the subject-car box turns red once the report is approved.
     try:
         from app.services.video_rerender import rerender_ticket_video
-        rerender_ticket_video(ticket_repo.db, ticket, box_color=(0, 0, 255),
+        from app.plate_pipeline.config import hex_to_bgr
+        _cfg = ticket_repo.db.query(AppConfig).first()
+        _approved = hex_to_bgr(getattr(_cfg, "approved_frame_color", "#FF0000"), (0, 0, 255)) if _cfg else (0, 0, 255)
+        rerender_ticket_video(ticket_repo.db, ticket, box_color=_approved,
                               plate_override=ticket.inspector_plate or ticket.license_plate)
     except Exception as _rr:
         logging.getLogger(__name__).warning("approve re-render (red box) failed for ticket %s: %s", ticket_id, _rr)

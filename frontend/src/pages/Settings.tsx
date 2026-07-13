@@ -44,6 +44,13 @@ export default function Settings() {
   const [originalRetentionDays, setOriginalRetentionDays] = useState(180)
   const [processedRetentionDays, setProcessedRetentionDays] = useState(90)
   const [candidateRetentionDays, setCandidateRetentionDays] = useState(365)
+  const [minVideoSeconds, setMinVideoSeconds] = useState(3)
+  const [maxVideoSeconds, setMaxVideoSeconds] = useState(120)
+  const [dupWindowSeconds, setDupWindowSeconds] = useState(300)
+  const [tsPosition, setTsPosition] = useState('top_right')
+  const [plateInset, setPlateInset] = useState(true)
+  const [pendingColor, setPendingColor] = useState('#00FF00')
+  const [approvedColor, setApprovedColor] = useState('#FF0000')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -68,6 +75,13 @@ export default function Settings() {
       setOriginalRetentionDays(data.original_video_retention_days ?? 180)
       setProcessedRetentionDays(data.processed_video_retention_days ?? 90)
       setCandidateRetentionDays(data.ticket_candidate_retention_days ?? 365)
+      setMinVideoSeconds(data.min_video_seconds ?? 3)
+      setMaxVideoSeconds(data.max_video_seconds ?? 120)
+      setDupWindowSeconds(data.duplicate_ticket_window_seconds ?? 300)
+      setTsPosition(data.timestamp_overlay_position ?? 'top_right')
+      setPlateInset(data.plate_inset_enabled ?? true)
+      setPendingColor(data.pending_frame_color ?? '#00FF00')
+      setApprovedColor(data.approved_frame_color ?? '#FF0000')
     }).catch(() => {})
   }, [])
 
@@ -94,6 +108,13 @@ export default function Settings() {
         original_video_retention_days: originalRetentionDays,
         processed_video_retention_days: processedRetentionDays,
         ticket_candidate_retention_days: candidateRetentionDays,
+        min_video_seconds: minVideoSeconds,
+        max_video_seconds: maxVideoSeconds,
+        duplicate_ticket_window_seconds: dupWindowSeconds,
+        timestamp_overlay_position: tsPosition,
+        plate_inset_enabled: plateInset,
+        pending_frame_color: pendingColor,
+        approved_frame_color: approvedColor,
       })
       setSettings(data)
     } catch (err) {
@@ -223,6 +244,53 @@ export default function Settings() {
                 <label className="flex items-center gap-2 text-theme-text-primary self-end pb-2">
                   <input type="checkbox" checked={videoTimestampOverlay} onChange={(e) => setVideoTimestampOverlay(e.target.checked)} />
                   הצג תאריך ושעה בסרטון
+                </label>
+              </div>
+              <button type="button" onClick={save} disabled={saving} className="btn-primary">
+                {saving ? t('saving') : t('save')}
+              </button>
+            </div>
+          )}
+
+          {settings && (
+            <div className="app-card p-5 space-y-4">
+              <label className="label-base text-theme-text-primary font-semibold">וידאו, חותמת זמן וסימון רכב</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="label-base text-theme-text-primary">אורך וידאו מינימלי (שניות)</label>
+                  <input type="number" min={0} value={minVideoSeconds}
+                    onChange={(e) => setMinVideoSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
+                </div>
+                <div>
+                  <label className="label-base text-theme-text-primary">אורך וידאו מקסימלי (שניות)</label>
+                  <input type="number" min={1} value={maxVideoSeconds}
+                    onChange={(e) => setMaxVideoSeconds(Math.max(1, parseInt(e.target.value, 10) || 1))} className="input-base" />
+                </div>
+                <div>
+                  <label className="label-base text-theme-text-primary">חלון מניעת כפילויות (שניות)</label>
+                  <input type="number" min={0} value={dupWindowSeconds}
+                    onChange={(e) => setDupWindowSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
+                </div>
+                <div>
+                  <label className="label-base text-theme-text-primary">מיקום חותמת הזמן בוידאו</label>
+                  <select className="input-base" value={tsPosition} onChange={(e) => setTsPosition(e.target.value)}>
+                    <option value="top_right">למעלה מימין</option>
+                    <option value="top_left">למעלה משמאל</option>
+                    <option value="bottom_right">למטה מימין</option>
+                    <option value="bottom_left">למטה משמאל</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label-base text-theme-text-primary">צבע מסגרת רכב — ממתין</label>
+                  <input type="color" value={pendingColor} onChange={(e) => setPendingColor(e.target.value)} className="input-base h-10 p-1" />
+                </div>
+                <div>
+                  <label className="label-base text-theme-text-primary">צבע מסגרת רכב — מאושר</label>
+                  <input type="color" value={approvedColor} onChange={(e) => setApprovedColor(e.target.value)} className="input-base h-10 p-1" />
+                </div>
+                <label className="flex items-center gap-2 text-theme-text-primary self-end pb-2">
+                  <input type="checkbox" checked={plateInset} onChange={(e) => setPlateInset(e.target.checked)} />
+                  הצג חלון מוגדל של הלוחית בוידאו
                 </label>
               </div>
               <button type="button" onClick={save} disabled={saving} className="btn-primary">

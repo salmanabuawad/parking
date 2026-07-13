@@ -41,6 +41,12 @@ class SettingsUpdate(BaseModel):
     ticket_candidate_retention_days: Optional[int] = None
     video_timestamp_overlay: Optional[bool] = None
     duplicate_ticket_window_seconds: Optional[int] = None
+    min_video_seconds: Optional[int] = None
+    max_video_seconds: Optional[int] = None
+    timestamp_overlay_position: Optional[str] = None
+    plate_inset_enabled: Optional[bool] = None
+    pending_frame_color: Optional[str] = None
+    approved_frame_color: Optional[str] = None
     city_order: Optional[list[str]] = None
 
 
@@ -82,6 +88,12 @@ def _serialize(cfg: AppConfig) -> dict:
         "ticket_candidate_retention_days": cfg.ticket_candidate_retention_days,
         "video_timestamp_overlay": cfg.video_timestamp_overlay,
         "duplicate_ticket_window_seconds": cfg.duplicate_ticket_window_seconds,
+        "min_video_seconds": cfg.min_video_seconds,
+        "max_video_seconds": cfg.max_video_seconds,
+        "timestamp_overlay_position": cfg.timestamp_overlay_position,
+        "plate_inset_enabled": cfg.plate_inset_enabled,
+        "pending_frame_color": cfg.pending_frame_color,
+        "approved_frame_color": cfg.approved_frame_color,
         "city_order": cfg.city_order or [],
     }
 
@@ -187,6 +199,21 @@ def update_settings(
 
     if body.duplicate_ticket_window_seconds is not None:
         cfg.duplicate_ticket_window_seconds = max(0, min(86400, int(body.duplicate_ticket_window_seconds)))
+
+    if body.min_video_seconds is not None:
+        cfg.min_video_seconds = max(0, min(3600, int(body.min_video_seconds)))
+    if body.max_video_seconds is not None:
+        cfg.max_video_seconds = max(1, min(3600, int(body.max_video_seconds)))
+    if body.timestamp_overlay_position is not None:
+        v = str(body.timestamp_overlay_position).strip().lower()
+        if v in {"top_right", "top_left", "bottom_right", "bottom_left"}:
+            cfg.timestamp_overlay_position = v
+    if body.plate_inset_enabled is not None:
+        cfg.plate_inset_enabled = bool(body.plate_inset_enabled)
+    if body.pending_frame_color is not None:
+        cfg.pending_frame_color = str(body.pending_frame_color).strip()[:20]
+    if body.approved_frame_color is not None:
+        cfg.approved_frame_color = str(body.approved_frame_color).strip()[:20]
 
     if body.city_order is not None:
         # Store a de-duplicated list of non-empty city keys, preserving the given order.

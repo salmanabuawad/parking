@@ -248,7 +248,7 @@ def process_one_job() -> bool:
         import tempfile as _tf
         try:
             from app.plate_pipeline.pipeline import _run_pipeline_vehicle_multi, _run_pipeline_enterprise_multi
-            from app.plate_pipeline.config import PipelineConfig
+            from app.plate_pipeline.config import PipelineConfig, hex_to_bgr
 
             print(
                 f"[Job {job.id}] ENGINE: vehicle-first multi-car  "
@@ -274,6 +274,10 @@ def process_one_job() -> bool:
                 clock_start_epoch=(job.captured_at.timestamp() if job.captured_at else None),
                 video_timestamp_overlay=bool(getattr(cfg, "video_timestamp_overlay", True)) if cfg else True,
                 blur_except_plate=_blur_except_plate,
+                box_color_bgr=(hex_to_bgr(getattr(cfg, "pending_frame_color", "#00FF00")) if cfg else (0, 255, 0)),
+                timestamp_overlay_position=(getattr(cfg, "timestamp_overlay_position", "top_right") if cfg else "top_right"),
+                plate_inset_enabled=(bool(getattr(cfg, "plate_inset_enabled", True)) if cfg else True),
+                overlay_camera_id=(str(job.camera_id) if job.camera_id not in (None, "", "mobile") else None),
             )
             # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
             try:

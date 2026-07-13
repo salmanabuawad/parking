@@ -363,6 +363,13 @@ class AppConfig(Base):
     ticket_candidate_retention_days = Column(Integer, default=365, nullable=False)
     video_timestamp_overlay = Column(Boolean, default=True, nullable=False)   # burn a real-time clock into result videos
     duplicate_ticket_window_seconds = Column(Integer, default=300, nullable=False)   # #14 — dedup capture-time window
+    # #1/#6 — evidence-video bounds, timestamp overlay + subject-frame styling
+    min_video_seconds = Column(Integer, default=3, nullable=False)
+    max_video_seconds = Column(Integer, default=120, nullable=False)
+    timestamp_overlay_position = Column(String(20), default="top_right", nullable=False)
+    plate_inset_enabled = Column(Boolean, default=True, nullable=False)
+    pending_frame_color = Column(String(20), default="#00FF00", nullable=False)   # pending subject box
+    approved_frame_color = Column(String(20), default="#FF0000", nullable=False)  # approved subject box
     city_order = Column(JSON, nullable=True)   # admin-defined order of city keys for the fleet/camera dropdowns
 
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

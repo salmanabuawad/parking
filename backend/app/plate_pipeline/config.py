@@ -140,3 +140,18 @@ class PipelineConfig:
     video_timestamp_overlay: bool = False
     # Subject-car box colour (BGR): green while pending, red once the report is approved (#10)
     box_color_bgr: tuple[int, int, int] = (0, 255, 0)
+    # #6 timestamp overlay placement + optional camera/ticket ids; #1 plate-inset toggle
+    timestamp_overlay_position: str = "top_right"
+    overlay_camera_id: str | None = None
+    overlay_ticket_id: int | None = None
+    plate_inset_enabled: bool = True
+
+
+def hex_to_bgr(value, default: tuple[int, int, int] = (0, 255, 0)) -> tuple[int, int, int]:
+    """'#RRGGBB' (or 'RRGGBB') -> (B, G, R) for OpenCV. Falls back to `default` on bad input."""
+    try:
+        s = str(value).strip().lstrip("#")
+        r, g, b = int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+        return (b, g, r)
+    except Exception:
+        return default
