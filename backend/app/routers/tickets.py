@@ -403,6 +403,12 @@ def approve_ticket_as_inspector(
     red 'approved' box (#10)."""
     from app.services.inspector_review_service import update_ticket_by_inspector
 
+    current_ticket = ticket_repo.get(ticket_id)
+    if not current_ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if current_ticket.assigned_inspector_id not in (None, inspector.id):
+        raise HTTPException(status_code=403, detail="הדוח משויך לפקח אחר.")
+
     ip = request.client.host if request.client else None
     ticket = update_ticket_by_inspector(
         ticket_repo.db,
@@ -433,21 +439,60 @@ def approve_ticket_as_inspector(
     return _ticket_dict(ticket_repo.get(ticket_id))
 
 
+class InspectorRejectionBody(BaseModel):
+    rejection_reason: str
+    notes: Optional[str] = None
+
+
+@router.patch("/{ticket_id}/reject")
+def reject_ticket_as_inspector(
+    ticket_id: int,
+    body: InspectorRejectionBody,
+    request: Request,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    inspector=Depends(get_current_inspector),
+):
+    """Reject a ticket with a mandatory reason and immutable audit entry."""
+    from app.services.inspector_review_service import update_ticket_by_inspector
+
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.assigned_inspector_id not in (None, inspector.id):
+        raise HTTPException(status_code=403, detail="הדוח משויך לפקח אחר.")
+
+    updated = update_ticket_by_inspector(
+        ticket_repo.db,
+        ticket_id=ticket_id,
+        inspector_id=inspector.id,
+        data={
+            "reject": True,
+            "rejection_reason": body.rejection_reason,
+            "notes": body.notes,
+        },
+        ip_address=request.client.host if request.client else None,
+    )
+    return _ticket_dict(updated)
+
+
 @router.get("/inbox")
 def inspector_inbox(
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     inspector=Depends(get_current_inspector),
 ):
     """Reports currently in the signed-in inspector's inbox (assigned to them) — #9."""
-    return [
-        _ticket_dict(t)
-        for t in ticket_repo.list_all()
+    rows = [
+        t for t in ticket_repo.list_all()
         if getattr(t, "assigned_inspector_id", None) == inspector.id
+        and getattr(t, "status", None) not in {"approved", "rejected", "final"}
     ]
+    rows.sort(key=lambda t: getattr(t, "created_at", None) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return [_ticket_dict(t) for t in rows]
 
 
 class TransferBody(BaseModel):
     to_inspector_id: int
+    reason: Optional[str] = None
 
 
 @router.patch("/{ticket_id}/transfer")
@@ -462,6 +507,18 @@ def transfer_ticket(
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+    if ticket.assigned_inspector_id not in (None, inspector.id):
+        raise HTTPException(status_code=403, detail="הדוח משויך לפקח אחר.")
+    from app.models import Inspector
+    target = (
+        ticket_repo.db.query(Inspector)
+        .filter(Inspector.id == body.to_inspector_id, Inspector.is_active.is_(True))
+        .first()
+    )
+    if not target:
+        raise HTTPException(status_code=400, detail="פקח היעד אינו קיים או אינו פעיל.")
+    if target.id == inspector.id:
+        raise HTTPException(status_code=400, detail="הדוח כבר נמצא בתיבת הפקח הנוכחי.")
     old_assignee = ticket.assigned_inspector_id
     ticket_repo.update(ticket_id, assigned_inspector_id=body.to_inspector_id)
     try:
@@ -470,6 +527,50 @@ def transfer_ticket(
             ticket_repo.db, ticket_id=ticket_id, inspector_id=inspector.id, action_type="inspector_transfer",
             old_value={"assigned_inspector_id": old_assignee},
             new_value={"assigned_inspector_id": body.to_inspector_id},
+            notes=body.reason,
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass
+    return _ticket_dict(ticket_repo.get(ticket_id))
+
+
+class AssignBody(BaseModel):
+    inspector_id: Optional[int] = None   # None → unassign (back to the unrouted pool)
+    reason: Optional[str] = None
+
+
+@router.patch("/{ticket_id}/assign")
+def assign_ticket(
+    ticket_id: int,
+    body: AssignBody,
+    request: Request,
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
+):
+    """Assign (or reassign / unassign) a ticket to an inspector's inbox — admin routing (#9). Only
+    active inspectors may receive tickets. Every change is written to the immutable audit log."""
+    ticket = ticket_repo.get(ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    from app.models import Inspector
+    if body.inspector_id is not None:
+        target = (
+            ticket_repo.db.query(Inspector)
+            .filter(Inspector.id == body.inspector_id, Inspector.is_active.is_(True))
+            .first()
+        )
+        if not target:
+            raise HTTPException(status_code=400, detail="פקח היעד אינו קיים או אינו פעיל.")
+    old_assignee = ticket.assigned_inspector_id
+    ticket_repo.update(ticket_id, assigned_inspector_id=body.inspector_id)
+    try:
+        from app.services.audit_log_service import write_ticket_audit
+        write_ticket_audit(
+            ticket_repo.db, ticket_id=ticket_id, action_type="assign",
+            old_value={"assigned_inspector_id": old_assignee},
+            new_value={"assigned_inspector_id": body.inspector_id},
+            notes=body.reason,
             ip_address=request.client.host if request.client else None,
         )
     except Exception:

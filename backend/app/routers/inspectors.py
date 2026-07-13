@@ -1,12 +1,15 @@
 """Inspectors (פקחים) CRUD — managed by admins. Inspectors log in and approve reports."""
+from collections import Counter
+from datetime import datetime, timezone
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.auth import get_current_user, hash_password
-from app.dependencies import get_inspector_repo
+from app.dependencies import get_inspector_repo, get_ticket_repo
 from app.models import Inspector
 from app.repositories.inspector_repo import InspectorRepository
+from app.repositories.ticket_repo import TicketRepository
 from app.schemas import InspectorCreate, InspectorResponse, InspectorUpdate
 
 router = APIRouter(prefix="/inspectors", tags=["inspectors"])
@@ -69,3 +72,46 @@ def delete_inspector(
 ):
     if not repo.delete(inspector_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inspector not found")
+
+
+def _iso(v):
+    return v.isoformat() if hasattr(v, "isoformat") else v
+
+
+def _inbox_row(t) -> dict:
+    return {
+        "id": t.id,
+        "license_plate": getattr(t, "license_plate", None),
+        "status": getattr(t, "status", None),
+        "review_status": getattr(t, "review_status", None),
+        "location": getattr(t, "location", None),
+        "violation_start_at": _iso(getattr(t, "violation_start_at", None)),
+        "created_at": _iso(getattr(t, "created_at", None)),
+    }
+
+
+@router.get("/{inspector_id}/inbox")
+def inspector_inbox_by_id(
+    inspector_id: int,
+    repo: InspectorRepository = Depends(get_inspector_repo),
+    ticket_repo: TicketRepository = Depends(get_ticket_repo),
+    _=Depends(get_current_user),
+):
+    """Inbox for a specific inspector (admin view, #9): open reports assigned to them + counts by
+    status. Complements the self-scoped GET /api/tickets/inbox."""
+    insp = repo.db.query(Inspector).filter(Inspector.id == inspector_id).first()
+    if not insp:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inspector not found")
+    rows = [t for t in ticket_repo.list_all() if getattr(t, "assigned_inspector_id", None) == inspector_id]
+    counts = Counter(getattr(t, "status", None) or "unknown" for t in rows)
+    closed = {"approved", "rejected", "final"}
+    open_rows = [t for t in rows if getattr(t, "status", None) not in closed]
+    open_rows.sort(key=lambda t: getattr(t, "created_at", None) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    return {
+        "inspector_id": inspector_id,
+        "inspector_name": insp.full_name,
+        "is_active": insp.is_active,
+        "status_counts": dict(counts),
+        "open_count": len(open_rows),
+        "tickets": [_inbox_row(t) for t in open_rows],
+    }
