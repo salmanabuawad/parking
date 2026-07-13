@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import Ticket
+from app.models import Ticket, ViolationRule
 from app.services.audit_log_service import write_ticket_audit
 from app.services.israeli_plate import normalize_israeli_plate
 from app.services.ticket_workflow_service import validate_ticket_before_approval
@@ -66,7 +66,16 @@ def update_ticket_by_inspector(
     old_value = _review_fields(ticket)
 
     if "violation_rule_id" in data:
-        ticket.inspector_violation_rule_id = data["violation_rule_id"]
+        rule_id = data["violation_rule_id"]
+        if rule_id:
+            rule = (
+                db.query(ViolationRule)
+                .filter(ViolationRule.rule_id == rule_id, ViolationRule.is_active.is_(True))
+                .first()
+            )
+            if not rule:
+                raise HTTPException(status_code=400, detail="סוג העבירה שנבחר אינו קיים או אינו פעיל.")
+        ticket.inspector_violation_rule_id = rule_id
     if "vehicle_color" in data:
         ticket.inspector_vehicle_color = data["vehicle_color"]
     if "vehicle_type" in data:
@@ -85,10 +94,9 @@ def update_ticket_by_inspector(
     if data.get("violation_end_at") is not None:
         ticket.violation_end_at = data["violation_end_at"]
     if ticket.violation_start_at and ticket.violation_end_at:
-        try:
-            ticket.violation_duration_seconds = (ticket.violation_end_at - ticket.violation_start_at).total_seconds()
-        except Exception:
-            pass
+        if ticket.violation_end_at <= ticket.violation_start_at:
+            raise HTTPException(status_code=400, detail="שעת סיום העבירה חייבת להיות מאוחרת משעת תחילת העבירה.")
+        ticket.violation_duration_seconds = (ticket.violation_end_at - ticket.violation_start_at).total_seconds()
 
     if data.get("plate_number"):
         normalized = normalize_israeli_plate(data["plate_number"])
@@ -100,6 +108,12 @@ def update_ticket_by_inspector(
         ticket.vehicle_registry_lookup_status = registry_result.get("status")
         ticket.vehicle_registry_raw_json = registry_result
         ticket.vehicle_registry_checked_at = datetime.now(timezone.utc)
+        # #13 — registry validation must be non-crashing: a plate missing from the public
+        # data.gov.il dataset (some motorcycles/new/exempt vehicles) or a registry outage
+        # flags the ticket for manual review instead of blocking enforcement. The raw status
+        # is preserved above for the audit trail; the inspector remains the human authority.
+        if registry_result.get("status") in ("plate_not_found", "lookup_failed"):
+            ticket.review_status = "manual_review_required"
         from app.services.vehicle_lookup import record_to_vehicle_fields
         for _f, _v in record_to_vehicle_fields(registry_result.get("record")).items():
             setattr(ticket, _f, _v)
@@ -108,6 +122,16 @@ def update_ticket_by_inspector(
             ticket.review_status = "manual_review_required"
 
     if data.get("approve") is True:
+        if not ticket.inspector_violation_rule_id:
+            raise HTTPException(status_code=400, detail="יש לבחור סוג עבירה לפני אישור הדוח.")
+        if not ticket.inspector_plate:
+            raise HTTPException(status_code=400, detail="יש להזין מספר רכב לפני אישור הדוח.")
+        if not ticket.inspector_vehicle_color:
+            raise HTTPException(status_code=400, detail="יש להזין צבע רכב לפני אישור הדוח.")
+        if not ticket.inspector_vehicle_type:
+            raise HTTPException(status_code=400, detail="יש להזין סוג רכב לפני אישור הדוח.")
+        if not ticket.violation_start_at or not ticket.violation_end_at:
+            raise HTTPException(status_code=400, detail="יש להזין תאריך ושעת תחילת עבירה וסיום עבירה.")
         # Resolve the 4 role-tagged evidence screenshots to the ticket FK columns (#7.4), then gate.
         _resolve_evidence_screenshots(db, ticket)
         # Requirement #7.4: approval always requires the four evidence images.

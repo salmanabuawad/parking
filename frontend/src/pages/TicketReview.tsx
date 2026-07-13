@@ -164,6 +164,8 @@ export default function TicketReview() {
   const [aEnd, setAEnd] = useState("");
   const [transferTo, setTransferTo] = useState("");
   const [approveMsg, setApproveMsg] = useState<string | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+  const [rejectionNotes, setRejectionNotes] = useState("");
 
   useEffect(() => {
     violationRulesApi.list().then(({ data }) => setRules(data.filter((r: any) => r.is_active !== false))).catch(() => {});
@@ -306,7 +308,13 @@ export default function TicketReview() {
 
   async function handleApprove() {
     if (!ticket) return;
+    if (!aRule) { setApproveMsg("✗ יש לבחור סוג עבירה"); return; }
     if (!aPlate.trim()) { setApproveMsg("✗ יש להזין מספר רכב"); return; }
+    if (!/^\d{7,8}$/.test(aPlate.replace(/\D/g, ""))) { setApproveMsg("✗ מספר רכב חייב להכיל 7 או 8 ספרות"); return; }
+    if (!aColor.trim()) { setApproveMsg("✗ יש להזין צבע רכב"); return; }
+    if (!aType.trim()) { setApproveMsg("✗ יש להזין סוג רכב"); return; }
+    if (!aStart || !aEnd) { setApproveMsg("✗ יש להזין תחילת עבירה וסיום עבירה"); return; }
+    if (new Date(aEnd) <= new Date(aStart)) { setApproveMsg("✗ שעת הסיום חייבת להיות מאוחרת משעת ההתחלה"); return; }
     if (ticket.require_evidence_images) {
       const missing = ROLES.filter((r) => !screenshots.some((s) => s.role === r.key));
       if (missing.length > 0) {
@@ -332,6 +340,23 @@ export default function TicketReview() {
       ticketsApi.audit(ticketId).then(setAudit).catch(() => {});
     } catch (err: any) {
       setApproveMsg(`✗ ${err?.message || "שגיאה באישור"}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleReject() {
+    if (!rejectionReason) { setApproveMsg("✗ יש לבחור סיבת דחייה"); return; }
+    if (rejectionReason === "other" && !rejectionNotes.trim()) { setApproveMsg("✗ יש להזין הערה כאשר הסיבה היא אחר"); return; }
+    setSaving(true);
+    setApproveMsg(null);
+    try {
+      const updated = await ticketsApi.reject(ticketId, rejectionReason, rejectionNotes.trim() || undefined);
+      setTicket(updated);
+      setApproveMsg("✓ הדוח נדחה");
+      ticketsApi.audit(ticketId).then(setAudit).catch(() => {});
+    } catch (err: any) {
+      setApproveMsg(`✗ ${err?.message || "שגיאה בדחייה"}`);
     } finally {
       setSaving(false);
     }
@@ -734,6 +759,30 @@ export default function TicketReview() {
               <button onClick={handleApprove} disabled={saving} className="btn-success w-full justify-center mt-2">
                 <Check className="w-4 h-4" /> <span>{saving ? "מאשר…" : "אשר דוח"}</span>
               </button>
+
+              <div className="border-t border-theme-card-border mt-2 pt-2 space-y-2">
+                <Field label="סיבת דחייה">
+                  <select className="input-base" value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)}>
+                    <option value="">— בחר סיבה —</option>
+                    <option value="unclear_plate">מספר רכב לא ברור</option>
+                    <option value="vehicle_not_in_violation_zone">הרכב אינו באזור עבירה</option>
+                    <option value="wrong_violation_type">סוג עבירה שגוי</option>
+                    <option value="missing_evidence">חסר תיעוד</option>
+                    <option value="multiple_vehicles_uncertain">מספר רכבים / אי ודאות</option>
+                    <option value="technical_video_issue">תקלה טכנית בסרטון</option>
+                    <option value="duplicate_ticket">דוח כפול</option>
+                    <option value="other">אחר</option>
+                  </select>
+                </Field>
+                {rejectionReason === "other" && (
+                  <Field label="הערת דחייה">
+                    <textarea className="input-base min-h-20" value={rejectionNotes} onChange={(e) => setRejectionNotes(e.target.value)} />
+                  </Field>
+                )}
+                <button onClick={handleReject} disabled={saving} className="btn-danger w-full justify-center">
+                  <X className="w-4 h-4" /> <span>דחה דוח</span>
+                </button>
+              </div>
 
               {/* Transfer */}
               <div className="border-t border-theme-card-border mt-2 pt-2">
