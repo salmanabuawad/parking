@@ -404,6 +404,7 @@ class ViolationRule(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     rule_id = Column(String(30), unique=True, nullable=False, index=True)   # e.g. IL-STATIC-001
+    violation_code = Column(String(40), nullable=True, index=True)          # semantic code, e.g. NO_PARKING (#2)
     title_he = Column(String(200), nullable=False)
     title_en = Column(String(200), nullable=False)
     description_he = Column(Text, nullable=True)

@@ -381,9 +381,19 @@ def update_ticket(
 
     allowed = {"status", "fine_amount", "admin_notes", "license_plate", "description", "violation_zone"}
     update_kw = {k: v for k, v in payload.items() if k in allowed}
+    _old_status = ticket.status
 
     if "status" in update_kw and update_kw["status"] in ("approved", "rejected"):
         update_kw["reviewed_at"] = datetime.now(timezone.utc)
+
+    # #7 — admin approval must clear the same 4-evidence-image gate as inspector approval (the
+    # generic PATCH previously bypassed every check).
+    if update_kw.get("status") == "approved" and _require_evidence_images():
+        from app.services.inspector_review_service import _resolve_evidence_screenshots
+        from app.services.ticket_workflow_service import validate_ticket_before_approval
+        _resolve_evidence_screenshots(db, ticket)
+        db.commit()
+        validate_ticket_before_approval(ticket)   # raises 400 if any of the 4 images is missing
 
     try:
         ticket_repo.update(ticket_id, **update_kw)
@@ -391,6 +401,15 @@ def update_ticket(
         for k, v in update_kw.items():
             setattr(ticket, k, v)
         db.commit()
+
+    # #12 — audit admin approve/reject via the generic PATCH (inspector paths audit separately).
+    if update_kw.get("status") in ("approved", "rejected"):
+        try:
+            from app.services.audit_log_service import write_ticket_audit
+            write_ticket_audit(db, ticket_id=ticket_id, action_type=f"admin_{update_kw['status']}",
+                               old_value={"status": _old_status}, new_value={"status": update_kw["status"]})
+        except Exception:
+            pass
 
     ticket = ticket_repo.get(ticket_id)
     return _ticket_dict(ticket)

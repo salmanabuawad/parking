@@ -136,7 +136,56 @@ RULES = [
         "default_min_stay_seconds": 30,
         "default_evidence_video_seconds": 20,
     },
+    {
+        "rule_id": "IL-STATIC-017",
+        "title_he": "חסימת מדרכה / מעבר להולכי רגל",
+        "title_en": "Blocking a sidewalk / pedestrian passage",
+        "legal_basis_he": "תקנה 72(א) — אין להעמיד רכב באופן החוסם מעבר להולכי רגל על המדרכה",
+        "legal_basis_en": "Traffic Regulations §72(a) — a vehicle must not block a pedestrian passage on the sidewalk",
+        "description_he": "הרכב חונה כך שהוא חוסם את מעבר הולכי הרגל על המדרכה ומאלץ עקיפה לכביש.",
+        "description_en": "Vehicle parked so it blocks the pedestrian passage on the sidewalk, forcing pedestrians onto the road.",
+        "fine_ils": 500,
+    },
+    {
+        "rule_id": "IL-STATIC-018",
+        "title_he": "חסימת שער / כניסת רכב",
+        "title_en": "Blocking a gate / vehicle entrance",
+        "legal_basis_he": "תקנה 71(א)(3) — אין לחנות באופן החוסם כניסה או יציאה של רכב משטח/חצר",
+        "legal_basis_en": "Traffic Regulations §71(a)(3) — must not park so as to block a vehicle entrance/exit to a property",
+        "description_he": "הרכב חונה מול שער או כניסת רכב וחוסם כניסה/יציאה.",
+        "description_en": "Vehicle parked in front of a gate or driveway, blocking entry/exit.",
+        "fine_ils": 500,
+    },
+    {
+        "rule_id": "IL-STATIC-019",
+        "title_he": "חניה באזור 'שמור על פינוי' (Keep Clear)",
+        "title_en": "Parking in a keep-clear zone",
+        "legal_basis_he": "סימון 'שמור על פינוי' על הכביש — אין לעצור או לחנות בשטח המסומן",
+        "legal_basis_en": "'Keep Clear' road marking — stopping or parking in the marked area is prohibited",
+        "description_he": "הרכב חונה בתוך שטח המסומן 'שמור על פינוי' המיועד להישאר פנוי בכל עת.",
+        "description_en": "Vehicle parked inside a 'Keep Clear' marked area that must remain unobstructed at all times.",
+        "fine_ils": 500,
+    },
 ]
+
+# Semantic violation_code per rule_id (#2) — includes the required NO_PARKING/NO_STOPPING/... set.
+CODE_BY_RULE = {
+    "IL-STATIC-001": "RED_WHITE_CURB",
+    "IL-STATIC-002": "BLUE_WHITE_NO_PAYMENT",
+    "IL-STATIC-003": "DOUBLE_PARKING",
+    "IL-STATIC-004": "LOADING_ZONE",
+    "IL-STATIC-005": "BUS_STOP_BLOCKING",
+    "IL-STATIC-006": "TIME_LIMIT_EXCEEDED",
+    "IL-STATIC-007": "RESIDENTS_ONLY",
+    "IL-STATIC-008": "RESTRICTED_HOURS",
+    "IL-STATIC-013": "CROSSWALK_PROXIMITY",
+    "IL-STATIC-014": "NO_STOPPING",
+    "IL-STATIC-015": "NO_PARKING",
+    "IL-STATIC-016": "TWO_WHEELS_ON_SIDEWALK",
+    "IL-STATIC-017": "SIDEWALK_BLOCKING",
+    "IL-STATIC-018": "GATE_BLOCKING",
+    "IL-STATIC-019": "KEEP_CLEAR",
+}
 
 
 def seed():
@@ -145,6 +194,7 @@ def seed():
         added = 0
         updated = 0
         for r in RULES:
+            r.setdefault("violation_code", CODE_BY_RULE.get(r["rule_id"]))
             existing = db.query(ViolationRule).filter(ViolationRule.rule_id == r["rule_id"]).first()
             if existing:
                 for k, v in r.items():

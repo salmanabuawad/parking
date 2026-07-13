@@ -6,6 +6,7 @@ import { t } from '../i18n'
 interface ViolationRule {
   id: number
   rule_id: string
+  violation_code?: string
   title_he: string
   title_en: string
   description_he?: string
@@ -13,6 +14,13 @@ interface ViolationRule {
   legal_basis_he?: string
   legal_basis_en?: string
   fine_ils?: number
+  default_min_stay_seconds?: number
+  default_evidence_video_seconds?: number
+  requires_start_image?: boolean
+  requires_end_image?: boolean
+  requires_clear_plate_image?: boolean
+  requires_context_image?: boolean
+  requires_continuous_video?: boolean
   is_active: boolean
 }
 
@@ -93,8 +101,10 @@ export default function ViolationRules() {
               <thead>
                 <tr className="text-right">
                   <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">מזהה</th>
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">קוד</th>
                   <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">שם הכלל</th>
                   <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">בסיס חוקי</th>
+                  <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">דרישות ראיה</th>
                   <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">קנס (₪)</th>
                   <th className="px-3 py-2 font-semibold border-b-2 border-theme-card-border">פעיל</th>
                 </tr>
@@ -108,6 +118,9 @@ export default function ViolationRules() {
                     <td className="px-3 py-2.5 align-top font-mono font-semibold text-theme-text-primary whitespace-nowrap">
                       {rule.rule_id}
                     </td>
+                    <td className="px-3 py-2.5 align-top font-mono text-theme-xs text-theme-text-muted whitespace-nowrap">
+                      {rule.violation_code || '—'}
+                    </td>
                     <td className="px-3 py-2.5 align-top">
                       <div className="font-medium">{rule.title_he}</div>
                       <div className="text-theme-xs text-theme-text-muted">{rule.title_en}</div>
@@ -118,6 +131,16 @@ export default function ViolationRules() {
                     <td className="px-3 py-2.5 align-top text-theme-xs text-theme-text-muted max-w-[200px]">
                       {rule.legal_basis_he && <div>{rule.legal_basis_he}</div>}
                       {rule.legal_basis_en && <div className="text-theme-text-muted">{rule.legal_basis_en}</div>}
+                    </td>
+                    <td className="px-3 py-2.5 align-top text-theme-xs text-theme-text-muted">
+                      <div className="flex flex-wrap gap-1">
+                        {rule.requires_start_image && <span className="badge badge-neutral">התחלה</span>}
+                        {rule.requires_end_image && <span className="badge badge-neutral">סיום</span>}
+                        {rule.requires_clear_plate_image && <span className="badge badge-neutral">לוחית</span>}
+                        {rule.requires_context_image && <span className="badge badge-neutral">הקשר</span>}
+                        {rule.requires_continuous_video && <span className="badge badge-neutral">וידאו רציף</span>}
+                      </div>
+                      <div className="mt-1 whitespace-nowrap">שהייה {rule.default_min_stay_seconds ?? '—'}ש׳ · ראיה {rule.default_evidence_video_seconds ?? '—'}ש׳</div>
                     </td>
                     <td className="px-3 py-2.5 align-top whitespace-nowrap">
                       {editing === rule.rule_id ? (

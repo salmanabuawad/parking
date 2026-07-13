@@ -22,6 +22,7 @@ def get_db():
 class ViolationRuleResponse(BaseModel):
     id: int
     rule_id: str
+    violation_code: Optional[str] = None
     title_he: str
     title_en: str
     description_he: Optional[str] = None
@@ -43,6 +44,7 @@ class ViolationRuleResponse(BaseModel):
 
 
 class ViolationRuleUpdate(BaseModel):
+    violation_code: Optional[str] = None
     title_he: Optional[str] = None
     title_en: Optional[str] = None
     description_he: Optional[str] = None
