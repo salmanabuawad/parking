@@ -118,6 +118,7 @@ export default function Cameras() {
   const [viewing, setViewing] = useState<Camera | null>(null)
   const [tab, setTab] = useState<ModalTab>('general')
   const [form, setForm] = useState<CameraForm>(EMPTY_FORM)
+  const [calibFile, setCalibFile] = useState<File | null>(null)   // staged calibration image/video → uploaded on save
   const [simSources, setSimSources] = useState<SimulationSource[]>([])
   const [seeding, setSeeding] = useState(false)
   const [view, setView] = useState<'list' | 'map'>('list')
@@ -195,7 +196,7 @@ export default function Cameras() {
     }))
   }
 
-  const openAdd = () => { setEditing(null); setForm(EMPTY_FORM); setTab('general'); setModalOpen(true) }
+  const openAdd = () => { setEditing(null); setForm(EMPTY_FORM); setCalibFile(null); setTab('general'); setModalOpen(true) }
   const openEdit = (c: Camera) => {
     setEditing(c)
     setForm({
@@ -216,10 +217,11 @@ export default function Cameras() {
         Object.entries(c.active_schedule || {}).map(([k, v]) => [k, { from: v?.from || '', to: v?.to || '' }])
       ),
     })
+    setCalibFile(null)
     setTab('general')
     setModalOpen(true)
   }
-  const closeModal = () => { setModalOpen(false); setEditing(null); setForm(EMPTY_FORM) }
+  const closeModal = () => { setModalOpen(false); setEditing(null); setForm(EMPTY_FORM); setCalibFile(null) }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -247,6 +249,11 @@ export default function Cameras() {
       if (editing) { await camerasApi.update(editing.id, payload); camId = editing.id }
       else { const res = await camerasApi.create(payload); camId = res.data.id }
       await parkingZonesApi.setCameraZones(camId, form.selected_zone_ids)
+      // Upload the staged calibration image/video (a frame is extracted server-side) if one was chosen.
+      if (calibFile) {
+        try { await camerasApi.setSnapshot(camId, calibFile) }
+        catch (e) { alert('המצלמה נשמרה, אך העלאת תמונת הכיול נכשלה: ' + ((e as { message?: string })?.message || '')) }
+      }
       closeModal(); load()
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
@@ -435,6 +442,22 @@ export default function Cameras() {
                             <option value="">— בחר קליפ —</option>
                             {simSources.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
                           </select>
+                        </div>
+                      )}
+                      {(form.source_type === 'uploaded_image' || form.source_type === 'uploaded_video') && (
+                        <div>
+                          <label className="label-base">{form.source_type === 'uploaded_video' ? 'העלה וידאו לכיול' : 'העלה תמונה לכיול'}</label>
+                          <input
+                            type="file"
+                            accept={form.source_type === 'uploaded_video' ? 'video/*' : 'image/*'}
+                            onChange={e => setCalibFile(e.target.files?.[0] || null)}
+                            className="input-base"
+                          />
+                          <p className="text-theme-xs text-theme-text-muted mt-1">
+                            {calibFile
+                              ? `נבחר: ${calibFile.name} — ייטען בעת שמירת המצלמה`
+                              : (form.source_type === 'uploaded_video' ? 'פריים יחולץ מהוידאו לשרטוט אזורי אכיפה' : 'התמונה תשמש לשרטוט אזורי אכיפה')}
+                          </p>
                         </div>
                       )}
                     </div>
