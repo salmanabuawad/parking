@@ -18,13 +18,11 @@ import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
 ModuleRegistry.registerModules([AllCommunityModule])
 
-const CONNECTION_TYPES = ['ip', 'bluetooth', 'wifi', 'rtsp', 'usb', 'other'] as const
-const PARAM_SOURCES = ['manual', 'manufacturer_manual'] as const
 const MODAL_TABS = [
   { key: 'general', label: 'כללי' },
+  { key: 'location', label: 'מיקום' },
   { key: 'zones', label: 'אזורים וכללים' },
   { key: 'zonemap', label: 'מפת אכיפה' },
-  { key: 'advanced', label: 'מתקדם' },
 ] as const
 type ModalTab = typeof MODAL_TABS[number]['key']
 
@@ -232,7 +230,7 @@ export default function Cameras() {
       const lat = form.latitude.trim() === '' ? null : Number(form.latitude)
       const lng = form.longitude.trim() === '' ? null : Number(form.longitude)
       if ((lat !== null && Number.isNaN(lat)) || (lng !== null && Number.isNaN(lng))) {
-        setTab('general'); alert('קו רוחב / קו אורך לא תקינים'); return
+        setTab('location'); alert('קו רוחב / קו אורך לא תקינים'); return
       }
       const payload = {
         ...form,
@@ -470,20 +468,6 @@ export default function Cameras() {
                       <p className="text-theme-xs text-theme-text-muted mt-1">דוחות מהמצלמה יוקצו אוטומטית לפקח זה</p>
                     </div>
                     <div>
-                      <label className="label-base">מיקום על המפה</label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
-                        <input type="number" step="any" value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} className="input-base" placeholder="קו רוחב (lat) — 32.3215" />
-                        <input type="number" step="any" value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} className="input-base" placeholder="קו אורך (lng) — 34.8532" />
-                      </div>
-                      <CameraLocationPicker
-                        lat={form.latitude.trim() !== '' && !Number.isNaN(Number(form.latitude)) ? Number(form.latitude) : null}
-                        lng={form.longitude.trim() !== '' && !Number.isNaN(Number(form.longitude)) ? Number(form.longitude) : null}
-                        styleUrl={mapStyleUrl}
-                        onChange={(la, ln) => setForm(f => ({ ...f, latitude: String(la), longitude: String(ln) }))}
-                      />
-                      <p className="text-theme-xs text-theme-text-muted mt-1">לחץ על המפה לקביעת מיקום, או גרור את הסמן. השאר ריק אם אין מיקום.</p>
-                    </div>
-                    <div>
                       <label className="label-base">ימי ושעות פעילות</label>
                       {/* Compact day-picker: 7 chips on one row; hours shown only for active days. */}
                       <div className="flex flex-wrap gap-1.5 mb-2">
@@ -565,41 +549,22 @@ export default function Cameras() {
                   </div>
                 )}
 
-                {/* ── Advanced ── */}
-                {tab === 'advanced' && (
-                  <div className="flex flex-col gap-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="label-base">{t('connectionType')}</label>
-                        <select value={form.connection_type} onChange={e => setForm({ ...form, connection_type: e.target.value })} className="input-base">
-                          {CONNECTION_TYPES.map(ct => <option key={ct} value={ct}>{ct}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="label-base">{t('paramSource')}</label>
-                        <select value={form.param_source} onChange={e => setForm({ ...form, param_source: e.target.value })} className="input-base">
-                          {PARAM_SOURCES.map(p => <option key={p} value={p}>{p.replace('_', ' ')}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="label-base">{t('manufacturer')}</label>
-                        <input value={form.manufacturer} onChange={e => setForm({ ...form, manufacturer: e.target.value })} className="input-base" />
-                      </div>
-                      <div>
-                        <label className="label-base">{t('model')}</label>
-                        <input value={form.model} onChange={e => setForm({ ...form, model: e.target.value })} className="input-base" />
-                      </div>
-                    </div>
-                    <div className="text-theme-xs text-theme-text-muted -mb-1">הגדרות טכניות (JSON) — לרוב אין צורך לשנות</div>
+                {/* ── Location ── */}
+                {tab === 'location' && (
+                  <div className="flex flex-col gap-4">
                     <div>
-                      <label className="label-base">{t('connectionConfigJson')}</label>
-                      <textarea value={typeof form.connection_config === 'string' ? form.connection_config : JSON.stringify(form.connection_config || {}, null, 2)} onChange={e => setForm({ ...form, connection_config: e.target.value })} rows={3} className="input-base font-mono text-theme-xs" placeholder='{"ip":"192.168.1.100","port":554}' />
-                    </div>
-                    <div>
-                      <label className="label-base">{t('paramsJson')}</label>
-                      <textarea value={typeof form.params === 'string' ? form.params : JSON.stringify(form.params || {}, null, 2)} onChange={e => setForm({ ...form, params: e.target.value })} rows={3} className="input-base font-mono text-theme-xs" placeholder='{"moving":true,"night_light":true,"resolution":"1080p","fps":30}' />
+                      <label className="label-base">מיקום על המפה</label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+                        <input type="number" step="any" value={form.latitude} onChange={e => setForm({ ...form, latitude: e.target.value })} className="input-base" placeholder="קו רוחב (lat) — 32.3215" />
+                        <input type="number" step="any" value={form.longitude} onChange={e => setForm({ ...form, longitude: e.target.value })} className="input-base" placeholder="קו אורך (lng) — 34.8532" />
+                      </div>
+                      <CameraLocationPicker
+                        lat={form.latitude.trim() !== '' && !Number.isNaN(Number(form.latitude)) ? Number(form.latitude) : null}
+                        lng={form.longitude.trim() !== '' && !Number.isNaN(Number(form.longitude)) ? Number(form.longitude) : null}
+                        styleUrl={mapStyleUrl}
+                        onChange={(la, ln) => setForm(f => ({ ...f, latitude: String(la), longitude: String(ln) }))}
+                      />
+                      <p className="text-theme-xs text-theme-text-muted mt-1">לחץ על המפה לקביעת מיקום, או גרור את הסמן. השאר ריק אם אין מיקום.</p>
                     </div>
                   </div>
                 )}
