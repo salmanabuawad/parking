@@ -352,6 +352,24 @@ def process_one_job() -> bool:
         # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
         camera_allowed_rules, camera_violation_zone, camera_assigned_inspector, camera_off_schedule = _camera_context(db, job)
 
+        # Section-gated enforcement: when the camera has active polygon sections, ONLY vehicles whose
+        # centre falls inside a section are ticketed (cars elsewhere are skipped). A camera with no
+        # sections tickets every tracked car (unchanged).
+        _active_sections = []
+        if job.camera_id not in (None, "", "mobile") and str(job.camera_id).isdigit():
+            try:
+                from app.models import CameraSegment as _CS
+                _active_sections = [
+                    s for s in db.query(_CS).filter(_CS.camera_id == int(job.camera_id), _CS.is_active.is_(True)).all()
+                    if s.polygon_json and len(s.polygon_json) >= 3
+                ]
+            except Exception:
+                _active_sections = []
+        _has_sections = len(_active_sections) > 0
+        _section_rules = {s.id: (s.violation_rule_ids or []) for s in _active_sections}
+        if _has_sections:
+            print(f"[Job {job.id}] section-gated: {len(_active_sections)} active section(s) — only cars inside are ticketed", flush=True)
+
         # Enforcement schedule: outside a camera's working days/hours, still make a ticket but
         # auto-reject it (visible, not silently dropped) — see status/admin_notes in _finalize_ticket.
         if camera_off_schedule:
@@ -423,8 +441,21 @@ def process_one_job() -> bool:
                     _section_id = find_section_for_point(db, job.camera_id, _ccx, _ccy)
             except Exception as _sec_err:
                 print(f"[Job {job.id}] section derivation failed (non-fatal): {_sec_err}", flush=True)
+            # Section gate: when the camera has sections, skip a car that falls outside all of them.
+            if _has_sections and _section_id is None:
+                print(f"[Job {job.id}] car outside all sections — skipped", flush=True)
+                try:
+                    proc_path.unlink(missing_ok=True)
+                    (videos_dir / frame_rel).unlink(missing_ok=True)
+                    proc_path.with_suffix(".mp4.sig").unlink(missing_ok=True)
+                except Exception:
+                    pass
+                return None
             from app.services.ticket_finalization import resolve_ticket_fields
             _rule_code = (violation_data or {}).get("violation_rule_id")
+            # A car's violation type comes from its section when that section defines one.
+            if _section_id is not None and _section_rules.get(_section_id):
+                _rule_code = _section_rules[_section_id][0]
             fields = resolve_ticket_fields(
                 db, job=job, cfg=cfg, display_plate=display_plate, candidates=candidates,
                 video_params=video_params, rule_code=_rule_code, section_id=_section_id,
@@ -580,20 +611,33 @@ def process_one_job() -> bool:
             for idx, car in enumerate(_unique):
                 tid = car.get("track_id", idx + 1)
                 anpr_track = {k: car.get(k) for k in ("track_id", "raw_digits", "normalized_plate", "vote_count", "vehicle_box", "plate_box")}
-                created.append(_finalize_ticket(
+                _t = _finalize_ticket(
                     video_bytes_out=car.get("video_bytes") or b"",
                     plate=car.get("raw_digits") or "",
                     anpr_track=anpr_track,
                     suffix=f"_car{tid}",
                     candidates=car.get("candidates"),
-                ))
+                )
+                if _t is not None:   # None = section-gated out
+                    created.append(_t)
         else:
-            created.append(_finalize_ticket(
+            _t = _finalize_ticket(
                 video_bytes_out=overall_blurred,
                 plate="",
                 anpr_track=None,
                 suffix="",
-            ))
+            )
+            if _t is not None:
+                created.append(_t)
+
+        if not created:
+            # Section-gated and no car fell inside a section (or nothing detected) → complete with
+            # zero tickets. Not an error: the camera simply saw nothing to enforce in its sections.
+            job_repo.update(job.id, status="completed", ticket_id=None, license_plate="",
+                            completed_at=datetime.now(timezone.utc), error_message=None)
+            print(f"[{datetime.now().isoformat()}] Job {job.id} completed -> 0 ticket(s) "
+                  f"({'no cars inside defined sections' if _has_sections else 'nothing detected'}) | {_fmt_queue(job_repo.get_queue_status())}", flush=True)
+            return True
 
         primary_ticket, primary_plate = created[0]
         job_repo.update(
