@@ -2,7 +2,6 @@ import { useState, useEffect, type ReactNode } from 'react'
 import { Settings as SettingsIcon, SlidersHorizontal, MapPin } from 'lucide-react'
 import { settingsApi } from '../api'
 import { t } from '../i18n'
-import { useTheme } from '../context/ThemeContext'
 import CityManager from './CityManager'
 
 type Tab = 'system' | 'cities'
@@ -13,7 +12,6 @@ const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
 ]
 
 export default function Settings() {
-  const { brightness, setBrightness, fontSize, setFontSize } = useTheme()
   const [tab, setTab] = useState<Tab>('system')
   const [settings, setSettings] = useState<{
     blur_kernel_size: number
@@ -158,44 +156,6 @@ export default function Settings() {
       ) : (
         <>
           <p className="text-theme-text-muted">{t('settingsIntro')}</p>
-
-          {/* Appearance */}
-          <div className="app-card p-5">
-            <label className="label-base text-theme-text-primary font-semibold">בהירות ותצוגה</label>
-            <div className="flex flex-wrap gap-2 mb-3">
-              {(['normal', 'dark', 'contrast'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setBrightness(mode)}
-                  className={`px-4 py-1.5 rounded-full text-theme-sm font-medium border transition-colors ${
-                    brightness === mode
-                      ? 'bg-theme-accent text-white border-theme-accent'
-                      : 'bg-white text-theme-text-primary border-theme-card-border hover:bg-black/5'
-                  }`}
-                >
-                  {mode === 'normal' ? 'רגיל' : mode === 'dark' ? 'כהה' : 'ניגודיות גבוהה'}
-                </button>
-              ))}
-            </div>
-            <label className="label-base text-theme-text-primary font-semibold">גודל פונט</label>
-            <div className="flex flex-wrap gap-2">
-              {(['small', 'normal', 'large'] as const).map((size) => (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => setFontSize(size)}
-                  className={`px-4 py-1.5 rounded-full text-theme-sm font-medium border transition-colors ${
-                    fontSize === size
-                      ? 'bg-theme-accent text-white border-theme-accent'
-                      : 'bg-white text-theme-text-primary border-theme-card-border hover:bg-black/5'
-                  }`}
-                >
-                  {size === 'small' ? 'קטן' : size === 'normal' ? 'רגיל' : 'גדול'}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {settings && (
             <div className="app-card p-5 space-y-4">
