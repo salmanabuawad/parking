@@ -631,11 +631,20 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
     _vinfo = get_video_info(cfg.input_path) or {}
     _orig_fps = float(_vinfo.get("fps") or 25) or 25
     _total_frames = int(_vinfo.get("frame_count") or 0)
-    # Bound the in-memory frame budget by resolution — frames are held in RAM for rendering, so a
-    # high-res clip × a large max_frames could OOM the worker. Cap at ~800 MB of decoded frames;
-    # stride still samples across the FULL clip, so multi-vehicle coverage is unchanged.
+    # Frame-memory budget ADAPTS to free RAM (frames are held in RAM for rendering): ~40% of
+    # MemAvailable, so freeing RAM (e.g. stopping other services) → more frames / smoother clips,
+    # while it never OOMs when the box is busy. stride still samples across the FULL clip.
     _w, _h = int(_vinfo.get("width") or 0), int(_vinfo.get("height") or 0)
-    _budget = max(60, min(int(cfg.max_frames), 800_000_000 // (_w * _h * 3))) if (_w and _h) else int(cfg.max_frames)
+    def _avail_ram_bytes():
+        try:
+            for _l in open("/proc/meminfo"):
+                if _l.startswith("MemAvailable:"):
+                    return int(_l.split()[1]) * 1024
+        except Exception:
+            pass
+        return 800_000_000
+    _mem_budget = max(400_000_000, int(_avail_ram_bytes() * 0.40))
+    _budget = max(60, min(int(cfg.max_frames), _mem_budget // (_w * _h * 3))) if (_w and _h) else int(cfg.max_frames)
     _stride = max(1, -(-_total_frames // _budget)) if (_total_frames and _budget) else 1  # ceil ÷ → spans the FULL clip
     _eff_fps = _orig_fps / _stride
     if _stride > 1:
