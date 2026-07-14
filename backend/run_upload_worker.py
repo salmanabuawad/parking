@@ -246,6 +246,7 @@ def process_one_job() -> bool:
         anpr_tracks: list = []
         overall_blurred: bytes = b""
         import tempfile as _tf
+        _in_path = None
         try:
             from app.plate_pipeline.pipeline import _run_pipeline_vehicle_multi, _run_pipeline_enterprise_multi
             from app.plate_pipeline.config import PipelineConfig, hex_to_bgr
@@ -295,7 +296,6 @@ def process_one_job() -> bool:
                 cars = _result2.get("tracks_render") or []
                 anpr_tracks = _result2.get("anpr_tracks") or anpr_tracks
                 overall_blurred = _result2.get("overall_video_bytes") or overall_blurred
-            _in_path.unlink(missing_ok=True)
             print(f"[Job {job.id}] multi-car: {len(cars)} car(s) in {time.monotonic()-t0:.1f}s", flush=True)
         except Exception as _pipe_err:
             print(f"[Job {job.id}] Multi-car pipeline failed ({_pipe_err}), falling back to single blur", flush=True)
@@ -309,6 +309,11 @@ def process_one_job() -> bool:
             except Exception as _fb:
                 print(f"[Job {job.id}] Fallback blur failed: {_fb}", flush=True)
                 overall_blurred = b""
+        finally:
+            # Always remove the decoded-input temp file, even when the plate-first fallback raised
+            # before the inline cleanup ran (else it leaks a full-size .mp4 into the temp dir).
+            if _in_path is not None:
+                _in_path.unlink(missing_ok=True)
 
         # --- Step 2: camera rules/zone + video-level violation analysis (applied to each car) ---
         camera_allowed_rules, camera_violation_zone, camera_assigned_inspector, camera_off_schedule = _camera_context(db, job)
@@ -606,6 +611,15 @@ def main():
     except Exception as e:
         print(f"WARNING: Tesseract not available: {e}", flush=True)
 
+    # Reclaim any render temp files orphaned by a previous hard-killed worker before we start.
+    try:
+        from app.services.temp_cleanup import sweep_stale_renders
+        _sw = sweep_stale_renders()
+        if _sw.get("removed"):
+            print(f"[temp] startup sweep removed {_sw['removed']} stale render(s), freed {_sw['freed_mb']} MB", flush=True)
+    except Exception as _tce:
+        print(f"[temp] startup sweep failed (non-fatal): {_tce}", flush=True)
+
     _last_retention = 0.0
     while True:
         try:
@@ -624,6 +638,13 @@ def main():
                         print(f"[retention] purged videos from {_r['tickets']} ticket(s) older than {_r['days']}d, freed {_r['freed_mb']} MB", flush=True)
                 except Exception as _re:
                     print(f"[retention] cleanup failed (non-fatal): {_re}", flush=True)
+                try:
+                    from app.services.temp_cleanup import sweep_stale_renders
+                    _sw = sweep_stale_renders()
+                    if _sw.get("removed"):
+                        print(f"[temp] swept {_sw['removed']} stale render(s), freed {_sw['freed_mb']} MB", flush=True)
+                except Exception as _tce:
+                    print(f"[temp] sweep failed (non-fatal): {_tce}", flush=True)
             if not did_work:
                 # Idle: wait before next poll
                 time.sleep(idle_interval)

@@ -108,36 +108,39 @@ def write_video(frames: list, output_path: Path, fps: float = 25, fourcc: str = 
     h, w = prepared[0].shape[:2]
     fps = float(fps) if fps and fps > 0.1 else 25.0
 
-    tmp_cv = Path(tempfile.mktemp(suffix=".mp4"))
-    writer = cv2.VideoWriter(str(tmp_cv), cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
-    if not writer.isOpened():
-        tmp_cv = Path(tempfile.mktemp(suffix=".avi"))
-        writer = cv2.VideoWriter(str(tmp_cv), cv2.VideoWriter_fourcc(*"XVID"), fps, (w, h))
-
-    if not writer.isOpened():
-        print("[write_video] ERROR: cv2.VideoWriter failed (mp4v and XVID)", flush=True)
-        tmp_cv.unlink(missing_ok=True)
-        return
-
-    for f in prepared:
-        if f.shape[1] != w or f.shape[0] != h:
-            f = cv2.resize(f, (w, h), interpolation=cv2.INTER_LINEAR)
-        writer.write(f)
-    writer.release()
-
-    raw_size = tmp_cv.stat().st_size if tmp_cv.exists() else 0
-    if raw_size < 256:
-        print(f"[write_video] ERROR: OpenCV output too small ({raw_size} B)", flush=True)
-        tmp_cv.unlink(missing_ok=True)
-        return
-
-    ffmpeg = _get_ffmpeg_exe()
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if ffmpeg:
-        tmp_h264 = Path(tempfile.mktemp(suffix=".mp4"))
-        try:
+    # Every intermediate (OpenCV mp4v + ffmpeg H.264) lives inside a single scratch directory that
+    # is removed on exit — even if ffmpeg raises (TimeoutExpired / OOM) or a move fails. This is why
+    # cleanup can't leak a temp .mp4 the way a bare tempfile.mktemp + manual unlink does. Only the
+    # final encoded file is moved OUT of the scratch dir to output_path.
+    with tempfile.TemporaryDirectory(prefix="anpr_render_") as _scratch:
+        scratch = Path(_scratch)
+        tmp_cv = scratch / "opencv.mp4"
+        writer = cv2.VideoWriter(str(tmp_cv), cv2.VideoWriter_fourcc(*fourcc), fps, (w, h))
+        if not writer.isOpened():
+            tmp_cv = scratch / "opencv.avi"
+            writer = cv2.VideoWriter(str(tmp_cv), cv2.VideoWriter_fourcc(*"XVID"), fps, (w, h))
+
+        if not writer.isOpened():
+            print("[write_video] ERROR: cv2.VideoWriter failed (mp4v and XVID)", flush=True)
+            return
+
+        for f in prepared:
+            if f.shape[1] != w or f.shape[0] != h:
+                f = cv2.resize(f, (w, h), interpolation=cv2.INTER_LINEAR)
+            writer.write(f)
+        writer.release()
+
+        raw_size = tmp_cv.stat().st_size if tmp_cv.exists() else 0
+        if raw_size < 256:
+            print(f"[write_video] ERROR: OpenCV output too small ({raw_size} B)", flush=True)
+            return
+
+        ffmpeg = _get_ffmpeg_exe()
+        if ffmpeg:
+            tmp_h264 = scratch / "h264.mp4"
             result = subprocess.run(
                 [
                     ffmpeg,
@@ -164,7 +167,6 @@ def write_video(frames: list, output_path: Path, fps: float = 25, fourcc: str = 
                 if out_path.exists():
                     out_path.unlink()
                 shutil.move(str(tmp_h264), str(out_path))
-                tmp_cv.unlink(missing_ok=True)
                 print(
                     f"[write_video] OK: {len(prepared)} frames → {out_path.name} "
                     f"({out_path.stat().st_size} B, h264)",
@@ -173,14 +175,11 @@ def write_video(frames: list, output_path: Path, fps: float = 25, fourcc: str = 
                 return
             err = (result.stderr or b"").decode(errors="replace")[-400:]
             print(f"[write_video] ffmpeg failed rc={result.returncode}: {err}", flush=True)
-        finally:
-            tmp_h264.unlink(missing_ok=True)
 
-    # Fallback: copy OpenCV output (may not play in all browsers)
-    shutil.copyfile(tmp_cv, out_path)
-    tmp_cv.unlink(missing_ok=True)
-    print(
-        f"[write_video] OK (no ffmpeg): {len(prepared)} frames → {out_path.name} "
-        f"({out_path.stat().st_size} B, raw OpenCV)",
-        flush=True,
-    )
+        # Fallback: copy OpenCV output out of the scratch dir (may not play in all browsers)
+        shutil.copyfile(tmp_cv, out_path)
+        print(
+            f"[write_video] OK (no ffmpeg): {len(prepared)} frames → {out_path.name} "
+            f"({out_path.stat().st_size} B, raw OpenCV)",
+            flush=True,
+        )

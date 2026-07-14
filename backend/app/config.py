@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     vehicle_dimensions_file: str = "data/vehicle_dimensions_sample.csv"
     vehicle_registry_path: Path | None = None  # Resolved at runtime
     vehicle_dimensions_path: Path | None = None  # Resolved at runtime
+    videos_tmp_dir: Path | None = None  # Disk-backed scratch dir for video renders (resolved at runtime)
     # Plate validation: only accept plates that exist in Ministry of Transport registry
     # https://data.gov.il/he/datasets/ministry_of_transport/private-and-commercial-vehicles/053cea08-09bc-40ec-8f7a-156f0677aff3
     validate_plate_in_registry: bool = True
@@ -59,4 +60,21 @@ settings.videos_dir.mkdir(parents=True, exist_ok=True)
 (settings.videos_dir / "processed").mkdir(parents=True, exist_ok=True)
 (settings.videos_dir / "frames").mkdir(parents=True, exist_ok=True)
 (settings.videos_dir / "screenshots").mkdir(parents=True, exist_ok=True)
+
+# Keep large temp video renders OFF the small tmpfs /tmp (2 GB on prod). The ANPR pipeline writes
+# multi-MB intermediate .mp4s per car via tempfile; on the small tmpfs a leaked/slow render fills
+# /tmp and blocks deploys. Point Python's default tempfile location at a disk-backed dir on the
+# videos volume so every tempfile.mktemp / NamedTemporaryFile in the API + worker inherits it.
+# An operator-set TMPDIR always wins. Best-effort: fall back to the system temp dir on error.
+import os as _os
+import tempfile as _tempfile
+
+_videos_tmp = settings.videos_dir / "tmp"
+try:
+    _videos_tmp.mkdir(parents=True, exist_ok=True)
+    settings.videos_tmp_dir = _videos_tmp
+    if not _os.environ.get("TMPDIR"):
+        _tempfile.tempdir = str(_videos_tmp)
+except OSError:
+    settings.videos_tmp_dir = Path(_tempfile.gettempdir())
 
