@@ -55,6 +55,20 @@ function handle401(): never {
   throw new Error("Session expired");
 }
 
+/** Turn a FastAPI error `detail` (string, 422 array of {loc,msg,type}, or object) into a
+ * readable message — never "[object Object]". */
+function parseDetail(data: any, fallback: string): string {
+  const d = data?.detail;
+  if (typeof d === "string" && d) return d;
+  if (Array.isArray(d)) {
+    const msgs = d.map((e) => (typeof e === "string" ? e : e?.msg)).filter(Boolean);
+    if (msgs.length) return msgs.join("; ");
+  }
+  if (d && typeof d === "object" && typeof d.msg === "string") return d.msg;
+  if (typeof data?.message === "string" && data.message) return data.message;
+  return fallback;
+}
+
 async function fetchJson(path: string, init?: RequestInit): Promise<any> {
   const isFormData = init?.body instanceof FormData;
   const res = await fetch(buildUrl(path), {
@@ -72,7 +86,7 @@ async function fetchJson(path: string, init?: RequestInit): Promise<any> {
     let detail = `HTTP ${res.status}`;
     try {
       const data = await res.json();
-      detail = data?.detail || detail;
+      detail = parseDetail(data, detail);
     } catch (_) {}
     throw new Error(detail);
   }
@@ -112,7 +126,7 @@ const api = {
             catch { resolve({ data: xhr.responseText as unknown as T }); }
           } else {
             let detail = `HTTP ${xhr.status}`;
-            try { detail = JSON.parse(xhr.responseText)?.detail || detail; } catch (_) {}
+            try { detail = parseDetail(JSON.parse(xhr.responseText), detail); } catch (_) {}
             reject(new Error(detail));
           }
         };
@@ -134,7 +148,7 @@ const api = {
       let detail = `HTTP ${res.status}`;
       try {
         const d = await res.json();
-        detail = d?.detail || detail;
+        detail = parseDetail(d, detail);
       } catch (_) {}
       throw new Error(detail);
     }
