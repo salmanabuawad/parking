@@ -631,14 +631,19 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
     _vinfo = get_video_info(cfg.input_path) or {}
     _orig_fps = float(_vinfo.get("fps") or 25) or 25
     _total_frames = int(_vinfo.get("frame_count") or 0)
-    _stride = max(1, -(-_total_frames // cfg.max_frames)) if (_total_frames and cfg.max_frames) else 1  # ceil ÷ → spans the FULL clip
+    # Bound the in-memory frame budget by resolution — frames are held in RAM for rendering, so a
+    # high-res clip × a large max_frames could OOM the worker. Cap at ~800 MB of decoded frames;
+    # stride still samples across the FULL clip, so multi-vehicle coverage is unchanged.
+    _w, _h = int(_vinfo.get("width") or 0), int(_vinfo.get("height") or 0)
+    _budget = max(60, min(int(cfg.max_frames), 800_000_000 // (_w * _h * 3))) if (_w and _h) else int(cfg.max_frames)
+    _stride = max(1, -(-_total_frames // _budget)) if (_total_frames and _budget) else 1  # ceil ÷ → spans the FULL clip
     _eff_fps = _orig_fps / _stride
     if _stride > 1:
         yolo_every = 1   # sampled frames are far apart in time → detect the vehicle in every one (no stale box)
-        print(f"[pipeline] whole-clip sampling: {_total_frames} frames @ {_orig_fps:.1f}fps → stride {_stride} "
-              f"(~{cfg.max_frames} frames @ {_eff_fps:.1f}fps span the full clip); yolo every frame", flush=True)
+    print(f"[pipeline] frame budget {_budget} (res {_w}x{_h}, cfg cap {cfg.max_frames}); {_total_frames} src "
+          f"frames → stride {_stride}, eff {_eff_fps:.1f}fps", flush=True)
 
-    for fidx, frame in read_frames(cfg.input_path, cfg.max_frames, stride=_stride):
+    for fidx, frame in read_frames(cfg.input_path, _budget, stride=_stride):
         frames.append(frame)
         if fidx % yolo_every == 0:
             last_vdets = [
