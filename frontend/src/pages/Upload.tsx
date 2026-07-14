@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Camera, Image as ImageIcon, Video, MapPin } from 'lucide-react'
-import api from '../api'
+import api, { camerasApi } from '../api'
 
 interface GpsCoords {
   latitude: number
@@ -9,7 +9,8 @@ interface GpsCoords {
 }
 
 export default function Upload() {
-  const [capturedAt] = useState(new Date().toISOString())
+  // Real recording date: the picked file's own date on the device; upload time only until a file is chosen.
+  const [capturedAt, setCapturedAt] = useState(new Date().toISOString())
   const [licensePlate, setLicensePlate] = useState('')
   const [zone, setZone] = useState('red_white')
   const [submitting, setSubmitting] = useState(false)
@@ -18,7 +19,13 @@ export default function Upload() {
   const [gps, setGps] = useState<GpsCoords | null>(null)
   const [gpsError, setGpsError] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [cameras, setCameras] = useState<{ id: number; name: string }[]>([])
+  const [cameraId, setCameraId] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    camerasApi.list().then(({ data }) => setCameras((data as any[]).map((c) => ({ id: c.id, name: c.name })))).catch(() => {})
+  }, [])
 
   // Acquire GPS on mount
   useEffect(() => {
@@ -46,6 +53,7 @@ export default function Upload() {
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0] || null
     setSelectedFile(file)
+    if (file?.lastModified) setCapturedAt(new Date(file.lastModified).toISOString())
     setJobId(null)
     setError(null)
   }
@@ -64,6 +72,7 @@ export default function Upload() {
       fd.append('captured_at', capturedAt)
       fd.append('license_plate', licensePlate.trim())
       fd.append('violation_zone', zone)
+      if (cameraId) fd.append('camera_id', cameraId)
       if (gps) {
         fd.append('latitude', String(gps.latitude))
         fd.append('longitude', String(gps.longitude))
@@ -144,6 +153,18 @@ export default function Upload() {
           </div>
         )}
       </div>
+
+      {/* Camera (optional) — process the clip as this fixed camera's scene */}
+      {cameras.length > 0 && (
+        <div>
+          <label className="label-base">מצלמה (אופציונלי)</label>
+          <select value={cameraId} onChange={e => setCameraId(e.target.value)} className="input-base">
+            <option value="">— ללא מצלמה (דיווח נייד) —</option>
+            {cameras.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          <p className="text-theme-xs text-theme-text-muted mt-1">בחירת מצלמה: הסרטון יעובד לפי כללי המצלמה — דוח לכל רכב חונה בזירה.</p>
+        </div>
+      )}
 
       {/* License plate (optional) */}
       <div>

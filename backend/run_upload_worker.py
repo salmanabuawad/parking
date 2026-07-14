@@ -310,6 +310,9 @@ def process_one_job() -> bool:
                 timestamp_overlay_position=(getattr(cfg, "timestamp_overlay_position", "top_right") if cfg else "top_right"),
                 plate_inset_enabled=(bool(getattr(cfg, "plate_inset_enabled", True)) if cfg else True),
                 overlay_camera_id=(str(job.camera_id) if job.camera_id not in (None, "", "mobile") else None),
+                # Fixed camera (upload tied to a camera) surveys a whole scene → ticket every parked
+                # car. A mobile spot-check (no camera) keeps the single-subject behaviour.
+                emit_all_vehicles=(job.camera_id not in (None, "", "mobile")),
             )
             # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
             try:

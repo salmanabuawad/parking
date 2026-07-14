@@ -757,33 +757,38 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
 
     tracks_render: list[dict[str, Any]] = []
     track_results: list[dict[str, Any]] = []
-    for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
-        if not vs["ocr"]:
-            continue  # car tracked but plate never became readable — cannot issue a ticket
-        raw, vc = vs["ocr"].most_common(1)[0]
-        norm = normalize_israeli_private_plate(raw)
-        if not norm:
-            continue
-        # #10 — surface the suspected-vehicle box (xyxy) and a representative plate box (last
-        # known, xywh→xyxy) so the worker can persist suspected_vehicle_box / plate_box.
+    _emit_all = bool(getattr(cfg, "emit_all_vehicles", False))   # fixed cameras: one ticket per parked car
+    _MAX_CARS = 12                                                # safety cap on tickets per clip
+
+    def _render_car(vs, norm: str):
+        """Render one tracked vehicle's privacy video and append its rd. norm='' → an unread
+        (manual-review) ticket: the car is boxed and its best crop shown, plate entered by hand."""
+        readable = bool(norm)
+        # #10 — suspected-vehicle box (xyxy) + representative plate box (last known, xywh→xyxy).
         _pbf = vs.get("plate_by_frame") or {}
         _plate_xyxy = None
         if _pbf:
             _px, _py, _pw, _ph = _pbf[max(_pbf)]
             _plate_xyxy = [int(_px), int(_py), int(_px + _pw), int(_py + _ph)]
         _veh_xyxy = [int(c) for c in vs["last_bbox"]] if vs.get("last_bbox") else None
-        rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc,
-              "candidates": [c for c, _ in vs["ocr"].most_common(5)],
-              "vehicle_box": _veh_xyxy, "plate_box": _plate_xyxy}
-        track_results.append(rd)
-        overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
+        _raw0 = vs["ocr"].most_common(1)[0][0] if vs["ocr"] else ""
+        _vc0 = vs["ocr"].most_common(1)[0][1] if vs["ocr"] else 0
+        rd = {"track_id": vs["tid"], "raw_digits": (_raw0 if readable else ""),
+              "normalized_plate": norm, "vote_count": (_vc0 if readable else 0),
+              "candidates": [c for c, _ in vs["ocr"].most_common(5)] if (readable and vs["ocr"]) else [],
+              "vehicle_box": _veh_xyxy, "plate_box": (_plate_xyxy if readable else None)}
+        if readable:
+            overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
+            _color = (0, 255, 0)
+        else:
+            overlay_text = "??-???-??"
+            _color = (0, 200, 255)
+        # Which region stays sharp: the enforced plate box (densified) when blur_except_plate is on
+        # and the plate is readable, else the whole car box.
+        dense_plate = _densify_plate_boxes(vs["plate_by_frame"], vs["car_by_frame"], len(frames)) if (keep_plate and readable) else {}
         out_frames = []
-        # Which region stays sharp: the enforced plate box (densified across frames) when
-        # blur_except_plate is on, else the whole violating car. Falls back to the car box on
-        # frames where no plate box is known so the subject is never fully blurred.
-        dense_plate = _densify_plate_boxes(vs["plate_by_frame"], vs["car_by_frame"], len(frames)) if keep_plate else {}
         for fidx, frame in enumerate(frames):
-            if keep_plate and fidx in dense_plate:
+            if keep_plate and readable and fidx in dense_plate:
                 boxes = [dense_plate[fidx]]
             elif fidx in vs["car_by_frame"]:
                 boxes = [vs["car_by_frame"][fidx]]
@@ -791,11 +796,9 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                 boxes = []
             of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size,
                                              box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
-            # Zoomed plate-preview window (top-left) so a reviewer can read the plate directly,
-            # plus the detected plate number overlaid at the bottom.
             if _plate_inset and vs["best_crop"] is not None:
                 of = engine.draw_preview(of, vs["best_crop"])
-            cv2.putText(of, overlay_text, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.putText(of, overlay_text, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, _color, 2, cv2.LINE_AA)
             if _clock_on:
                 of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps), position=_ts_pos, label=_overlay_label)
             out_frames.append(of)
@@ -805,37 +808,32 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
             video_bytes = tmp.read_bytes() if tmp.exists() else b""
         finally:
             tmp.unlink(missing_ok=True)
-        tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"]})
+        track_results.append(rd)
+        tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"], "unread": not readable})
 
-    # If NO car produced a readable plate, still issue ONE review ticket for the best-tracked
-    # vehicle (car boxed + best crop) so an occluded/angled plate isn't lost to a blank fallback —
-    # the inspector reads/enters the plate manually (and can mark it exempt).
-    if not tracks_render:
+    for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
+        if len(tracks_render) >= _MAX_CARS:
+            break
+        _norm = normalize_israeli_private_plate(vs["ocr"].most_common(1)[0][0]) if vs["ocr"] else None
+        if _emit_all:
+            # Fixed camera surveying a scene: a ticket for EVERY sufficiently-tracked vehicle
+            # (parked car), readable plate or not — unread ones become manual-review tickets.
+            if vs["seen"] < 3:
+                continue
+            _render_car(vs, _norm or "")
+        else:
+            # Mobile / default: only cars whose plate became readable (spot-check = one subject).
+            if not _norm:
+                continue
+            _render_car(vs, _norm)
+
+    # Legacy fallback (non-emit-all only): if NO car produced a readable plate, still issue ONE
+    # review ticket for the best-tracked vehicle so an occluded plate isn't lost to a blank fallback.
+    if not tracks_render and not _emit_all:
         for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
             if vs["seen"] < 3:
                 continue
-            rd = {"track_id": vs["tid"], "raw_digits": "", "normalized_plate": "", "vote_count": 0,
-                  "vehicle_box": [int(c) for c in vs["last_bbox"]] if vs.get("last_bbox") else None,
-                  "plate_box": None}
-            track_results.append(rd)
-            out_frames = []
-            for fidx, frame in enumerate(frames):
-                boxes = [vs["car_by_frame"][fidx]] if fidx in vs["car_by_frame"] else []
-                of = render_privacy_frame_tracks(frame, boxes, kernel_size=cfg.blur_kernel_size,
-                                                 box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
-                if vs["best_crop"] is not None:
-                    of = engine.draw_preview(of, vs["best_crop"])
-                cv2.putText(of, "??-???-??", (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 200, 255), 2, cv2.LINE_AA)
-                if _clock_on:
-                    of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps))
-                out_frames.append(of)
-            tmp = Path(tempfile.mktemp(suffix=".mp4"))
-            try:
-                write_video(out_frames, tmp, fps=fps)
-                video_bytes = tmp.read_bytes() if tmp.exists() else b""
-            finally:
-                tmp.unlink(missing_ok=True)
-            tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"], "unread": True})
+            _render_car(vs, "")
             break  # one review ticket for the primary vehicle
 
     overall_video_bytes = b""

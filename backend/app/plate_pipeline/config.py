@@ -145,6 +145,9 @@ class PipelineConfig:
     overlay_camera_id: str | None = None
     overlay_ticket_id: int | None = None
     plate_inset_enabled: bool = True
+    # Fixed-camera enforcement: issue a ticket for every sufficiently-tracked vehicle (parked car),
+    # readable plate or not. Off for mobile spot-checks (which want a single subject).
+    emit_all_vehicles: bool = False
 
 
 def hex_to_bgr(value, default: tuple[int, int, int] = (0, 255, 0)) -> tuple[int, int, int]:

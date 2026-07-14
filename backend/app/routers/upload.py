@@ -34,6 +34,7 @@ async def upload_violation(
     violation_zone: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     submitted_by: Optional[str] = Form(None),
+    camera_id: Optional[str] = Form(None),
     job_repo: UploadJobRepository = Depends(get_upload_job_repo),
 ):
     """
@@ -64,6 +65,17 @@ async def upload_violation(
     lat = latitude if latitude is not None else 0.0
     lng = longitude if longitude is not None else 0.0
     plate_value = (license_plate or "").strip()
+    # Tie the upload to a fixed camera (processed with its rules/schedule/grid). Inherit the
+    # camera's location when the upload carries no GPS so the ticket is placed at the camera.
+    cam_id = (camera_id or "").strip() or None
+    if cam_id and cam_id.isdigit() and not (latitude and longitude):
+        try:
+            from app.models import Camera
+            _cam = job_repo.db.query(Camera).filter(Camera.id == int(cam_id)).first()
+            if _cam and _cam.latitude and _cam.longitude:
+                lat, lng = float(_cam.latitude), float(_cam.longitude)
+        except Exception:
+            pass
     job = job_repo.create(
         raw_video_path=rel_path,
         status="queued",
@@ -74,6 +86,7 @@ async def upload_violation(
         violation_zone=violation_zone or "red_white",
         description=description or ("העלאה מהנייד" if (not lat and not lng) else f"העלאה מהנייד — {lat:.6f}, {lng:.6f}"),
         submitted_by=submitted_by,
+        camera_id=cam_id,
     )
 
     return {

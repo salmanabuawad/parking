@@ -8,7 +8,7 @@ import { ListOrdered } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import api from '../api'
-import { uploadApi, settingsApi } from '../api'
+import { uploadApi, settingsApi, camerasApi } from '../api'
 import { t } from '../i18n'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { useFieldConfig } from '../lib/useFieldConfig'
@@ -59,7 +59,13 @@ export default function QueueMaintenance() {
   const [uploading, setUploading] = useState(false)
   const [quickFilter, setQuickFilter] = useState('')
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const [cameras, setCameras] = useState<{ id: number; name: string }[]>([])
+  const [uploadCameraId, setUploadCameraId] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    camerasApi.list().then(({ data }) => setCameras((data as any[]).map((c) => ({ id: c.id, name: c.name })))).catch(() => {})
+  }, [])
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -109,9 +115,10 @@ export default function QueueMaintenance() {
       fd.append('video', file)
       fd.append('latitude', '0')
       fd.append('longitude', '0')
-      fd.append('captured_at', new Date().toISOString())
+      fd.append('captured_at', new Date(file.lastModified || Date.now()).toISOString())
       fd.append('license_plate', '')
       fd.append('violation_zone', 'red_white')
+      if (uploadCameraId) fd.append('camera_id', uploadCameraId)
       await api.post('/upload/violation', fd)
       await fetchJobs()
       setMsg({ kind: 'ok', text: 'הסרטון הועלה ונכנס לתור העיבוד' })
@@ -206,6 +213,18 @@ export default function QueueMaintenance() {
             disabled={uploading}
             className="hidden"
           />
+          {cameras.length > 0 && (
+            <select
+              value={uploadCameraId}
+              onChange={(e) => setUploadCameraId(e.target.value)}
+              disabled={uploading}
+              title="עבד את הסרטון כמצלמה זו (כלליה, לוח הזמנים והמיקום) — דוח לכל רכב חונה"
+              className="input-base w-48"
+            >
+              <option value="">ללא מצלמה (נייד)</option>
+              {cameras.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
           <button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
