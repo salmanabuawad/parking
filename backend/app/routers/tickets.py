@@ -531,14 +531,19 @@ def reject_ticket_as_inspector(
 @router.get("/inbox")
 def inspector_inbox(
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
-    inspector=Depends(get_current_inspector),
+    reviewer=Depends(get_current_reviewer),
 ):
-    """Reports currently in the signed-in inspector's inbox (assigned to them) — #9."""
-    rows = [
-        t for t in ticket_repo.list_all()
-        if getattr(t, "assigned_inspector_id", None) == inspector.id
-        and getattr(t, "status", None) not in {"approved", "rejected", "final"}
-    ]
+    """Reports awaiting review (#9). Inspectors see their own assigned tickets; admins
+    (super inspectors) see the whole open review queue."""
+    def _open(t) -> bool:
+        return (getattr(t, "status", None) not in {"approved", "rejected", "final"}
+                and getattr(t, "review_status", None) != "duplicate_candidate")
+
+    if reviewer.kind == "admin":
+        rows = [t for t in ticket_repo.list_all() if _open(t)]
+    else:
+        rows = [t for t in ticket_repo.list_all()
+                if getattr(t, "assigned_inspector_id", None) == reviewer.inspector_id and _open(t)]
     rows.sort(key=lambda t: getattr(t, "created_at", None) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     return [_ticket_dict(t) for t in rows]
 

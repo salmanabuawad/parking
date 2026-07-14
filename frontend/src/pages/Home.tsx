@@ -60,13 +60,14 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false)
   const [quickFilter, setQuickFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
+  const [error, setError] = useState(false)
 
   const fetchJobs = useCallback(async () => {
     try {
       const { data } = await uploadApi.listJobs()
-      setJobs(data)
+      setJobs(data); setError(false)
     } catch (err) {
-      console.error('Failed to fetch jobs', err)
+      console.error('Failed to fetch jobs', err); setError(true)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -152,6 +153,8 @@ export default function Home() {
           <p className="page-header-label opacity-90">{he.home.subtitle}</p>
         </div>
       </div>
+
+      {error && <div className="text-red-600 text-theme-sm">שגיאה בטעינת נתוני הדשבורד — נסה לרענן.</div>}
 
       {/* Stat cards */}
       <div className="flex flex-wrap gap-3">

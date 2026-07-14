@@ -220,18 +220,6 @@ export default function TicketReview() {
     };
   }, [ticketId]);
 
-  async function handleStatusChange(status: "approved" | "rejected") {
-    if (!ticket) return;
-    setSaving(true);
-    try {
-      const updated = await ticketsApi.updateTicket(ticketId, { status });
-      setTicket(updated);
-    } catch (err: any) {
-      alert(err?.message || "שגיאה בשמירה");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function handleSaveEdit() {
     if (!ticket) return;
@@ -661,21 +649,9 @@ export default function TicketReview() {
                   </div>
                 ) : (
                   <div className="flex gap-2">
-                    {ticket.status !== "approved" && (
-                      <button onClick={() => handleStatusChange("approved")} disabled={saving} className="btn-success grow min-w-0">
-                        <Check className="w-4 h-4" />
-                        <span>אשר</span>
-                      </button>
-                    )}
-                    {ticket.status !== "rejected" && (
-                      <button onClick={() => handleStatusChange("rejected")} disabled={saving} className="btn-danger grow min-w-0">
-                        <X className="w-4 h-4" />
-                        <span>דחה</span>
-                      </button>
-                    )}
                     <button onClick={() => setEditMode(true)} disabled={saving} className="btn-cancel grow min-w-0">
                       <Pencil className="w-4 h-4" />
-                      <span>ערוך</span>
+                      <span>ערוך פרטי דוח</span>
                     </button>
                   </div>
                 )}

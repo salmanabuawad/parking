@@ -42,10 +42,11 @@ export default function Inbox() {
   const [rows, setRows] = useState<Ticket[]>([])
   const [loading, setLoading] = useState(true)
   const [quick, setQuick] = useState('')
+  const [error, setError] = useState(false)
 
   useEffect(() => {
     setLoading(true)
-    ticketsApi.inbox().then(setRows).catch(() => setRows([])).finally(() => setLoading(false))
+    ticketsApi.inbox().then(r => { setRows(r); setError(false) }).catch(() => { setRows([]); setError(true) }).finally(() => setLoading(false))
   }, [])
 
   const cols = useMemo<ColDef<Ticket>[]>(() => [
@@ -66,6 +67,7 @@ export default function Inbox() {
         <span className="page-header-icon"><InboxIcon className="w-5 h-5" strokeWidth={1.5} /></span>
         <h1 className="page-header-title">תיבת דוחות שלי</h1>
       </div>
+      {error && <div className="text-red-600 text-theme-sm">שגיאה בטעינת התיבה — נסה לרענן.</div>}
 
       <div className="w-64">
         <input type="search" placeholder="חיפוש חופשי..." value={quick} onChange={e => setQuick(e.target.value)} className="input-base" />

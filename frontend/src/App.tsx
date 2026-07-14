@@ -75,6 +75,7 @@ function buildNavItems(userType?: string): NavItem[] {
   }
   return [
     { id: 'home', label: he.app.home, icon: <LayoutDashboard className="w-4 h-4" /> },
+    inbox,   // admin is a super-inspector: sees the review/tasks inbox too
     { id: 'camera-map', label: 'מפת מצלמות', icon: <MapPin className="w-4 h-4" /> },
     ticketsGroup,
     {

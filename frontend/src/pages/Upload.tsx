@@ -80,7 +80,7 @@ export default function Upload() {
   }
 
   return (
-    <div className="page-container max-w-[480px] w-full mx-auto" dir="rtl">
+    <div className="page-container max-w-[480px] w-full mx-auto overflow-y-auto" dir="rtl">
       {/* Page header */}
       <div className="page-header rounded-lg px-3 py-2 flex items-center gap-2">
         <span className="page-header-icon">
