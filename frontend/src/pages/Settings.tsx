@@ -11,12 +11,27 @@ const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
   { key: 'cities', label: 'ערים ומפות', icon: <MapPin className="w-4 h-4" /> },
 ]
 
-/** Compact labelled field for the settings grid. `span` widens it across grid columns. */
+/** Label-above field — for wide text/URL inputs that need the full column width. */
 function Field({ label, span, children }: { label: string; span?: string; children: ReactNode }) {
   return (
     <label className={`flex flex-col gap-1 ${span || ''}`}>
       <span className="text-theme-sm font-medium text-theme-text-primary leading-tight">{label}</span>
       {children}
+    </label>
+  )
+}
+
+/** Inline setting row — label (right, RTL) + a compact fixed-width control (left) + optional unit.
+ *  The control sits in a fixed-width slot so tiny numeric values don't fill a huge empty input.
+ *  (A wrapper width is used because .input-base bakes in w-full, which a bare w-20 can't override.) */
+function Row({ label, unit, w = 'w-20', children }: { label: string; unit?: string; w?: string; children: ReactNode }) {
+  return (
+    <label className="flex items-center justify-between gap-3 min-h-[2.5rem]">
+      <span className="text-theme-sm text-theme-text-primary leading-tight min-w-0">{label}</span>
+      <span className="flex items-center gap-1.5 shrink-0">
+        <span className={`block ${w}`}>{children}</span>
+        {unit && <span className="text-theme-xs text-theme-text-muted w-9">{unit}</span>}
+      </span>
     </label>
   )
 }
@@ -39,8 +54,10 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   )
 }
 
-const GRID = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-3'
-const TOGGLE_ROW = 'col-span-2 md:col-span-3 lg:col-span-4 flex flex-wrap gap-x-6 gap-y-2 pt-1'
+const GRID = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-10 gap-y-0.5'
+const TEXTGRID = 'grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3'
+const TOGGLE_ROW = 'flex flex-wrap gap-x-6 gap-y-2 pt-3 mt-3 border-t border-theme-card-border'
+const NUM = 'input-base text-center'
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('system')
@@ -206,105 +223,107 @@ export default function Settings() {
             <>
               <Section title="הגדרות אכיפה ומערכת">
                 <div className={GRID}>
-                  <Field label="זמן שהייה שנחשב לעבירה (שניות)">
-                    <input type="number" min={0} value={violationDwellSeconds} onChange={numHandler(setViolationDwellSeconds, 0)} className="input-base" />
-                  </Field>
-                  <Field label="אורך סרטון נדרש (שניות)">
-                    <input type="number" min={0} value={requiredVideoSeconds} onChange={numHandler(setRequiredVideoSeconds, 0)} className="input-base" />
-                  </Field>
-                  <Field label="שניות הקלטה לפני העבירה">
-                    <input type="number" min={0} max={120} value={evidencePreSeconds} onChange={numHandler(setEvidencePreSeconds, 0, 120)} className="input-base" />
-                  </Field>
-                  <Field label="שניות הקלטה אחרי העבירה">
-                    <input type="number" min={0} max={120} value={evidencePostSeconds} onChange={numHandler(setEvidencePostSeconds, 0, 120)} className="input-base" />
-                  </Field>
-                  <Field label="שמירת סרטונים (ימים)">
-                    <input type="number" min={0} value={videoRetentionDays} onChange={numHandler(setVideoRetentionDays, 0)} className="input-base" />
-                  </Field>
-                  <Field label="שמירת סרטון מקור (ימים)">
-                    <input type="number" min={0} value={originalRetentionDays} onChange={numHandler(setOriginalRetentionDays, 0)} className="input-base" />
-                  </Field>
-                  <Field label="שמירת סרטון מעובד (ימים)">
-                    <input type="number" min={0} value={processedRetentionDays} onChange={numHandler(setProcessedRetentionDays, 0)} className="input-base" />
-                  </Field>
-                  <Field label="שמירת מועמדים לדוח (ימים)">
-                    <input type="number" min={0} value={candidateRetentionDays} onChange={numHandler(setCandidateRetentionDays, 0)} className="input-base" />
-                  </Field>
-                  <div className={TOGGLE_ROW}>
-                    <Toggle checked={videoTimestampOverlay} onChange={setVideoTimestampOverlay}>הצג תאריך ושעה בסרטון</Toggle>
-                  </div>
+                  <Row label="זמן שהייה שנחשב לעבירה" unit="שניות">
+                    <input type="number" min={0} value={violationDwellSeconds} onChange={numHandler(setViolationDwellSeconds, 0)} className={NUM} />
+                  </Row>
+                  <Row label="אורך סרטון נדרש" unit="שניות">
+                    <input type="number" min={0} value={requiredVideoSeconds} onChange={numHandler(setRequiredVideoSeconds, 0)} className={NUM} />
+                  </Row>
+                  <Row label="שניות הקלטה לפני העבירה" unit="שניות">
+                    <input type="number" min={0} max={120} value={evidencePreSeconds} onChange={numHandler(setEvidencePreSeconds, 0, 120)} className={NUM} />
+                  </Row>
+                  <Row label="שניות הקלטה אחרי העבירה" unit="שניות">
+                    <input type="number" min={0} max={120} value={evidencePostSeconds} onChange={numHandler(setEvidencePostSeconds, 0, 120)} className={NUM} />
+                  </Row>
+                  <Row label="שמירת סרטונים" unit="ימים">
+                    <input type="number" min={0} value={videoRetentionDays} onChange={numHandler(setVideoRetentionDays, 0)} className={NUM} />
+                  </Row>
+                  <Row label="שמירת סרטון מקור" unit="ימים">
+                    <input type="number" min={0} value={originalRetentionDays} onChange={numHandler(setOriginalRetentionDays, 0)} className={NUM} />
+                  </Row>
+                  <Row label="שמירת סרטון מעובד" unit="ימים">
+                    <input type="number" min={0} value={processedRetentionDays} onChange={numHandler(setProcessedRetentionDays, 0)} className={NUM} />
+                  </Row>
+                  <Row label="שמירת מועמדים לדוח" unit="ימים">
+                    <input type="number" min={0} value={candidateRetentionDays} onChange={numHandler(setCandidateRetentionDays, 0)} className={NUM} />
+                  </Row>
+                </div>
+                <div className={TOGGLE_ROW}>
+                  <Toggle checked={videoTimestampOverlay} onChange={setVideoTimestampOverlay}>הצג תאריך ושעה בסרטון</Toggle>
                 </div>
               </Section>
 
               <Section title="וידאו, חותמת זמן וסימון רכב">
                 <div className={GRID}>
-                  <Field label="אורך וידאו מינימלי (שניות)">
-                    <input type="number" min={0} value={minVideoSeconds} onChange={numHandler(setMinVideoSeconds, 0)} className="input-base" />
-                  </Field>
-                  <Field label="אורך וידאו מקסימלי (שניות)">
-                    <input type="number" min={1} value={maxVideoSeconds} onChange={numHandler(setMaxVideoSeconds, 1)} className="input-base" />
-                  </Field>
-                  <Field label="חלון מניעת כפילויות (שניות)">
-                    <input type="number" min={0} value={dupWindowSeconds} onChange={numHandler(setDupWindowSeconds, 0)} className="input-base" />
-                  </Field>
-                  <Field label="מיקום חותמת הזמן בוידאו">
+                  <Row label="אורך וידאו מינימלי" unit="שניות">
+                    <input type="number" min={0} value={minVideoSeconds} onChange={numHandler(setMinVideoSeconds, 0)} className={NUM} />
+                  </Row>
+                  <Row label="אורך וידאו מקסימלי" unit="שניות">
+                    <input type="number" min={1} value={maxVideoSeconds} onChange={numHandler(setMaxVideoSeconds, 1)} className={NUM} />
+                  </Row>
+                  <Row label="חלון מניעת כפילויות" unit="שניות">
+                    <input type="number" min={0} value={dupWindowSeconds} onChange={numHandler(setDupWindowSeconds, 0)} className={NUM} />
+                  </Row>
+                  <Row label="מיקום חותמת הזמן בוידאו" w="w-36">
                     <select className="input-base" value={tsPosition} onChange={(e) => setTsPosition(e.target.value)}>
                       <option value="top_right">למעלה מימין</option>
                       <option value="top_left">למעלה משמאל</option>
                       <option value="bottom_right">למטה מימין</option>
                       <option value="bottom_left">למטה משמאל</option>
                     </select>
-                  </Field>
-                  <Field label="צבע מסגרת רכב — ממתין">
-                    <input type="color" value={pendingColor} onChange={(e) => setPendingColor(e.target.value)} className="input-base h-10 p-1 max-w-[140px]" />
-                  </Field>
-                  <Field label="צבע מסגרת רכב — מאושר">
-                    <input type="color" value={approvedColor} onChange={(e) => setApprovedColor(e.target.value)} className="input-base h-10 p-1 max-w-[140px]" />
-                  </Field>
-                  <div className={TOGGLE_ROW}>
-                    <Toggle checked={plateInset} onChange={setPlateInset}>הצג חלון מוגדל של הלוחית בוידאו</Toggle>
-                  </div>
+                  </Row>
+                  <Row label="צבע מסגרת רכב — ממתין" w="w-16">
+                    <input type="color" value={pendingColor} onChange={(e) => setPendingColor(e.target.value)} className="input-base h-8 p-0.5" />
+                  </Row>
+                  <Row label="צבע מסגרת רכב — מאושר" w="w-16">
+                    <input type="color" value={approvedColor} onChange={(e) => setApprovedColor(e.target.value)} className="input-base h-8 p-0.5" />
+                  </Row>
+                </div>
+                <div className={TOGGLE_ROW}>
+                  <Toggle checked={plateInset} onChange={setPlateInset}>הצג חלון מוגדל של הלוחית בוידאו</Toggle>
                 </div>
               </Section>
 
               <Section title="טשטוש ומרשם הרכבים">
                 <div className={GRID}>
-                  <Field label={t('blurKernelLabel')}>
+                  <Row label={t('blurKernelLabel')}>
                     <input type="number" min={0} max={51} step={2} value={blurSize}
-                      onChange={(e) => setBlurSize(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))} className="input-base" />
-                  </Field>
-                  <Field label="יחס הרחבת אזור הטשטוש (0–1)">
+                      onChange={(e) => setBlurSize(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))} className={NUM} />
+                  </Row>
+                  <Row label="יחס הרחבת אזור הטשטוש (0–1)">
                     <input type="number" min={0} max={1} step={0.01} value={blurExpandRatio}
-                      onChange={(e) => setBlurExpandRatio(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))} className="input-base" />
-                  </Field>
-                  <div className={TOGGLE_ROW}>
-                    <Toggle checked={blurExceptPlate} onChange={setBlurExceptPlate}>טשטש את כל הסרטון חוץ ממספר הרכב הרלוונטי</Toggle>
-                    <Toggle checked={usePipeline} onChange={setUsePipeline}>{t('useViolationPipeline')}</Toggle>
-                  </div>
+                      onChange={(e) => setBlurExpandRatio(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))} className={NUM} />
+                  </Row>
+                </div>
+                <div className={TOGGLE_ROW}>
+                  <Toggle checked={blurExceptPlate} onChange={setBlurExceptPlate}>טשטש את כל הסרטון חוץ ממספר הרכב הרלוונטי</Toggle>
+                  <Toggle checked={usePipeline} onChange={setUsePipeline}>{t('useViolationPipeline')}</Toggle>
                 </div>
 
                 <div className="border-t border-theme-card-border pt-4 mt-4">
                   <div className="mb-3">
                     <Toggle checked={vehicleRegistryEnabled} onChange={setVehicleRegistryEnabled}>אפשר חיפוש במרשם הרכבים הישראלי</Toggle>
                   </div>
-                  <div className={GRID}>
-                    <Field label="כתובת API של data.gov.il" span="col-span-2">
+                  <div className={TEXTGRID}>
+                    <Field label="כתובת API של data.gov.il" span="md:col-span-2">
                       <input type="url" dir="ltr" value={vehicleRegistryApiUrl} onChange={(e) => setVehicleRegistryApiUrl(e.target.value)} className="input-base" />
                     </Field>
-                    <Field label="מזהה משאב (Resource ID)" span="col-span-2">
+                    <Field label="מזהה משאב (Resource ID)">
                       <input type="text" dir="ltr" value={vehicleRegistryResourceId} onChange={(e) => setVehicleRegistryResourceId(e.target.value)} className="input-base" />
                     </Field>
                     <Field label="שם שדה מספר הרכב">
                       <input type="text" dir="ltr" value={vehicleRegistryPlateField} onChange={(e) => setVehicleRegistryPlateField(e.target.value)} className="input-base" />
                     </Field>
-                    <Field label="פסק זמן (שניות)">
+                  </div>
+                  <div className={`${GRID} mt-2`}>
+                    <Row label="פסק זמן" unit="שניות">
                       <input type="number" min={1} max={60} value={vehicleRegistryTimeoutSeconds}
-                        onChange={(e) => setVehicleRegistryTimeoutSeconds(Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 10)))} className="input-base" />
-                    </Field>
-                    <Field label="תוקף מטמון (שעות)">
+                        onChange={(e) => setVehicleRegistryTimeoutSeconds(Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 10)))} className={NUM} />
+                    </Row>
+                    <Row label="תוקף מטמון" unit="שעות">
                       <input type="number" min={1} max={720} value={vehicleRegistryCacheTtlHours}
-                        onChange={(e) => setVehicleRegistryCacheTtlHours(Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 24)))} className="input-base" />
-                    </Field>
+                        onChange={(e) => setVehicleRegistryCacheTtlHours(Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 24)))} className={NUM} />
+                    </Row>
                   </div>
                 </div>
               </Section>
