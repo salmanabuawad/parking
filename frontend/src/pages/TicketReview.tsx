@@ -187,6 +187,7 @@ export default function TicketReview() {
 
   // Admin edit state
   const [editMode, setEditMode] = useState(false);
+  const [editErr, setEditErr] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [editFine, setEditFine] = useState<string>("");
   const [editPlate, setEditPlate] = useState("");
@@ -265,6 +266,7 @@ export default function TicketReview() {
   async function handleSaveEdit() {
     if (!ticket) return;
     setSaving(true);
+    setEditErr(null);
     try {
       const payload: Record<string, unknown> = {
         admin_notes: editNotes || null,
@@ -276,7 +278,7 @@ export default function TicketReview() {
       setTicket(updated);
       setEditMode(false);
     } catch (err: any) {
-      alert(err?.message || "שגיאה בשמירה");
+      setEditErr(err?.message || "שגיאה בשמירה");
     } finally {
       setSaving(false);
     }
@@ -494,7 +496,7 @@ export default function TicketReview() {
                           a.click();
                           URL.revokeObjectURL(url);
                         } catch (e: any) {
-                          alert("שגיאה בהורדת הוידאו המקורי: " + (e?.message || e));
+                          setCaptureMsg("✗ שגיאה בהורדת הוידאו המקורי: " + (e?.message || "לא ידוע"));
                         }
                       }}
                       className="btn-cancel mr-auto"
@@ -695,17 +697,20 @@ export default function TicketReview() {
               {/* Admin action buttons */}
               <div className="border-t border-theme-card-border mt-2 pt-2">
                 {editMode ? (
-                  <div className="flex gap-2">
-                    <button onClick={handleSaveEdit} disabled={saving} className="btn-primary flex-1">
-                      {saving ? "שומר…" : "שמור"}
-                    </button>
-                    <button
-                      onClick={() => { setEditMode(false); setEditNotes(ticket.admin_notes || ""); setEditFine(ticket.fine_amount != null ? String(ticket.fine_amount) : ""); setEditPlate(ticket.license_plate || ""); }}
-                      disabled={saving}
-                      className="btn-cancel flex-1"
-                    >
-                      ביטול
-                    </button>
+                  <div className="flex flex-col gap-2">
+                    {editErr && <span className="text-red-600 text-theme-sm">{editErr}</span>}
+                    <div className="flex gap-2">
+                      <button onClick={handleSaveEdit} disabled={saving} className="btn-primary flex-1">
+                        {saving ? "שומר…" : "שמור"}
+                      </button>
+                      <button
+                        onClick={() => { setEditMode(false); setEditErr(null); setEditNotes(ticket.admin_notes || ""); setEditFine(ticket.fine_amount != null ? String(ticket.fine_amount) : ""); setEditPlate(ticket.license_plate || ""); }}
+                        disabled={saving}
+                        className="btn-cancel flex-1"
+                      >
+                        ביטול
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex gap-2">
