@@ -119,13 +119,7 @@ class Reviewer:
         self.username = username
 
 
-def get_current_reviewer(
-    token: str = Depends(oauth2_scheme),
-    admin_repo: AdminRepository = Depends(get_admin_repo),
-    inspector_repo: InspectorRepository = Depends(get_inspector_repo),
-) -> "Reviewer":
-    """Accept an inspector OR admin token. Admins are 'super inspectors': they can review,
-    capture evidence, and approve/reject tickets just like inspectors."""
+def _reviewer_from_token(token, admin_repo: AdminRepository, inspector_repo: InspectorRepository) -> "Reviewer":
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
     )
@@ -147,3 +141,29 @@ def get_current_reviewer(
         if adm:
             return Reviewer("admin", None, username)
     raise credentials_exception
+
+
+def get_current_reviewer(
+    token: str = Depends(oauth2_scheme),
+    admin_repo: AdminRepository = Depends(get_admin_repo),
+    inspector_repo: InspectorRepository = Depends(get_inspector_repo),
+) -> "Reviewer":
+    """Accept an inspector OR admin token. Admins are 'super inspectors': they can review,
+    capture evidence, and approve/reject tickets just like inspectors."""
+    return _reviewer_from_token(token, admin_repo, inspector_repo)
+
+
+def get_current_reviewer_for_media(
+    request: Request,
+    admin_repo: AdminRepository = Depends(get_admin_repo),
+    inspector_repo: InspectorRepository = Depends(get_inspector_repo),
+) -> "Reviewer":
+    """Media (<img>/<video> src) variant of get_current_reviewer: reads the token from the Bearer
+    header OR a ?token= query param, since <img> tags can't send an Authorization header."""
+    token = None
+    auth = request.headers.get("Authorization")
+    if auth and auth.startswith("Bearer "):
+        token = auth[7:]
+    if not token:
+        token = request.query_params.get("token")
+    return _reviewer_from_token(token, admin_repo, inspector_repo)

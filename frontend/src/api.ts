@@ -191,7 +191,9 @@ export const ticketsApi = {
     return fetchJson(`/tickets/${ticketId}/screenshots`);
   },
   screenshotImageUrl(ticketId: number | string, screenshotId: number): string {
-    return buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
+    const base = buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
+    const t = localStorage.getItem("parking_token");   // <img> can't send a Bearer header → pass ?token=
+    return t ? `${base}${base.includes("?") ? "&" : "?"}token=${encodeURIComponent(t)}` : base;
   },
   saveScreenshot(ticketId: number | string, imageBase64: string, frameTimeSec: number, role?: string): Promise<any> {
     return fetchJson(`/tickets/${ticketId}/screenshots`, {
