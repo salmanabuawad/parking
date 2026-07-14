@@ -6,6 +6,7 @@ import { Sliders, RefreshCw, Save, X } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import { fieldConfigApi, FieldConfiguration } from '../api'
 import { useFieldConfigInvalidate } from '../context/FieldConfigContext'
+import { useConfirm } from '../components/ConfirmDialog'
 import { t } from '../i18n'
 
 ModuleRegistry.registerModules([AllCommunityModule])
@@ -22,6 +23,7 @@ export default function FieldConfigManager() {
   const [quickFilter, setQuickFilter] = useState('')
   const [dirtyMap, setDirtyMap] = useState<Map<string, FieldConfiguration>>(new Map())
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const confirm = useConfirm()
 
   const showToast = (msg: string, ok = true) => {
     setToast({ msg, ok })
@@ -86,16 +88,16 @@ export default function FieldConfigManager() {
     }
   }, [dirtyMap, load, invalidate])
 
-  const cancelAll = useCallback(() => {
+  const cancelAll = useCallback(async () => {
     if (dirtyMap.size === 0) return
-    if (confirm(`לבטל ${dirtyMap.size} שינויים?`)) {
+    if (await confirm({ message: `לבטל ${dirtyMap.size} שינויים?`, confirmText: 'בטל שינויים', danger: true })) {
       setDirtyMap(new Map())
       load()
     }
-  }, [dirtyMap, load])
+  }, [dirtyMap, load, confirm])
 
   const handleDelete = useCallback(async (c: FieldConfiguration) => {
-    if (!confirm(`למחוק את השדה "${c.field_name}" מגריד "${c.grid_name}"?`)) return
+    if (!(await confirm({ message: `למחוק את השדה "${c.field_name}" מגריד "${c.grid_name}"?`, confirmText: 'מחק', danger: true }))) return
     try {
       await fieldConfigApi.delete(c.grid_name, c.field_name)
       await load()
@@ -104,7 +106,7 @@ export default function FieldConfigManager() {
     } catch {
       showToast('שגיאה במחיקה', false)
     }
-  }, [load, invalidate])
+  }, [load, invalidate, confirm])
 
   const COL_W = 124
 

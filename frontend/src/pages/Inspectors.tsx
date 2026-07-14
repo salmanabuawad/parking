@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Users, Pencil, Trash2 } from 'lucide-react'
 import { inspectorsApi } from '../api'
 import { useRtl } from '../hooks/useRtl'
+import { useConfirm } from '../components/ConfirmDialog'
 
 interface Inspector {
   id: number
@@ -23,6 +24,7 @@ export default function Inspectors() {
   const [editing, setEditing] = useState<Inspector | null>(null)
   const [form, setForm] = useState<any>(EMPTY)
   const [error, setError] = useState<string | null>(null)
+  const confirm = useConfirm()
   const [saving, setSaving] = useState(false)
 
   const load = () => {
@@ -59,7 +61,7 @@ export default function Inspectors() {
   }
 
   const del = async (i: Inspector) => {
-    if (!confirm(`למחוק את הפקח ${i.full_name}?`)) return
+    if (!(await confirm({ message: `למחוק את הפקח ${i.full_name}?`, confirmText: 'מחק', danger: true }))) return
     await inspectorsApi.delete(i.id); load()
   }
 

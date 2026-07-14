@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, MapPin, X } from 'lucide-react'
 import { citiesApi, mapConfigApi, type City, type CityInput } from '../api'
 import CityMapEditor, { type CityView } from './CityMapEditor'
+import { useConfirm } from '../components/ConfirmDialog'
 
 /** Admin manager for cities + their map areas. The row order is the order cities appear in every
  *  city dropdown (fleet dashboard, camera settings). Lives in the "ערים ומפות" settings tab. */
@@ -11,6 +12,7 @@ export default function CityManager() {
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<City | 'new' | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const confirm = useConfirm()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,7 +37,7 @@ export default function CityManager() {
   }
 
   const remove = async (c: City) => {
-    if (!confirm(`למחוק את העיר "${c.label}"? מצלמות המשויכות לעיר יישארו אך ללא שיוך.`)) return
+    if (!(await confirm({ message: `למחוק את העיר "${c.label}"? מצלמות המשויכות לעיר יישארו אך ללא שיוך.`, confirmText: 'מחק', danger: true }))) return
     setErr(null)
     try { await citiesApi.remove(c.id); load() }
     catch (e) { setErr((e as { message?: string })?.message || 'שגיאה במחיקת העיר') }

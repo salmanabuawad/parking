@@ -4,6 +4,7 @@ import './index.css'
 import { AuthProvider } from './context/AuthContext'
 import { ThemeProvider } from './context/ThemeContext'
 import { FieldConfigProvider } from './context/FieldConfigContext'
+import { ConfirmProvider } from './components/ConfirmDialog'
 import App, { AppErrorBoundary } from './App'
 
 const rootEl = document.getElementById('root')
@@ -16,7 +17,9 @@ if (!rootEl) {
         <ThemeProvider>
           <AuthProvider>
             <FieldConfigProvider>
-              <App />
+              <ConfirmProvider>
+                <App />
+              </ConfirmProvider>
             </FieldConfigProvider>
           </AuthProvider>
         </ThemeProvider>

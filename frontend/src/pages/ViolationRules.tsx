@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { ShieldAlert, Plus, Pencil, Trash2, X } from 'lucide-react'
 import { violationRulesApi } from '../api'
 import { t } from '../i18n'
+import { useConfirm } from '../components/ConfirmDialog'
 
 interface ViolationRule {
   id: number
@@ -70,6 +71,7 @@ export default function ViolationRules() {
   const [err, setErr] = useState<string | null>(null)
   const [listErr, setListErr] = useState<string | null>(null)
   const [busyRow, setBusyRow] = useState<string | null>(null)
+  const confirm = useConfirm()
 
   const load = async () => {
     setLoading(true)
@@ -144,7 +146,7 @@ export default function ViolationRules() {
   }
 
   const remove = async (r: ViolationRule) => {
-    if (!confirm(`למחוק את סוג העבירה "${r.title_he}" (${r.rule_id})?\nדוחות קיימים לא יושפעו (נשמר תצלום כלל בכל דוח).`)) return
+    if (!(await confirm({ message: `למחוק את סוג העבירה "${r.title_he}" (${r.rule_id})?\nדוחות קיימים לא יושפעו (נשמר תצלום כלל בכל דוח).`, confirmText: 'מחק', danger: true }))) return
     setBusyRow(r.rule_id)
     setListErr(null)
     try {

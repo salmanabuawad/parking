@@ -4,6 +4,7 @@ import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, 
 import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { ticketStatusBadge } from "../lib/ticketStatus";
+import { useConfirm } from "../components/ConfirmDialog";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
 
@@ -197,6 +198,7 @@ export default function TicketReview() {
   const { user } = useAuth();
   const isInspector = user?.user_type === "inspector";
   const isAdmin = user?.user_type === "admin";   // admin = "super inspector": full review+approve
+  const confirm = useConfirm();
   const [rules, setRules] = useState<{ rule_id: string; title_he: string }[]>([]);
   const [inspectors, setInspectors] = useState<{ id: number; full_name: string }[]>([]);
   const [aRule, setARule] = useState("");
@@ -329,7 +331,7 @@ export default function TicketReview() {
   }
 
   async function deleteScreenshotById(id: number) {
-    if (!confirm("למחוק את הצילום?")) return;
+    if (!(await confirm({ message: "למחוק את הצילום?", confirmText: "מחק", danger: true }))) return;
     try {
       await ticketsApi.deleteScreenshot(ticketId, id);
       setScreenshots(await ticketsApi.listScreenshots(ticketId));

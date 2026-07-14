@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { ShieldCheck, Pencil, Trash2 } from 'lucide-react'
 import { exemptionsApi } from '../api'
 import { useRtl } from '../hooks/useRtl'
+import { useConfirm } from '../components/ConfirmDialog'
 
 interface Exemption {
   id: number
@@ -33,6 +34,7 @@ export default function Exemptions() {
   const [editing, setEditing] = useState<Exemption | null>(null)
   const [form, setForm] = useState<any>(EMPTY)
   const [error, setError] = useState<string | null>(null)
+  const confirm = useConfirm()
   const [saving, setSaving] = useState(false)
 
   const load = () => {
@@ -69,7 +71,7 @@ export default function Exemptions() {
   }
 
   const del = async (x: Exemption) => {
-    if (!confirm(`למחוק את הפטור לרכב ${x.plate_number}?`)) return
+    if (!(await confirm({ message: `למחוק את הפטור לרכב ${x.plate_number}?`, confirmText: 'מחק', danger: true }))) return
     await exemptionsApi.delete(x.id); load()
   }
 

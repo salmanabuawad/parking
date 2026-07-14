@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { LayoutDashboard, RefreshCw, Sparkles, Download } from 'lucide-react'
 import { camerasApi, mapConfigApi, simulationApi } from '../api'
 import CameraMap, { STATUS_META, statusOf, type MapCamera } from './CameraMap'
+import { useConfirm } from '../components/ConfirmDialog'
 
 interface CityInfo { key: string; label: string; center: [number, number]; zoom: number; bounds: [[number, number], [number, number]] }
 
@@ -19,6 +20,7 @@ export default function CameraDashboard() {
   const [warming, setWarming] = useState(false)
   const [filter, setFilter] = useState<string | null>(null)
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+  const confirm = useConfirm()
 
   const load = async () => {
     setLoading(true)
@@ -52,7 +54,7 @@ export default function CameraDashboard() {
   const shown = useMemo(() => (filter ? cityCameras.filter(c => statusOf(c) === filter) : cityCameras), [cityCameras, filter])
 
   const generate = async () => {
-    if (!confirm('לייצר מצלמות דמו לכל עיר (מספר לפי גודל העיר)? מצלמות דמו קודמות יימחקו.')) return
+    if (!(await confirm({ title: 'יצירת מצלמות דמו', message: 'לייצר מצלמות דמו לכל עיר (מספר לפי גודל העיר)? מצלמות דמו קודמות יימחקו.', confirmText: 'צור', danger: true }))) return
     setBusy(true)
     setMsg(null)
     try { await simulationApi.generateFleet(); setFilter(null); await load() }

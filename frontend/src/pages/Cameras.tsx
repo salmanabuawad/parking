@@ -6,6 +6,7 @@ import { Camera as CameraIcon, Plus, Pencil, Trash2, X, Clapperboard, Eye, Map a
 import { camerasApi, violationRulesApi, parkingZonesApi, inspectorsApi, simulationApi, mapConfigApi } from '../api'
 import type { SimulationSource } from '../api'
 import CameraZoneConfigurator from './CameraZoneConfigurator'
+import { useConfirm } from '../components/ConfirmDialog'
 import CameraZoneView from './CameraZoneView'
 import CameraMap, { STATUS_META } from './CameraMap'
 import CameraLocationPicker from './CameraLocationPicker'
@@ -121,6 +122,7 @@ export default function Cameras() {
   const [seeding, setSeeding] = useState(false)
   const [formErr, setFormErr] = useState<string | null>(null)   // camera-modal validation/save error
   const [listMsg, setListMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)   // page-level (seed/remove)
+  const confirm = useConfirm()
   const [view, setView] = useState<'list' | 'map'>('list')
   const [mapStyleUrl, setMapStyleUrl] = useState<string | null>(null)
   const [cities, setCities] = useState<{ key: string; label: string }[]>([])
@@ -281,7 +283,7 @@ export default function Cameras() {
   const editFromMap = (id: number) => { const c = cameras.find(x => x.id === id); if (c) openEdit(c) }
 
   const remove = async (id: number) => {
-    if (!confirm(t('removeCameraConfirm'))) return
+    if (!(await confirm({ message: t('removeCameraConfirm'), confirmText: 'מחק', danger: true }))) return
     setListMsg(null)
     try { await camerasApi.delete(id); load() }
     catch (err: unknown) {
