@@ -13,10 +13,10 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user
+from app.auth import get_current_reviewer
 from app.config import settings
 from app.database import get_db
-from app.models import Admin, Ticket, TicketScreenshot
+from app.models import Ticket, TicketScreenshot
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def save_ticket_screenshot(
     ticket_id: int,
     payload: ScreenshotCreate,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_user),
+    reviewer=Depends(get_current_reviewer),
 ):
     """Save screenshot to backend storage under videos_dir/screenshots/ticket_{id}/."""
     try:
@@ -100,7 +100,7 @@ def save_ticket_screenshot(
         captured_at = _parse_captured_at(payload.captured_at)
         frame_time_sec = payload.frame_time_sec if payload.frame_time_sec is not None else 0.0
         video_ts_text = (captured_at.isoformat() if captured_at else (payload.captured_at or datetime.utcnow().isoformat()))[:64]
-        username = getattr(admin, "username", None)
+        username = getattr(reviewer, "username", None)
         now = datetime.now(timezone.utc)
         frame_ms = int(frame_time_sec * 1000)
         role = (payload.role or "").strip() or None
@@ -186,7 +186,7 @@ def save_ticket_screenshot(
 def list_ticket_screenshots(
     ticket_id: int,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_user),
+    reviewer=Depends(get_current_reviewer),
 ):
     rows = (
         db.query(TicketScreenshot)
@@ -232,7 +232,7 @@ def get_ticket_screenshot_image(
     ticket_id: int,
     screenshot_id: int,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_user),
+    reviewer=Depends(get_current_reviewer),
 ):
     row = (
         db.query(TicketScreenshot)
@@ -257,7 +257,7 @@ def delete_ticket_screenshot(
     ticket_id: int,
     screenshot_id: int,
     db: Session = Depends(get_db),
-    admin: Admin = Depends(get_current_user),
+    reviewer=Depends(get_current_reviewer),
 ):
     row = (
         db.query(TicketScreenshot)
