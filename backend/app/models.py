@@ -498,6 +498,23 @@ class VehicleExemption(Base):
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
 
+class VehicleRegistryCache(Base):
+    """Cached data.gov.il registry lookups keyed by normalized plate (#13).
+
+    Only definitive results are cached (plate_found / plate_not_found); transient
+    lookup_failed responses are never stored, so the next lookup retries live. Freshness
+    is governed by AppConfig.vehicle_registry_cache_ttl_hours.
+    """
+
+    __tablename__ = "vehicle_registry_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plate = Column(String(20), nullable=False, unique=True, index=True)   # normalized digits
+    status = Column(String(40), nullable=False)                           # plate_found | plate_not_found
+    record_json = Column(JSON, nullable=True)                             # data.gov.il record (plate_found)
+    fetched_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class FieldConfiguration(Base):
     """Per-grid column configuration: width, order, visibility, pinning."""
     __tablename__ = "field_configurations"

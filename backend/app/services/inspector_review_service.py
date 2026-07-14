@@ -3,6 +3,7 @@ existing ticket field names. Validates the plate (7/8 digits), looks up + snapsh
 result, enforces the 4-image gate on approval, keeps the existing `status` flow in sync, and
 writes an audit-log entry for every action (rule 7).
 """
+import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
@@ -36,6 +37,22 @@ def _resolve_evidence_screenshots(db: Session, ticket: Ticket) -> None:
         sid = by_role.get(role)
         if sid and hasattr(ticket, fk):
             setattr(ticket, fk, sid)
+
+
+def _attr_tokens(value) -> set[str]:
+    return {t for t in re.split(r"\W+", str(value or "").strip().lower()) if t}
+
+
+def _attr_conflict(observed, registry) -> bool:
+    """True only when both values are present and share no token — a clear disagreement.
+
+    Free-text Hebrew colours ("לבן" vs "לבן מטאלי") share a token and do NOT conflict; a
+    genuine mismatch ("לבן" vs "שחור") has no overlap. Used only to flag manual review.
+    """
+    a, b = _attr_tokens(observed), _attr_tokens(registry)
+    if not a or not b:
+        return False
+    return a.isdisjoint(b)
 
 
 def _review_fields(t: Ticket) -> dict:
@@ -119,6 +136,10 @@ def update_ticket_by_inspector(
             setattr(ticket, _f, _v)
         ocr_norm = normalize_israeli_plate(ticket.license_plate)
         if ocr_norm and ocr_norm != normalized:
+            ticket.review_status = "manual_review_required"
+        # #13 — cross-check the inspector-observed colour against the registry record; a clear
+        # disagreement (both present, no shared token) flags manual review, never blocks.
+        if _attr_conflict(ticket.inspector_vehicle_color, ticket.vehicle_color):
             ticket.review_status = "manual_review_required"
 
     if data.get("approve") is True:
