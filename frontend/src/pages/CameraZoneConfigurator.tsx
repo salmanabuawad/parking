@@ -63,10 +63,9 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<'polygon' | 'grid'>('polygon')
   const [grid, setGrid] = useState<GridState>({ cols: 24, rows: 14, cells: {} })
-  const [activeRule, setActiveRule] = useState<string | null>(rules[0]?.id ?? null)
+  const [selected, setSelected] = useState<string[]>(rules.length ? [rules[0].id] : [])   // checked types, applied together on paint
+  const [erasing, setErasing] = useState(false)                                            // מחק mode
   const paintingRef = useRef(false)
-  // Whole-drag action, decided on mouse-down from the first cell: add/remove the active rule, or clear.
-  const paintModeRef = useRef<'add' | 'remove' | 'clear'>('add')
   const gridRef = useRef<GridState>(grid)
 
   // Each violation rule gets a stable color (shared with the polygon sections palette).
@@ -199,20 +198,15 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   }
   const paintAt = (e: React.MouseEvent) => {
     const [c, r] = cellAt(e), key = `${c},${r}`
-    const pm = paintModeRef.current
     setGrid(g => {
       const cells = { ...g.cells }
-      const cur = cells[key] || []
-      if (pm === 'clear') {
+      if (erasing) {
         if (!(key in cells)) return g
-        delete cells[key]                                   // eraser: remove all types from the cell
-      } else if (pm === 'add') {
-        if (!activeRule || cur.includes(activeRule)) return g
-        cells[key] = [...cur, activeRule]                   // layer the active type onto the cell
+        delete cells[key]                        // מחק: clear all types from the cell
+      } else if (selected.length) {
+        cells[key] = [...selected]               // apply ALL checked types to the cell (0/1/many)
       } else {
-        if (!activeRule || !cur.includes(activeRule)) return g
-        const next = cur.filter(x => x !== activeRule)      // remove just the active type
-        if (next.length) cells[key] = next; else delete cells[key]
+        return g                                 // nothing checked & not erasing → no-op
       }
       return { ...g, cells }
     })
@@ -239,10 +233,6 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
   const onDown = (e: React.MouseEvent) => {
     if (mode === 'grid') {
       paintingRef.current = true
-      const [c, r] = cellAt(e)
-      const cur = grid.cells[`${c},${r}`] || []
-      // Decide the drag action from the first cell so dragging paints (or unpaints) consistently.
-      paintModeRef.current = activeRule == null ? 'clear' : cur.includes(activeRule) ? 'remove' : 'add'
       paintAt(e)
       return
     }
@@ -395,22 +385,24 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
           )}
           {mode === 'grid' && (
             <div className="flex flex-col gap-2 mt-2">
-              <div className="text-theme-xs text-theme-text-muted">בחר סוג עבירה (צבע) וצבע על הריבועים בגרירה. אפשר לצבוע כמה סוגים על אותו ריבוע (מוצגים כפסים) — צביעה חוזרת עם אותו סוג מסירה אותו. בחר "מחק" לניקוי ריבוע. השמירה אוטומטית.</div>
+              <div className="text-theme-xs text-theme-text-muted">סמן את סוגי העבירה, וצבע על הריבועים בגרירה — כל הסוגים המסומנים יחולו יחד (מוצגים כפסים). בחר "מחק" לניקוי ריבוע. השמירה אוטומטית.</div>
               <div className="flex flex-wrap items-center gap-1.5">
                 {rules.map(r => {
+                  const on = selected.includes(r.id)
                   const count = Object.values(grid.cells).filter(v => v.includes(r.id)).length
                   return (
-                    <button key={r.id} type="button" onClick={() => setActiveRule(r.id)} title={r.label}
-                      className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs max-w-[180px] ${activeRule === r.id ? 'ring-2 ring-theme-accent' : ''}`}
+                    <label key={r.id} title={r.label}
+                      className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs max-w-[190px] cursor-pointer ${on && !erasing ? 'bg-green-50 border-green-400' : ''}`}
                       style={{ borderColor: ruleColor(r.id) }}>
+                      <input type="checkbox" checked={on} onChange={() => { setErasing(false); setSelected(s => s.includes(r.id) ? s.filter(x => x !== r.id) : [...s, r.id]) }} className="shrink-0" />
                       <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: ruleColor(r.id) }} />
                       <span className="truncate min-w-0">{r.title || r.id}</span>
                       {count ? <span className="shrink-0 text-theme-text-muted">· {count}</span> : null}
-                    </button>
+                    </label>
                   )
                 })}
-                <button type="button" onClick={() => setActiveRule(null)}
-                  className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs ${activeRule === null ? 'ring-2 ring-theme-accent border-gray-400' : 'border-theme-card-border'}`}>
+                <button type="button" onClick={() => setErasing(v => !v)}
+                  className={`flex items-center gap-1 rounded border px-2 py-1 text-theme-xs ${erasing ? 'ring-2 ring-theme-accent border-gray-400 bg-black/5' : 'border-theme-card-border'}`}>
                   <Eraser className="w-3.5 h-3.5" /> מחק
                 </button>
               </div>
