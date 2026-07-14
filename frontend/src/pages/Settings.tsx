@@ -191,7 +191,9 @@ export default function Settings() {
       </div>
 
       {tab === 'cities' ? (
-        <CityManager />
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <CityManager />
+        </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="max-w-[1600px] mx-auto space-y-4 pb-2">

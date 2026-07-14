@@ -299,6 +299,7 @@ export default function FieldConfigManager() {
             onCellValueChanged={handleCellChanged}
             stopEditingWhenCellsLoseFocus={true}
             animateRows={false}
+            overlayNoRowsTemplate={'<span style="color:#64748b">אין שדות להצגה</span>'}
           />
         </div>
       )}

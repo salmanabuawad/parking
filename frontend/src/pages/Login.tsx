@@ -136,7 +136,7 @@ export default function Login() {
                   disabled={loading}
                   autoComplete="current-password"
                   placeholder={t('password')}
-                  className="input-base pr-16 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                  className="input-base pl-16 disabled:bg-slate-100 disabled:cursor-not-allowed"
                 />
                 <button
                   type="button"

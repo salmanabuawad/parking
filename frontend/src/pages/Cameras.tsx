@@ -407,17 +407,13 @@ export default function Cameras() {
                         <input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required className="input-base" />
                       </div>
                       <div>
-                        <label className="label-base">{t('location')}</label>
-                        <input value={form.location} onChange={e => setForm({ ...form, location: e.target.value })} className="input-base" placeholder={t('locationPlaceholder')} />
+                        <label className="label-base">עיר</label>
+                        <select className="input-base" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })}>
+                          <option value="">— בחר עיר —</option>
+                          {cities.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                        </select>
+                        <p className="text-theme-xs text-theme-text-muted mt-1">קובע לאיזו עיר משויכת המצלמה בלוח המצלמות</p>
                       </div>
-                    </div>
-                    <div>
-                      <label className="label-base">עיר</label>
-                      <select className="input-base sm:w-64" value={form.city} onChange={e => setForm({ ...form, city: e.target.value })}>
-                        <option value="">— בחר עיר —</option>
-                        {cities.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                      </select>
-                      <p className="text-theme-xs text-theme-text-muted mt-1">קובע לאיזו עיר משויכת המצלמה בלוח המצלמות</p>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>

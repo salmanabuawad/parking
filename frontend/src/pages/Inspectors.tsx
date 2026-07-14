@@ -70,7 +70,7 @@ export default function Inspectors() {
         <h1 className="page-header-title">פקחים</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0 overflow-y-auto">
         {/* Form */}
         <div className="app-card p-4 space-y-3">
           <h2 className="font-semibold text-theme-text-primary">{editing ? `עריכת ${editing.full_name}` : 'פקח חדש'}</h2>

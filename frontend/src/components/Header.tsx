@@ -83,7 +83,7 @@ export function Header({ title, logo }: HeaderProps) {
                           border border-gray-100 z-50 overflow-hidden animate-slide-in">
             <div className="px-4 py-3 border-b border-gray-100">
               <p className="text-sm font-semibold text-gray-800 truncate">{user?.username}</p>
-              <p className="text-xs text-gray-400">מנהל מערכת</p>
+              <p className="text-xs text-gray-400">{user?.user_type === 'inspector' ? 'פקח' : 'מנהל מערכת'}</p>
             </div>
             <button
               onClick={() => { logout(); setUserMenuOpen(false); }}

@@ -80,7 +80,7 @@ export default function Exemptions() {
         <h1 className="page-header-title">פטורים (רשימת היתר)</h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 flex-1 min-h-0 overflow-y-auto">
         {/* Form */}
         <div className="app-card p-4 space-y-3">
           <h2 className="font-semibold text-theme-text-primary">{editing ? `עריכת ${editing.plate_number}` : 'פטור חדש'}</h2>
