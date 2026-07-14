@@ -61,10 +61,14 @@ function parseDetail(data: any, fallback: string): string {
   const d = data?.detail;
   if (typeof d === "string" && d) return d;
   if (Array.isArray(d)) {
-    const msgs = d.map((e) => (typeof e === "string" ? e : e?.msg)).filter(Boolean);
+    const msgs = d.map((e) => (typeof e === "string" ? e : e?.msg || e?.message)).filter(Boolean);
     if (msgs.length) return msgs.join("; ");
   }
-  if (d && typeof d === "object" && typeof d.msg === "string") return d.msg;
+  if (d && typeof d === "object") {
+    // custom endpoints raise detail={message, ...}; FastAPI validation uses {msg, ...}
+    if (typeof d.message === "string" && d.message) return d.message;
+    if (typeof d.msg === "string" && d.msg) return d.msg;
+  }
   if (typeof data?.message === "string" && data.message) return data.message;
   return fallback;
 }
