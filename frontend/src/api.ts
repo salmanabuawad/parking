@@ -370,11 +370,20 @@ export const violationRulesApi = {
   list(): Promise<{ data: any[] }> {
     return fetchJson("/violation-rules").then((data) => ({ data }));
   },
+  create(payload: Record<string, unknown>): Promise<{ data: any }> {
+    return fetchJson("/violation-rules", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }).then((data) => ({ data }));
+  },
   update(ruleId: string, payload: Record<string, unknown>): Promise<{ data: any }> {
     return fetchJson(`/violation-rules/${encodeURIComponent(ruleId)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }).then((data) => ({ data }));
+  },
+  remove(ruleId: string): Promise<{ ok: boolean }> {
+    return fetchJson(`/violation-rules/${encodeURIComponent(ruleId)}`, { method: "DELETE" });
   },
 };
 

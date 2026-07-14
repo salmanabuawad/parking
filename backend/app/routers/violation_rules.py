@@ -43,6 +43,26 @@ class ViolationRuleResponse(BaseModel):
         from_attributes = True
 
 
+class ViolationRuleCreate(BaseModel):
+    rule_id: str
+    violation_code: Optional[str] = None
+    title_he: str
+    title_en: str
+    description_he: Optional[str] = None
+    description_en: Optional[str] = None
+    legal_basis_he: Optional[str] = None
+    legal_basis_en: Optional[str] = None
+    fine_ils: Optional[int] = None
+    default_min_stay_seconds: int = 30
+    default_evidence_video_seconds: int = 20
+    requires_start_image: bool = True
+    requires_end_image: bool = True
+    requires_clear_plate_image: bool = True
+    requires_context_image: bool = True
+    requires_continuous_video: bool = True
+    is_active: bool = True
+
+
 class ViolationRuleUpdate(BaseModel):
     violation_code: Optional[str] = None
     title_he: Optional[str] = None
@@ -68,6 +88,23 @@ def list_rules(db: Session = Depends(get_db), _=Depends(get_current_user)):
     return db.query(ViolationRule).order_by(ViolationRule.rule_id).all()
 
 
+@router.post("", response_model=ViolationRuleResponse, status_code=201)
+def create_rule(payload: ViolationRuleCreate, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Create a new violation type (#2/#16). rule_id must be unique."""
+    rid = (payload.rule_id or "").strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="נדרש מזהה כלל (rule_id)")
+    if db.query(ViolationRule).filter(ViolationRule.rule_id == rid).first():
+        raise HTTPException(status_code=400, detail=f"כלל עם המזהה '{rid}' כבר קיים")
+    data = payload.model_dump()
+    data["rule_id"] = rid
+    rule = ViolationRule(**data)
+    db.add(rule)
+    db.commit()
+    db.refresh(rule)
+    return rule
+
+
 @router.patch("/{rule_id}", response_model=ViolationRuleResponse)
 def update_rule(rule_id: str, payload: ViolationRuleUpdate, db: Session = Depends(get_db), _=Depends(get_current_user)):
     """Update a violation rule (e.g. toggle is_active, change fine amount)."""
@@ -79,3 +116,15 @@ def update_rule(rule_id: str, payload: ViolationRuleUpdate, db: Session = Depend
     db.commit()
     db.refresh(rule)
     return rule
+
+
+@router.delete("/{rule_id}")
+def delete_rule(rule_id: str, db: Session = Depends(get_db), _=Depends(get_current_user)):
+    """Delete a violation type. Historical tickets keep their immutable violation_rule_snapshot
+    (#11), so removing the catalog entry never alters past reports."""
+    rule = db.query(ViolationRule).filter(ViolationRule.rule_id == rule_id).first()
+    if not rule:
+        raise HTTPException(status_code=404, detail=f"Rule '{rule_id}' not found")
+    db.delete(rule)
+    db.commit()
+    return {"ok": True, "rule_id": rule_id}
