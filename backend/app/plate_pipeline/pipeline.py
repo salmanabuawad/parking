@@ -631,7 +631,7 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
     _vinfo = get_video_info(cfg.input_path) or {}
     _orig_fps = float(_vinfo.get("fps") or 25) or 25
     _total_frames = int(_vinfo.get("frame_count") or 0)
-    _stride = max(1, round(_total_frames / cfg.max_frames)) if (_total_frames and cfg.max_frames) else 1
+    _stride = max(1, -(-_total_frames // cfg.max_frames)) if (_total_frames and cfg.max_frames) else 1  # ceil ÷ → spans the FULL clip
     _eff_fps = _orig_fps / _stride
     if _stride > 1:
         print(f"[pipeline] whole-clip sampling: {_total_frames} frames @ {_orig_fps:.1f}fps → stride {_stride} "
