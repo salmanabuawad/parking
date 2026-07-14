@@ -191,9 +191,11 @@ export const ticketsApi = {
     return fetchJson(`/tickets/${ticketId}/screenshots`);
   },
   screenshotImageUrl(ticketId: number | string, screenshotId: number): string {
-    const base = buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
-    const t = localStorage.getItem("parking_token");   // <img> can't send a Bearer header → pass ?token=
-    return t ? `${base}${base.includes("?") ? "&" : "?"}token=${encodeURIComponent(t)}` : base;
+    return buildUrl(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
+  },
+  // <img> can't send a Bearer header, so fetch the image as an authenticated blob (like the video)
+  screenshotImageBlob(ticketId: number | string, screenshotId: number): Promise<Blob> {
+    return fetchBlob(`/tickets/${ticketId}/screenshots/${screenshotId}/image`);
   },
   saveScreenshot(ticketId: number | string, imageBase64: string, frameTimeSec: number, role?: string): Promise<any> {
     return fetchJson(`/tickets/${ticketId}/screenshots`, {

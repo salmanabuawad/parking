@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_reviewer, get_current_reviewer_for_media
+from app.auth import get_current_reviewer
 from app.config import settings
 from app.database import get_db
 from app.models import Ticket, TicketScreenshot
@@ -232,7 +232,7 @@ def get_ticket_screenshot_image(
     ticket_id: int,
     screenshot_id: int,
     db: Session = Depends(get_db),
-    reviewer=Depends(get_current_reviewer_for_media),   # <img> src: accepts ?token= query param
+    reviewer=Depends(get_current_reviewer),   # fetched as an authenticated blob (Bearer header) by the frontend
 ):
     row = (
         db.query(TicketScreenshot)

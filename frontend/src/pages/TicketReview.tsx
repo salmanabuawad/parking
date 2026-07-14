@@ -65,6 +65,47 @@ function fromLocalInput(v: string): string | undefined {
   return isNaN(d.getTime()) ? undefined : d.toISOString();
 }
 
+// The screenshot-image endpoint is auth-gated, and an <img src> can't send a Bearer header.
+// Fetch it as an authenticated blob (same pattern as the video) and render an object URL.
+function AuthImg({
+  ticketId,
+  screenshotId,
+  alt,
+  className,
+}: {
+  ticketId: number | string;
+  screenshotId: number;
+  alt?: string;
+  className?: string;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let obj: string | null = null;
+    let cancelled = false;
+    setUrl(null);
+    setFailed(false);
+    ticketsApi
+      .screenshotImageBlob(ticketId, screenshotId)
+      .then((blob) => {
+        if (cancelled) return;
+        obj = URL.createObjectURL(blob);
+        setUrl(obj);
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      if (obj) URL.revokeObjectURL(obj);
+    };
+  }, [ticketId, screenshotId]);
+  if (failed)
+    return <div className={`${className ?? ""} flex items-center justify-center bg-slate-200 text-slate-400 text-[10px]`}>שגיאה</div>;
+  if (!url) return <div className={`${className ?? ""} bg-slate-100 animate-pulse`} />;
+  return <img src={url} alt={alt} className={className} />;
+}
+
 // Compact date+time (no seconds) so details fields stay one line in the tight 3-col grid.
 function fmtDateTime(iso?: string): string {
   if (!iso) return "—";
@@ -484,11 +525,11 @@ export default function TicketReview() {
                         onClick={() => setExpanded(expanded === s.id ? null : s.id)}
                         className={`relative shrink-0 cursor-pointer rounded-lg overflow-hidden bg-slate-100 border-2 ${expanded === s.id ? "border-theme-accent" : "border-transparent"}`}
                       >
-                        <img
-                          src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
+                        <AuthImg
+                          ticketId={ticketId}
+                          screenshotId={s.id}
                           alt={`Screenshot ${s.id}`}
                           className="w-[104px] h-14 object-cover block"
-                          loading="lazy"
                         />
                         {(isInspector || isAdmin) && ticket?.status !== "approved" && ticket?.status !== "rejected" && (
                           <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreenshotById(s.id); }} title="מחק צילום"
@@ -507,8 +548,9 @@ export default function TicketReview() {
                   </div>
                   {expanded !== null && (
                     <div className="mt-2 rounded-lg overflow-hidden border border-theme-card-border">
-                      <img
-                        src={ticketsApi.screenshotImageUrl(ticketId, expanded)}
+                      <AuthImg
+                        ticketId={ticketId}
+                        screenshotId={expanded}
                         alt="Expanded screenshot"
                         className="w-full block max-h-28 object-contain bg-black"
                       />
