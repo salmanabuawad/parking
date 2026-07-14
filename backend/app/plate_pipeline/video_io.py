@@ -12,22 +12,31 @@ import cv2
 def read_frames(
     path: Path,
     max_frames: int | None = None,
+    stride: int = 1,
 ) -> Iterator[tuple[int, "cv2.Mat"]]:
-    """Yield (frame_idx, frame) from video. Stops at max_frames if set."""
+    """Yield (frame_idx, frame) from video. With stride>1, keep every `stride`-th source frame so
+    the kept frames span the WHOLE clip (frame_idx is the sequential kept index 0,1,2,…), stopping
+    after max_frames kept frames. grab()/retrieve() so skipped frames aren't fully decoded."""
     cap = cv2.VideoCapture(str(path))
     if not cap.isOpened():
         print(f"[video_io] ERROR: cannot open video for frame decode: {path}", flush=True)
         return
-    idx = 0
+    stride = max(1, int(stride or 1))
+    src = 0
+    kept = 0
     try:
         while True:
-            if max_frames is not None and idx >= max_frames:
+            if max_frames is not None and kept >= max_frames:
                 break
-            ret, frame = cap.read()
-            if not ret or frame is None:
+            if not cap.grab():
                 break
-            yield idx, frame
-            idx += 1
+            if src % stride == 0:
+                ok, frame = cap.retrieve()
+                if not ok or frame is None:
+                    break
+                yield kept, frame
+                kept += 1
+            src += 1
     finally:
         cap.release()
 

@@ -625,7 +625,19 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
     frames: list[np.ndarray] = []
     last_vdets: list = []
 
-    for fidx, frame in read_frames(cfg.input_path, cfg.max_frames):
+    # Sample across the WHOLE clip: pick a stride so ~cfg.max_frames kept frames span the full
+    # duration (short clips keep stride=1 = every frame). The render fps is divided by the same
+    # stride below so the burned-in clock and playback stay real-time.
+    _vinfo = get_video_info(cfg.input_path) or {}
+    _orig_fps = float(_vinfo.get("fps") or 25) or 25
+    _total_frames = int(_vinfo.get("frame_count") or 0)
+    _stride = max(1, round(_total_frames / cfg.max_frames)) if (_total_frames and cfg.max_frames) else 1
+    _eff_fps = _orig_fps / _stride
+    if _stride > 1:
+        print(f"[pipeline] whole-clip sampling: {_total_frames} frames @ {_orig_fps:.1f}fps → stride {_stride} "
+              f"(~{cfg.max_frames} frames @ {_eff_fps:.1f}fps span the full clip)", flush=True)
+
+    for fidx, frame in read_frames(cfg.input_path, cfg.max_frames, stride=_stride):
         frames.append(frame)
         if fidx % yolo_every == 0:
             last_vdets = [
@@ -715,7 +727,7 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                 if engine.is_valid_plate(cleaned):
                     vs["ocr"][cleaned] += 1
 
-    fps = (get_video_info(cfg.input_path) or {}).get("fps", 25) or 25
+    fps = _eff_fps   # stride-scaled: real-time playback + correct clock even when sampled
     _clock_on = bool(getattr(cfg, "video_timestamp_overlay", False)) and getattr(cfg, "clock_start_epoch", None) is not None
 
     def _expand_xywh(box, ratio, bound):
