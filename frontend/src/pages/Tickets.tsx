@@ -124,6 +124,7 @@ export default function Tickets() {
         width: Math.round(100 * w),
         sortable: false,
         filter: false,
+        pinned: 'right',   // actions at the RTL reading-start (right) rather than far left
         cellRenderer: ActionCell,
       },
     ]

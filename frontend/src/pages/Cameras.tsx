@@ -310,7 +310,7 @@ export default function Cameras() {
         <span className={`badge ${p.value ? 'badge-success' : 'badge-neutral'}`}>{p.value ? 'כן' : 'לא'}</span>,
     },
     {
-      headerName: '', width: 130, sortable: false, filter: false,
+      headerName: '', width: 130, sortable: false, filter: false, pinned: 'right',
       cellRenderer: (p: ICellRendererParams<Camera>) => p.data ? (
         <div className="flex items-center gap-1 h-full">
           <button onClick={() => setViewing(p.data!)} className="btn-icon" title="תצוגת אזורים"><Eye className="w-4 h-4" /></button>

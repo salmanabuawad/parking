@@ -54,7 +54,7 @@ export default function Inbox() {
     { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: p => formatLocation(p.value) },
     { field: 'status', headerName: 'סטטוס', width: 140, valueFormatter: p => STATUS[p.value] || p.value },
     { field: 'created_at', headerName: 'התקבל', width: 150, valueFormatter: p => (p.value ? new Date(p.value).toLocaleString('he-IL') : '—') },
-    { headerName: 'פעולה', width: 110, sortable: false, filter: false, cellRenderer: ReviewCell },
+    { headerName: 'פעולה', width: 110, sortable: false, filter: false, pinned: 'right', cellRenderer: ReviewCell },
   ], [])
 
   const cfgVer = useFieldConfigVersion()
