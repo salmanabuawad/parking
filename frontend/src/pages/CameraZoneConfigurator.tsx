@@ -307,22 +307,22 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Marking method: freehand polygons or paint grid squares */}
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="text-theme-sm font-semibold ms-1">שיטת סימון:</span>
-        <button type="button" onClick={() => setMode('polygon')} className={mode === 'polygon' ? 'btn-primary' : 'btn-secondary'}>מצולעים</button>
-        <button type="button" onClick={() => setMode('grid')} className={mode === 'grid' ? 'btn-primary' : 'btn-secondary'}><Grid3x3 className="w-4 h-4" /> ריבועים</button>
-      </div>
-
-      {/* Snapshot source toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-theme-sm font-semibold">תמונת מצלמה:</span>
-        <button type="button" onClick={() => imgFileRef.current?.click()} disabled={busy} className="btn-secondary"><Upload className="w-4 h-4" /> תמונה</button>
-        <button type="button" onClick={() => vidFileRef.current?.click()} disabled={busy} className="btn-secondary"><Video className="w-4 h-4" /> וידאו</button>
-        {hasRtsp && <button type="button" onClick={grabLive} disabled={busy} className="btn-secondary">צלם RTSP</button>}
-        {hasSim && <button type="button" onClick={grabLive} disabled={busy} className="btn-secondary"><Clapperboard className="w-4 h-4" /> פריים מהסימולציה</button>}
-        <button type="button" onClick={loadImage} disabled={busy} className="btn-icon" title="רענן"><RefreshCw className="w-4 h-4" /></button>
-        {nat && <span className="text-theme-xs text-theme-text-muted">{nat.w}×{nat.h}px</span>}
+      {/* Marking method + snapshot source — one wrapping row */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="text-theme-sm font-semibold ms-1">שיטת סימון:</span>
+          <button type="button" onClick={() => setMode('polygon')} className={mode === 'polygon' ? 'btn-primary' : 'btn-secondary'}>מצולעים</button>
+          <button type="button" onClick={() => setMode('grid')} className={mode === 'grid' ? 'btn-primary' : 'btn-secondary'}><Grid3x3 className="w-4 h-4" /> ריבועים</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-theme-sm font-semibold">תמונת מצלמה:</span>
+          <button type="button" onClick={() => imgFileRef.current?.click()} disabled={busy} className="btn-secondary"><Upload className="w-4 h-4" /> תמונה</button>
+          <button type="button" onClick={() => vidFileRef.current?.click()} disabled={busy} className="btn-secondary"><Video className="w-4 h-4" /> וידאו</button>
+          {hasRtsp && <button type="button" onClick={grabLive} disabled={busy} className="btn-secondary">צלם RTSP</button>}
+          {hasSim && <button type="button" onClick={grabLive} disabled={busy} className="btn-secondary"><Clapperboard className="w-4 h-4" /> פריים מהסימולציה</button>}
+          <button type="button" onClick={loadImage} disabled={busy} className="btn-icon" title="רענן"><RefreshCw className="w-4 h-4" /></button>
+          {nat && <span className="text-theme-xs text-theme-text-muted">{nat.w}×{nat.h}px</span>}
+        </div>
         <input ref={imgFileRef} type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} />
         <input ref={vidFileRef} type="file" accept="video/*" className="hidden" onChange={e => e.target.files?.[0] && uploadFile(e.target.files[0])} />
       </div>
