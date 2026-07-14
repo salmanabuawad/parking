@@ -807,8 +807,18 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         # Which region stays sharp: the enforced plate box (densified) when blur_except_plate is on
         # and the plate is readable, else the whole car box.
         dense_plate = _densify_plate_boxes(vs["plate_by_frame"], vs["car_by_frame"], len(frames)) if (keep_plate and readable) else {}
+        # Evidence window: 5 s before → 5 s after this car's capture moment (config-driven), so each
+        # ticket shows a short clip of ITS car — not the whole video. Anchor = median frame the plate
+        # (else the car) was seen in; clamped to the available (sampled) frames.
+        _det = sorted(vs["plate_by_frame"].keys()) or sorted(vs["car_by_frame"].keys())
+        _anchor = _det[len(_det) // 2] if _det else (len(frames) // 2)
+        _pre_f = int(round(float(getattr(cfg, "evidence_pre_seconds", 5.0)) * fps))
+        _post_f = int(round(float(getattr(cfg, "evidence_post_seconds", 5.0)) * fps))
+        _win_start = max(0, _anchor - _pre_f)
+        _win_end = min(len(frames), _anchor + _post_f + 1)
         out_frames = []
-        for fidx, frame in enumerate(frames):
+        for fidx in range(_win_start, _win_end):
+            frame = frames[fidx]
             if keep_plate and readable and fidx in dense_plate:
                 boxes = [dense_plate[fidx]]
             elif fidx in vs["car_by_frame"]:

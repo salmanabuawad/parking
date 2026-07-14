@@ -148,6 +148,10 @@ class PipelineConfig:
     # Fixed-camera enforcement: issue a ticket for every sufficiently-tracked vehicle (parked car),
     # readable plate or not. Off for mobile spot-checks (which want a single subject).
     emit_all_vehicles: bool = True
+    # Per-ticket evidence clip window (seconds before/after the car's capture moment) — each ticket
+    # gets a short clip of its own car instead of the whole video.
+    evidence_pre_seconds: float = 5.0
+    evidence_post_seconds: float = 5.0
 
 
 def hex_to_bgr(value, default: tuple[int, int, int] = (0, 255, 0)) -> tuple[int, int, int]:

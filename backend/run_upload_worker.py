@@ -320,6 +320,8 @@ def process_one_job() -> bool:
                 # Fixed camera (upload tied to a camera) surveys a whole scene → ticket every parked
                 # car. A mobile spot-check (no camera) keeps the single-subject behaviour.
                 emit_all_vehicles=True,
+                evidence_pre_seconds=float(getattr(cfg, "evidence_video_pre_seconds", 5) or 5),
+                evidence_post_seconds=float(getattr(cfg, "evidence_video_post_seconds", 5) or 5),
             )
             # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
             try:
