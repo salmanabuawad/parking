@@ -10,6 +10,7 @@ export default function CityManager() {
   const [styleUrl, setStyleUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<City | 'new' | null>(null)
+  const [err, setErr] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,8 +36,9 @@ export default function CityManager() {
 
   const remove = async (c: City) => {
     if (!confirm(`למחוק את העיר "${c.label}"? מצלמות המשויכות לעיר יישארו אך ללא שיוך.`)) return
+    setErr(null)
     try { await citiesApi.remove(c.id); load() }
-    catch (e) { alert((e as { message?: string })?.message || 'שגיאה במחיקה') }
+    catch (e) { setErr((e as { message?: string })?.message || 'שגיאה במחיקת העיר') }
   }
 
   return (
@@ -52,6 +54,13 @@ export default function CityManager() {
           <Plus className="w-4 h-4" /> הוסף עיר
         </button>
       </div>
+
+      {err && (
+        <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-theme-sm border bg-red-50 text-red-700 border-red-200">
+          <span className="flex-1">{err}</span>
+          <button onClick={() => setErr(null)} className="shrink-0 opacity-60 hover:opacity-100 leading-none" title="סגור">✕</button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-theme-text-muted py-4">טוען…</p>
@@ -98,10 +107,12 @@ function CityEditorModal({ city, styleUrl, onClose, onSaved }: {
     city ? { center_lat: city.center_lat, center_lng: city.center_lng, zoom: city.zoom, bounds: city.bounds ?? [[city.center_lng - 0.05, city.center_lat - 0.05], [city.center_lng + 0.05, city.center_lat + 0.05]] } : null
   )
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const save = async () => {
-    if (!label.trim()) { alert('יש להזין שם עיר'); return }
-    if (!view) { alert('קבע מיקום על המפה'); return }
+    if (!label.trim()) { setError('יש להזין שם עיר'); return }
+    if (!view) { setError('קבע מיקום על המפה'); return }
+    setError(null)
     setSaving(true)
     try {
       const body: CityInput = {
@@ -116,7 +127,7 @@ function CityEditorModal({ city, styleUrl, onClose, onSaved }: {
       else await citiesApi.create(body)
       onSaved()
     } catch (e) {
-      alert((e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail || (e as { message?: string })?.message || 'שגיאה בשמירה')
+      setError((e as { response?: { data?: { detail?: string } }; message?: string })?.response?.data?.detail || (e as { message?: string })?.message || 'שגיאה בשמירת העיר')
     } finally { setSaving(false) }
   }
 
@@ -146,9 +157,12 @@ function CityEditorModal({ city, styleUrl, onClose, onSaved }: {
             פעילה (מוצגת ברשימות)
           </label>
         </div>
-        <div className="flex justify-end gap-2 px-4 py-3 border-t border-theme-card-border">
-          <button type="button" className="btn-cancel" onClick={onClose}>ביטול</button>
-          <button type="button" className="btn-primary" onClick={save} disabled={saving}>{saving ? 'שומר…' : 'שמור'}</button>
+        <div className="flex items-center gap-2 px-4 py-3 border-t border-theme-card-border">
+          {error && <span className="flex-1 text-red-600 text-theme-sm">{error}</span>}
+          <div className="flex justify-end gap-2 ms-auto">
+            <button type="button" className="btn-cancel" onClick={onClose}>ביטול</button>
+            <button type="button" className="btn-primary" onClick={save} disabled={saving}>{saving ? 'שומר…' : 'שמור'}</button>
+          </div>
         </div>
       </div>
     </div>

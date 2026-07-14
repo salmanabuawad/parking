@@ -58,6 +58,7 @@ export default function QueueMaintenance() {
   const [resettingStuck, setResettingStuck] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [quickFilter, setQuickFilter] = useState('')
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const fetchJobs = useCallback(async () => {
@@ -86,13 +87,14 @@ export default function QueueMaintenance() {
 
   const handleResetStuck = async () => {
     setResettingStuck(true)
+    setMsg(null)
     try {
       const { data } = await uploadApi.resetStuckJobs()
       await fetchJobs()
-      alert(data.message || `Reset ${data.reset_count} stuck job(s)`)
+      setMsg({ kind: 'ok', text: data.message || `אופסו ${data.reset_count} עבודות תקועות` })
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
-      alert(ax.response?.data?.detail || ax.message)
+      setMsg({ kind: 'err', text: ax.response?.data?.detail || ax.message || 'שגיאה באיפוס עבודות' })
     } finally {
       setResettingStuck(false)
     }
@@ -112,9 +114,10 @@ export default function QueueMaintenance() {
       fd.append('violation_zone', 'red_white')
       await api.post('/upload/violation', fd)
       await fetchJobs()
+      setMsg({ kind: 'ok', text: 'הסרטון הועלה ונכנס לתור העיבוד' })
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
-      alert(ax.response?.data?.detail || ax.message)
+      setMsg({ kind: 'err', text: ax.response?.data?.detail || ax.message || 'שגיאה בהעלאת הסרטון' })
     } finally {
       setUploading(false)
       e.target.value = ''
@@ -219,6 +222,13 @@ export default function QueueMaintenance() {
           </button>
         </div>
       </div>
+
+      {msg && (
+        <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-theme-sm border ${msg.kind === 'ok' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+          <span className="flex-1">{msg.text}</span>
+          <button onClick={() => setMsg(null)} className="shrink-0 opacity-60 hover:opacity-100 leading-none" title="סגור">✕</button>
+        </div>
+      )}
 
       {settings && (
         <div className="app-card inline-flex items-center gap-2 px-3.5 py-1.5 self-start">

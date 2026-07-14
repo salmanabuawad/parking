@@ -18,6 +18,7 @@ export default function CameraDashboard() {
   const [busy, setBusy] = useState(false)
   const [warming, setWarming] = useState(false)
   const [filter, setFilter] = useState<string | null>(null)
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -30,6 +31,8 @@ export default function CameraDashboard() {
       setCameras(cams.data as MapCamera[])
       setStyleUrl((cfg as { style_url: string | null }).style_url || null)
       setCities(cityList as CityInfo[])
+    } catch (e: any) {
+      setMsg({ kind: 'err', text: e?.message || 'שגיאה בטעינת המצלמות' })
     } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -51,18 +54,20 @@ export default function CameraDashboard() {
   const generate = async () => {
     if (!confirm('לייצר מצלמות דמו לכל עיר (מספר לפי גודל העיר)? מצלמות דמו קודמות יימחקו.')) return
     setBusy(true)
+    setMsg(null)
     try { await simulationApi.generateFleet(); setFilter(null); await load() }
-    catch (e: any) { alert(e?.message || 'שגיאה בייצור מצלמות') }
+    catch (e: any) { setMsg({ kind: 'err', text: e?.message || 'שגיאה בייצור מצלמות' }) }
     finally { setBusy(false) }
   }
 
   const warmMaps = async () => {
     setWarming(true)
+    setMsg(null)
     try {
       const r = await mapConfigApi.warm()
       const tiles = Object.values(r.cities).reduce((a, c) => a + c.tiles, 0)
-      alert(`המפות נשמרו מקומית בשרת: ${tiles} אריחים, ${(r.cache.bytes / 1024 / 1024).toFixed(1)}MB.\nמעתה המפה נטענת מהשרת — ללא קריאות ל-MapTiler.`)
-    } catch (e: any) { alert(e?.message || 'שגיאה בהורדת מפות') }
+      setMsg({ kind: 'ok', text: `המפות נשמרו בשרת: ${tiles} אריחים, ${(r.cache.bytes / 1024 / 1024).toFixed(1)}MB — המפה נטענת מהשרת ללא קריאות ל-MapTiler.` })
+    } catch (e: any) { setMsg({ kind: 'err', text: e?.message || 'שגיאה בהורדת מפות' }) }
     finally { setWarming(false) }
   }
 
@@ -91,8 +96,15 @@ export default function CameraDashboard() {
         <button onClick={generate} disabled={busy} className="btn-secondary" title="יוצר 100 מצלמות דמו לכל עיר">
           <Sparkles className="w-4 h-4" /> {busy ? 'מייצר...' : 'צור מצלמות לדוגמה'}
         </button>
-        <button onClick={load} disabled={loading} className="btn-icon" title="רענן"><RefreshCw className="w-4 h-4" /></button>
+        <button onClick={load} disabled={loading} className={`btn-icon ${loading ? 'opacity-60' : ''}`} title="רענן"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
       </div>
+
+      {msg && (
+        <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-theme-sm border ${msg.kind === 'ok' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+          <span className="flex-1">{msg.text}</span>
+          <button onClick={() => setMsg(null)} className="shrink-0 opacity-60 hover:opacity-100 leading-none" title="סגור">✕</button>
+        </div>
+      )}
 
       {/* City switcher */}
       {cities.length > 0 && (
