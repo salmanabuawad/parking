@@ -166,6 +166,18 @@ def extract_video_params(input_path: str) -> dict:
                 out["bit_rate"] = int(fmt["bit_rate"])
             except Exception:
                 pass
+        # Real recording date, when the container carries one (camera footage / most phones).
+        # Used to date a ticket from the video itself instead of the upload time.
+        _tags = fmt.get("tags") or {}
+        _ct = _tags.get("creation_time") or _tags.get("com.apple.quicktime.creationdate")
+        if not _ct:
+            for _s in data.get("streams") or []:
+                _st = _s.get("tags") or {}
+                if _st.get("creation_time"):
+                    _ct = _st["creation_time"]
+                    break
+        if _ct:
+            out["creation_time"] = str(_ct)
         for stream in data.get("streams") or []:
             if stream.get("codec_type") == "video":
                 try:
