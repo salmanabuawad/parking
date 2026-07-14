@@ -174,8 +174,8 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     })
     if (drawing) {
       const pts = drawing.map(([x, y]) => [x * scale, y * scale] as Pt)
-      poly(pts, '#111827', true, true)
-      pts.forEach(p => handle(p[0], p[1], '#111827'))
+      poly(pts, '#f59e0b', true, true)   // bright amber so the in-progress zone is visible on any scene
+      pts.forEach(p => handle(p[0], p[1], '#f59e0b'))
     }
   }, [sections, drawing, selectedId, nat, mode, grid])
 
@@ -238,7 +238,12 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
     }
     if (!nat) return
     const [x, y] = toOriginal(e)
-    if (drawing) { setDrawing([...drawing, [x, y]]); return }
+    if (drawing) {
+      // Ignore a near-duplicate of the last point (e.g. the 2nd mousedown of a double-click-to-finish).
+      const last = drawing[drawing.length - 1]
+      if (last && Math.abs(last[0] - x) < 4 && Math.abs(last[1] - y) < 4) return
+      setDrawing([...drawing, [x, y]]); return
+    }
     const sel = sections.find(s => s.id === selectedId)
     if (sel?.polygon_json) {
       const scale = canvasRef.current!.width / nat.w
@@ -246,7 +251,10 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
       if (idx >= 0) { dragRef.current = { idx }; return }
     }
     const hit = sections.find(s => (s.polygon_json?.length ?? 0) >= 3 && pointInPoly([x, y], s.polygon_json!))
-    setSelectedId(hit ? hit.id : null)
+    if (hit) { setSelectedId(hit.id); return }
+    // Empty canvas in polygon mode → start a new zone right here (no need to click "מקטע חדש" first).
+    setSelectedId(null)
+    setDrawing([[x, y]])
   }
   const onMove = (e: React.MouseEvent) => {
     if (mode === 'grid') { if (paintingRef.current) paintAt(e); return }
@@ -372,7 +380,10 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 {!drawing ? (
-                  <button type="button" onClick={() => { setDrawing([]); setSelectedId(null) }} disabled={!nat || busy} className="btn-primary"><Plus className="w-4 h-4" /> מקטע חדש{newZoneRules.length ? ` (${newZoneRules.length} סוגי עבירה)` : ''}</button>
+                  <>
+                    <button type="button" onClick={() => { setDrawing([]); setSelectedId(null) }} disabled={!nat || busy} className="btn-primary"><Plus className="w-4 h-4" /> מקטע חדש{newZoneRules.length ? ` (${newZoneRules.length} סוגי עבירה)` : ''}</button>
+                    <span className="text-theme-xs text-theme-text-muted">או לחץ ישירות על התמונה כדי לצייר אזור (לחיצה כפולה לסיום)</span>
+                  </>
                 ) : (
                   <>
                     <span className="text-theme-xs text-theme-text-muted">לחץ להוספת נקודות, לחיצה כפולה לסיום ({drawing.length}){newZoneRules.length ? ` · האזור ייווצר עם ${newZoneRules.length} סוגי עבירה` : ''}</span>
