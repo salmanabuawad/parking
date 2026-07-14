@@ -45,6 +45,21 @@ def _fmt_queue(status: dict) -> str:
     return f"q:{q} p:{p} c:{c} f:{f}{extra}"
 
 
+def _parse_creation_time(value):
+    """Parse an ffprobe creation_time (ISO 8601, usually UTC 'Z') to an aware datetime, or None.
+    Ignores absurd/epoch dates some encoders emit so we never date a ticket to 1904/1970."""
+    if not value:
+        return None
+    try:
+        s = str(value).strip().replace("Z", "+00:00")
+        d = datetime.fromisoformat(s)
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        return d if d.year >= 2000 else None
+    except Exception:
+        return None
+
+
 def _run_ocr(video_bytes: bytes, job_id: int) -> tuple[str, str | None]:
     """OCR worker: runs in thread pool."""
     try:
@@ -211,6 +226,22 @@ def process_one_job() -> bool:
         if not video_bytes:
             job_repo.update(job.id, status="failed", error_message="Raw video file is empty")
             return True
+
+        # captured_at from the video's REAL recording date when the container carries one
+        # (camera footage / most phones). Falls back to the client-supplied captured_at (the
+        # file's own date on the device, or upload time). Set here — before processing — so the
+        # burned-in clock, violation window, screenshots and signature all use the real date.
+        try:
+            _real_dt = _parse_creation_time((extract_video_params(str(raw_path)) or {}).get("creation_time"))
+            if _real_dt is not None and _real_dt != job.captured_at:
+                job.captured_at = _real_dt
+                try:
+                    job_repo.update(job.id, captured_at=_real_dt)
+                except Exception:
+                    pass
+                print(f"[Job {job.id}] captured_at from video recording date: {_real_dt.isoformat()}", flush=True)
+        except Exception as _ct_err:
+            print(f"[Job {job.id}] video-date probe failed (non-fatal): {_ct_err}", flush=True)
 
         cfg = db.query(AppConfig).first()
         use_fast = getattr(settings, 'use_fast_hsv_pipeline', True)
