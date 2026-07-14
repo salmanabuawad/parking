@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react'
+import { useState, useEffect, type ReactNode, type ChangeEvent } from 'react'
 import { Settings as SettingsIcon, SlidersHorizontal, MapPin } from 'lucide-react'
 import { settingsApi } from '../api'
 import { t } from '../i18n'
@@ -10,6 +10,37 @@ const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
   { key: 'system', label: 'מערכת', icon: <SlidersHorizontal className="w-4 h-4" /> },
   { key: 'cities', label: 'ערים ומפות', icon: <MapPin className="w-4 h-4" /> },
 ]
+
+/** Compact labelled field for the settings grid. `span` widens it across grid columns. */
+function Field({ label, span, children }: { label: string; span?: string; children: ReactNode }) {
+  return (
+    <label className={`flex flex-col gap-1 ${span || ''}`}>
+      <span className="text-theme-sm font-medium text-theme-text-primary leading-tight">{label}</span>
+      {children}
+    </label>
+  )
+}
+
+function Toggle({ checked, onChange, children }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode }) {
+  return (
+    <label className="flex items-center gap-2 text-theme-sm text-theme-text-primary cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="shrink-0" />
+      <span>{children}</span>
+    </label>
+  )
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="app-card p-4">
+      <h2 className="text-theme-sm font-semibold text-theme-text-primary mb-3">{title}</h2>
+      {children}
+    </section>
+  )
+}
+
+const GRID = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-3'
+const TOGGLE_ROW = 'col-span-2 md:col-span-3 lg:col-span-4 flex flex-wrap gap-x-6 gap-y-2 pt-1'
 
 export default function Settings() {
   const [tab, setTab] = useState<Tab>('system')
@@ -122,6 +153,14 @@ export default function Settings() {
     }
   }
 
+  const numHandler = (setter: (v: number) => void, lo: number, hi?: number) =>
+    (e: ChangeEvent<HTMLInputElement>) => {
+      let v = parseInt(e.target.value, 10) || 0
+      v = Math.max(lo, v)
+      if (hi != null) v = Math.min(hi, v)
+      setter(v)
+    }
+
   return (
     <div className="page-container">
       {/* Page header */}
@@ -154,227 +193,124 @@ export default function Settings() {
       {tab === 'cities' ? (
         <CityManager />
       ) : (
-        <>
-          <p className="text-theme-text-muted">{t('settingsIntro')}</p>
+        <div className="max-w-[1600px] mx-auto space-y-4">
+          <p className="text-theme-text-muted text-theme-sm">{t('settingsIntro')}</p>
 
           {settings && (
-            <div className="app-card p-5 space-y-4">
-              <label className="label-base text-theme-text-primary font-semibold">הגדרות אכיפה ומערכת</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="label-base text-theme-text-primary">זמן שהייה שנחשב לעבירה (שניות)</label>
-                  <input type="number" min={0} value={violationDwellSeconds}
-                    onChange={(e) => setViolationDwellSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">אורך סרטון נדרש (שניות)</label>
-                  <input type="number" min={0} value={requiredVideoSeconds}
-                    onChange={(e) => setRequiredVideoSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">שניות הקלטה לפני העבירה</label>
-                  <input type="number" min={0} max={120} value={evidencePreSeconds}
-                    onChange={(e) => setEvidencePreSeconds(Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">שניות הקלטה אחרי העבירה</label>
-                  <input type="number" min={0} max={120} value={evidencePostSeconds}
-                    onChange={(e) => setEvidencePostSeconds(Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0)))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">שמירת סרטונים (ימים)</label>
-                  <input type="number" min={0} value={videoRetentionDays}
-                    onChange={(e) => setVideoRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">שמירת סרטון מקור (ימים)</label>
-                  <input type="number" min={0} value={originalRetentionDays}
-                    onChange={(e) => setOriginalRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">שמירת סרטון מעובד (ימים)</label>
-                  <input type="number" min={0} value={processedRetentionDays}
-                    onChange={(e) => setProcessedRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">שמירת מועמדים לדוח (ימים)</label>
-                  <input type="number" min={0} value={candidateRetentionDays}
-                    onChange={(e) => setCandidateRetentionDays(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <label className="flex items-center gap-2 text-theme-text-primary self-end pb-2">
-                  <input type="checkbox" checked={videoTimestampOverlay} onChange={(e) => setVideoTimestampOverlay(e.target.checked)} />
-                  הצג תאריך ושעה בסרטון
-                </label>
-              </div>
-              <button type="button" onClick={save} disabled={saving} className="btn-primary">
-                {saving ? t('saving') : t('save')}
-              </button>
-            </div>
-          )}
-
-          {settings && (
-            <div className="app-card p-5 space-y-4">
-              <label className="label-base text-theme-text-primary font-semibold">וידאו, חותמת זמן וסימון רכב</label>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="label-base text-theme-text-primary">אורך וידאו מינימלי (שניות)</label>
-                  <input type="number" min={0} value={minVideoSeconds}
-                    onChange={(e) => setMinVideoSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">אורך וידאו מקסימלי (שניות)</label>
-                  <input type="number" min={1} value={maxVideoSeconds}
-                    onChange={(e) => setMaxVideoSeconds(Math.max(1, parseInt(e.target.value, 10) || 1))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">חלון מניעת כפילויות (שניות)</label>
-                  <input type="number" min={0} value={dupWindowSeconds}
-                    onChange={(e) => setDupWindowSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))} className="input-base" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">מיקום חותמת הזמן בוידאו</label>
-                  <select className="input-base" value={tsPosition} onChange={(e) => setTsPosition(e.target.value)}>
-                    <option value="top_right">למעלה מימין</option>
-                    <option value="top_left">למעלה משמאל</option>
-                    <option value="bottom_right">למטה מימין</option>
-                    <option value="bottom_left">למטה משמאל</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">צבע מסגרת רכב — ממתין</label>
-                  <input type="color" value={pendingColor} onChange={(e) => setPendingColor(e.target.value)} className="input-base h-10 p-1" />
-                </div>
-                <div>
-                  <label className="label-base text-theme-text-primary">צבע מסגרת רכב — מאושר</label>
-                  <input type="color" value={approvedColor} onChange={(e) => setApprovedColor(e.target.value)} className="input-base h-10 p-1" />
-                </div>
-                <label className="flex items-center gap-2 text-theme-text-primary self-end pb-2">
-                  <input type="checkbox" checked={plateInset} onChange={(e) => setPlateInset(e.target.checked)} />
-                  הצג חלון מוגדל של הלוחית בוידאו
-                </label>
-              </div>
-              <button type="button" onClick={save} disabled={saving} className="btn-primary">
-                {saving ? t('saving') : t('save')}
-              </button>
-            </div>
-          )}
-
-          {settings && (
-            <div className="app-card p-5">
-              <label className="label-base text-theme-text-primary font-semibold">{t('blurKernelLabel')}</label>
-              <div className="w-64 mb-4">
-                <input
-                  type="number"
-                  min={0}
-                  max={51}
-                  step={2}
-                  value={blurSize}
-                  onChange={(e) => setBlurSize(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))}
-                  className="input-base"
-                />
-              </div>
-              <div className="w-64 mb-4">
-                <label className="label-base text-theme-text-primary">יחס הרחבת אזור הטשטוש (0–1)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={blurExpandRatio}
-                  onChange={(e) => setBlurExpandRatio(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))}
-                  className="input-base"
-                />
-              </div>
-              <label className="flex items-center gap-2 mb-4 text-theme-text-primary">
-                <input
-                  type="checkbox"
-                  checked={blurExceptPlate}
-                  onChange={(e) => setBlurExceptPlate(e.target.checked)}
-                />
-                טשטש את כל הסרטון חוץ ממספר הרכב הרלוונטי
-              </label>
-              <label className="flex items-center gap-2 mb-4 text-theme-text-primary">
-                <input
-                  type="checkbox"
-                  checked={usePipeline}
-                  onChange={(e) => setUsePipeline(e.target.checked)}
-                />
-                {t('useViolationPipeline')}
-              </label>
-              <div className="border-t border-theme-card-border pt-4 mt-4">
-                <label className="flex items-center gap-2 mb-4 text-theme-text-primary">
-                  <input
-                    type="checkbox"
-                    checked={vehicleRegistryEnabled}
-                    onChange={(e) => setVehicleRegistryEnabled(e.target.checked)}
-                  />
-                  אפשר חיפוש במרשם הרכבים הישראלי
-                </label>
-
-                <label className="label-base text-theme-text-primary font-semibold">כתובת API של data.gov.il</label>
-                <input
-                  type="url"
-                  value={vehicleRegistryApiUrl}
-                  onChange={(e) => setVehicleRegistryApiUrl(e.target.value)}
-                  className="input-base mb-3"
-                  dir="ltr"
-                />
-
-                <label className="label-base text-theme-text-primary font-semibold">מזהה משאב (Resource ID)</label>
-                <input
-                  type="text"
-                  value={vehicleRegistryResourceId}
-                  onChange={(e) => setVehicleRegistryResourceId(e.target.value)}
-                  className="input-base mb-3"
-                  dir="ltr"
-                />
-
-                <label className="label-base text-theme-text-primary font-semibold">שם שדה מספר הרכב</label>
-                <input
-                  type="text"
-                  value={vehicleRegistryPlateField}
-                  onChange={(e) => setVehicleRegistryPlateField(e.target.value)}
-                  className="input-base mb-3"
-                  dir="ltr"
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                  <div>
-                    <label className="label-base text-theme-text-primary font-semibold">פסק זמן (שניות)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={60}
-                      value={vehicleRegistryTimeoutSeconds}
-                      onChange={(e) => setVehicleRegistryTimeoutSeconds(Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 10)))}
-                      className="input-base"
-                    />
-                  </div>
-                  <div>
-                    <label className="label-base text-theme-text-primary font-semibold">תוקף מטמון (שעות)</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={720}
-                      value={vehicleRegistryCacheTtlHours}
-                      onChange={(e) => setVehicleRegistryCacheTtlHours(Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 24)))}
-                      className="input-base"
-                    />
+            <>
+              <Section title="הגדרות אכיפה ומערכת">
+                <div className={GRID}>
+                  <Field label="זמן שהייה שנחשב לעבירה (שניות)">
+                    <input type="number" min={0} value={violationDwellSeconds} onChange={numHandler(setViolationDwellSeconds, 0)} className="input-base" />
+                  </Field>
+                  <Field label="אורך סרטון נדרש (שניות)">
+                    <input type="number" min={0} value={requiredVideoSeconds} onChange={numHandler(setRequiredVideoSeconds, 0)} className="input-base" />
+                  </Field>
+                  <Field label="שניות הקלטה לפני העבירה">
+                    <input type="number" min={0} max={120} value={evidencePreSeconds} onChange={numHandler(setEvidencePreSeconds, 0, 120)} className="input-base" />
+                  </Field>
+                  <Field label="שניות הקלטה אחרי העבירה">
+                    <input type="number" min={0} max={120} value={evidencePostSeconds} onChange={numHandler(setEvidencePostSeconds, 0, 120)} className="input-base" />
+                  </Field>
+                  <Field label="שמירת סרטונים (ימים)">
+                    <input type="number" min={0} value={videoRetentionDays} onChange={numHandler(setVideoRetentionDays, 0)} className="input-base" />
+                  </Field>
+                  <Field label="שמירת סרטון מקור (ימים)">
+                    <input type="number" min={0} value={originalRetentionDays} onChange={numHandler(setOriginalRetentionDays, 0)} className="input-base" />
+                  </Field>
+                  <Field label="שמירת סרטון מעובד (ימים)">
+                    <input type="number" min={0} value={processedRetentionDays} onChange={numHandler(setProcessedRetentionDays, 0)} className="input-base" />
+                  </Field>
+                  <Field label="שמירת מועמדים לדוח (ימים)">
+                    <input type="number" min={0} value={candidateRetentionDays} onChange={numHandler(setCandidateRetentionDays, 0)} className="input-base" />
+                  </Field>
+                  <div className={TOGGLE_ROW}>
+                    <Toggle checked={videoTimestampOverlay} onChange={setVideoTimestampOverlay}>הצג תאריך ושעה בסרטון</Toggle>
                   </div>
                 </div>
-              </div>
+              </Section>
 
-              <button
-                type="button"
-                onClick={save}
-                disabled={saving}
-                className="btn-primary"
-              >
-                {saving ? t('saving') : t('save')}
-              </button>
-            </div>
+              <Section title="וידאו, חותמת זמן וסימון רכב">
+                <div className={GRID}>
+                  <Field label="אורך וידאו מינימלי (שניות)">
+                    <input type="number" min={0} value={minVideoSeconds} onChange={numHandler(setMinVideoSeconds, 0)} className="input-base" />
+                  </Field>
+                  <Field label="אורך וידאו מקסימלי (שניות)">
+                    <input type="number" min={1} value={maxVideoSeconds} onChange={numHandler(setMaxVideoSeconds, 1)} className="input-base" />
+                  </Field>
+                  <Field label="חלון מניעת כפילויות (שניות)">
+                    <input type="number" min={0} value={dupWindowSeconds} onChange={numHandler(setDupWindowSeconds, 0)} className="input-base" />
+                  </Field>
+                  <Field label="מיקום חותמת הזמן בוידאו">
+                    <select className="input-base" value={tsPosition} onChange={(e) => setTsPosition(e.target.value)}>
+                      <option value="top_right">למעלה מימין</option>
+                      <option value="top_left">למעלה משמאל</option>
+                      <option value="bottom_right">למטה מימין</option>
+                      <option value="bottom_left">למטה משמאל</option>
+                    </select>
+                  </Field>
+                  <Field label="צבע מסגרת רכב — ממתין">
+                    <input type="color" value={pendingColor} onChange={(e) => setPendingColor(e.target.value)} className="input-base h-10 p-1 max-w-[140px]" />
+                  </Field>
+                  <Field label="צבע מסגרת רכב — מאושר">
+                    <input type="color" value={approvedColor} onChange={(e) => setApprovedColor(e.target.value)} className="input-base h-10 p-1 max-w-[140px]" />
+                  </Field>
+                  <div className={TOGGLE_ROW}>
+                    <Toggle checked={plateInset} onChange={setPlateInset}>הצג חלון מוגדל של הלוחית בוידאו</Toggle>
+                  </div>
+                </div>
+              </Section>
+
+              <Section title="טשטוש ומרשם הרכבים">
+                <div className={GRID}>
+                  <Field label={t('blurKernelLabel')}>
+                    <input type="number" min={0} max={51} step={2} value={blurSize}
+                      onChange={(e) => setBlurSize(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))} className="input-base" />
+                  </Field>
+                  <Field label="יחס הרחבת אזור הטשטוש (0–1)">
+                    <input type="number" min={0} max={1} step={0.01} value={blurExpandRatio}
+                      onChange={(e) => setBlurExpandRatio(Math.max(0, Math.min(1, parseFloat(e.target.value) || 0)))} className="input-base" />
+                  </Field>
+                  <div className={TOGGLE_ROW}>
+                    <Toggle checked={blurExceptPlate} onChange={setBlurExceptPlate}>טשטש את כל הסרטון חוץ ממספר הרכב הרלוונטי</Toggle>
+                    <Toggle checked={usePipeline} onChange={setUsePipeline}>{t('useViolationPipeline')}</Toggle>
+                  </div>
+                </div>
+
+                <div className="border-t border-theme-card-border pt-4 mt-4">
+                  <div className="mb-3">
+                    <Toggle checked={vehicleRegistryEnabled} onChange={setVehicleRegistryEnabled}>אפשר חיפוש במרשם הרכבים הישראלי</Toggle>
+                  </div>
+                  <div className={GRID}>
+                    <Field label="כתובת API של data.gov.il" span="col-span-2">
+                      <input type="url" dir="ltr" value={vehicleRegistryApiUrl} onChange={(e) => setVehicleRegistryApiUrl(e.target.value)} className="input-base" />
+                    </Field>
+                    <Field label="מזהה משאב (Resource ID)" span="col-span-2">
+                      <input type="text" dir="ltr" value={vehicleRegistryResourceId} onChange={(e) => setVehicleRegistryResourceId(e.target.value)} className="input-base" />
+                    </Field>
+                    <Field label="שם שדה מספר הרכב">
+                      <input type="text" dir="ltr" value={vehicleRegistryPlateField} onChange={(e) => setVehicleRegistryPlateField(e.target.value)} className="input-base" />
+                    </Field>
+                    <Field label="פסק זמן (שניות)">
+                      <input type="number" min={1} max={60} value={vehicleRegistryTimeoutSeconds}
+                        onChange={(e) => setVehicleRegistryTimeoutSeconds(Math.max(1, Math.min(60, parseInt(e.target.value, 10) || 10)))} className="input-base" />
+                    </Field>
+                    <Field label="תוקף מטמון (שעות)">
+                      <input type="number" min={1} max={720} value={vehicleRegistryCacheTtlHours}
+                        onChange={(e) => setVehicleRegistryCacheTtlHours(Math.max(1, Math.min(720, parseInt(e.target.value, 10) || 24)))} className="input-base" />
+                    </Field>
+                  </div>
+                </div>
+              </Section>
+
+              <div className="flex pt-1">
+                <button type="button" onClick={save} disabled={saving} className="btn-primary">
+                  {saving ? t('saving') : t('save')}
+                </button>
+              </div>
+            </>
           )}
-        </>
+        </div>
       )}
     </div>
   )
