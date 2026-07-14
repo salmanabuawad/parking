@@ -634,8 +634,9 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
     _stride = max(1, -(-_total_frames // cfg.max_frames)) if (_total_frames and cfg.max_frames) else 1  # ceil ÷ → spans the FULL clip
     _eff_fps = _orig_fps / _stride
     if _stride > 1:
+        yolo_every = 1   # sampled frames are far apart in time → detect the vehicle in every one (no stale box)
         print(f"[pipeline] whole-clip sampling: {_total_frames} frames @ {_orig_fps:.1f}fps → stride {_stride} "
-              f"(~{cfg.max_frames} frames @ {_eff_fps:.1f}fps span the full clip)", flush=True)
+              f"(~{cfg.max_frames} frames @ {_eff_fps:.1f}fps span the full clip); yolo every frame", flush=True)
 
     for fidx, frame in read_frames(cfg.input_path, cfg.max_frames, stride=_stride):
         frames.append(frame)
@@ -749,6 +750,9 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         known = sorted(plate_by_frame.keys())
         dense = {}
         for fidx in range(n_frames):
+            if car_by_frame.get(fidx) is None:
+                continue   # car not tracked this frame (e.g. panned out of view) → don't carry a
+                           # stale plate box forward onto empty pavement (the floating-box glitch)
             if fidx in plate_by_frame:
                 src = fidx
             else:
