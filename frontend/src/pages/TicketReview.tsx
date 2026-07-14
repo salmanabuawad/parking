@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, History } from "lucide-react";
+import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, History, Trash2 } from "lucide-react";
 import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { ticketStatusBadge } from "../lib/ticketStatus";
@@ -285,6 +285,18 @@ export default function TicketReview() {
     }
   }
 
+  async function deleteScreenshotById(id: number) {
+    if (!confirm("למחוק את הצילום?")) return;
+    try {
+      await ticketsApi.deleteScreenshot(ticketId, id);
+      setScreenshots(await ticketsApi.listScreenshots(ticketId));
+      setExpanded((cur) => (cur === id ? null : cur));
+      setCaptureMsg("✓ הצילום נמחק");
+    } catch (err: any) {
+      setCaptureMsg(`✗ ${err?.message || "שגיאה במחיקת הצילום"}`);
+    }
+  }
+
   async function reloadVideo() {
     try {
       const blob = await ticketsApi.getProcessedVideo(ticketId);
@@ -470,7 +482,7 @@ export default function TicketReview() {
                       <div
                         key={s.id}
                         onClick={() => setExpanded(expanded === s.id ? null : s.id)}
-                        className={`shrink-0 cursor-pointer rounded-lg overflow-hidden bg-slate-100 border-2 ${expanded === s.id ? "border-theme-accent" : "border-transparent"}`}
+                        className={`relative shrink-0 cursor-pointer rounded-lg overflow-hidden bg-slate-100 border-2 ${expanded === s.id ? "border-theme-accent" : "border-transparent"}`}
                       >
                         <img
                           src={ticketsApi.screenshotImageUrl(ticketId, s.id)}
@@ -478,6 +490,12 @@ export default function TicketReview() {
                           className="w-[104px] h-14 object-cover block"
                           loading="lazy"
                         />
+                        {(isInspector || isAdmin) && ticket?.status !== "approved" && ticket?.status !== "rejected" && (
+                          <button type="button" onClick={(e) => { e.stopPropagation(); deleteScreenshotById(s.id); }} title="מחק צילום"
+                            className="absolute top-1 left-1 w-6 h-6 rounded-md bg-black/55 text-white flex items-center justify-center hover:bg-red-600 transition-colors">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         <div className="text-[10px] text-center px-1 py-0.5 text-theme-text-muted leading-tight truncate w-[104px]">
                           {s.frame_time_seconds != null && ticket?.captured_at
                             ? new Date(new Date(ticket.captured_at).getTime() + s.frame_time_seconds * 1000)
