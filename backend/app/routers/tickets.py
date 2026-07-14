@@ -358,10 +358,21 @@ def list_tickets(
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
     _=Depends(get_current_user),
 ):
-    """Authenticated ticket list. One implementation only; includes review/workflow fields."""
+    """Authenticated ticket list. One implementation only; includes review/workflow fields.
+
+    §14: duplicate_candidate tickets are hidden from the default ("all") view so re-captured
+    violations don't clutter the actionable list; the 'duplicate' (כפול) filter surfaces them.
+    """
+    def _is_dup(t) -> bool:
+        return getattr(t, "review_status", None) == "duplicate_candidate"
+
     all_tickets = ticket_repo.list_all()
-    if status:
+    if status == "duplicate":
+        all_tickets = [t for t in all_tickets if _is_dup(t)]
+    elif status:
         all_tickets = [t for t in all_tickets if t.status == status or getattr(t, "review_status", None) == status]
+    else:
+        all_tickets = [t for t in all_tickets if not _is_dup(t)]
     return [_ticket_dict(t) for t in all_tickets]
 
 
