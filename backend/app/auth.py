@@ -104,3 +104,46 @@ def get_current_inspector(
     inspector_repo: InspectorRepository = Depends(get_inspector_repo),
 ):
     return _validate_inspector_token(token, inspector_repo)
+
+
+class Reviewer:
+    """A ticket reviewer: an inspector, or an admin acting as a 'super inspector'.
+
+    `inspector_id` is None for admins so the inspector FK columns (approved_by_inspector_id,
+    assigned_inspector_id, audit inspector_id — all nullable FKs to inspectors) stay null.
+    """
+
+    def __init__(self, kind: str, inspector_id, username: str):
+        self.kind = kind                  # 'inspector' | 'admin'
+        self.inspector_id = inspector_id  # int | None
+        self.username = username
+
+
+def get_current_reviewer(
+    token: str = Depends(oauth2_scheme),
+    admin_repo: AdminRepository = Depends(get_admin_repo),
+    inspector_repo: InspectorRepository = Depends(get_inspector_repo),
+) -> "Reviewer":
+    """Accept an inspector OR admin token. Admins are 'super inspectors': they can review,
+    capture evidence, and approve/reject tickets just like inspectors."""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token"
+    )
+    if not token:
+        raise credentials_exception
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    except JWTError:
+        raise credentials_exception
+    username = payload.get("sub")
+    if not username:
+        raise credentials_exception
+    if payload.get("type") == "inspector":
+        insp = inspector_repo.get_by_username(username)
+        if insp and insp.is_active:
+            return Reviewer("inspector", insp.id, username)
+    else:
+        adm = admin_repo.get_by_username(username)
+        if adm:
+            return Reviewer("admin", None, username)
+    raise credentials_exception

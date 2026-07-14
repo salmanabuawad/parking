@@ -154,6 +154,7 @@ export default function TicketReview() {
   // Inspector approval state
   const { user } = useAuth();
   const isInspector = user?.user_type === "inspector";
+  const isAdmin = user?.user_type === "admin";   // admin = "super inspector": full review+approve
   const [rules, setRules] = useState<{ rule_id: string; title_he: string }[]>([]);
   const [inspectors, setInspectors] = useState<{ id: number; full_name: string }[]>([]);
   const [aRule, setARule] = useState("");
@@ -682,11 +683,11 @@ export default function TicketReview() {
             </div>
           )}
 
-          {/* Inspector approval panel */}
-          {ticket && isInspector && (
+          {/* Review + approval panel — inspectors and admins (super inspectors) */}
+          {ticket && (isInspector || isAdmin) && (
             <div className="app-card grow basis-[280px] p-3">
               <h3 className="text-base font-semibold mb-2 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-green-600" /> אישור פקח
+                <ShieldCheck className="w-4 h-4 text-green-600" /> בדיקה ואישור
               </h3>
 
               <Field label="סוג עבירה">

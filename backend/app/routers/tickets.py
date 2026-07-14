@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from app.auth import get_current_user, get_current_inspector
+from app.auth import get_current_user, get_current_inspector, get_current_reviewer
 from app.database import get_db
 from app.dependencies import get_camera_video_repo, get_ticket_repo, get_upload_job_repo
 from app.models import AppConfig
@@ -444,24 +444,25 @@ def approve_ticket_as_inspector(
     body: InspectorApprovalBody,
     request: Request,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
-    inspector=Depends(get_current_inspector),
+    reviewer=Depends(get_current_reviewer),
 ):
-    """Inspector approval — thin router: delegates to inspector_review_service (validate plate 7/8
+    """Approval — thin router: delegates to inspector_review_service (validate plate 7/8
     digits, registry lookup + snapshot, 4-image gate, audit-log), then re-renders the video with the
-    red 'approved' box (#10)."""
+    red 'approved' box (#10). Admins are 'super inspectors' and may approve any ticket."""
     from app.services.inspector_review_service import update_ticket_by_inspector
 
     current_ticket = ticket_repo.get(ticket_id)
     if not current_ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if current_ticket.assigned_inspector_id not in (None, inspector.id):
+    # Inspectors may only touch their own / unassigned tickets; admins (super inspectors) any.
+    if reviewer.kind == "inspector" and current_ticket.assigned_inspector_id not in (None, reviewer.inspector_id):
         raise HTTPException(status_code=403, detail="הדוח משויך לפקח אחר.")
 
     ip = request.client.host if request.client else None
     ticket = update_ticket_by_inspector(
         ticket_repo.db,
         ticket_id=ticket_id,
-        inspector_id=inspector.id,
+        inspector_id=reviewer.inspector_id,
         data={
             "plate_number": body.inspector_plate,
             "violation_rule_id": body.inspector_violation_rule_id,
@@ -501,21 +502,22 @@ def reject_ticket_as_inspector(
     body: InspectorRejectionBody,
     request: Request,
     ticket_repo: TicketRepository = Depends(get_ticket_repo),
-    inspector=Depends(get_current_inspector),
+    reviewer=Depends(get_current_reviewer),
 ):
-    """Reject a ticket with a mandatory reason and immutable audit entry."""
+    """Reject a ticket with a mandatory reason and immutable audit entry. Admins (super
+    inspectors) may reject any ticket."""
     from app.services.inspector_review_service import update_ticket_by_inspector
 
     ticket = ticket_repo.get(ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
-    if ticket.assigned_inspector_id not in (None, inspector.id):
+    if reviewer.kind == "inspector" and ticket.assigned_inspector_id not in (None, reviewer.inspector_id):
         raise HTTPException(status_code=403, detail="הדוח משויך לפקח אחר.")
 
     updated = update_ticket_by_inspector(
         ticket_repo.db,
         ticket_id=ticket_id,
-        inspector_id=inspector.id,
+        inspector_id=reviewer.inspector_id,
         data={
             "reject": True,
             "rejection_reason": body.rejection_reason,
