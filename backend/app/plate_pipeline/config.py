@@ -18,7 +18,7 @@ PLATE_YOLO_MODEL_PATH = "models/license_plate_detector.pt"
 PLATE_DETECT_TOP_K = 3
 ROI_HORIZONTAL_EXPAND = 0.08
 ROI_VERTICAL_EXPAND = 0.10
-MULTI_PLATE_MAX_PER_FRAME = 2
+MULTI_PLATE_MAX_PER_FRAME = 12
 
 # --- OCR ---
 OCR_CROP_MARGIN_PX = 6
@@ -35,7 +35,7 @@ ANPR_OCR_EXTRA_MARGIN_PX = 12
 ANPR_MIN_VOTES_STABLE = 2
 ANPR_PREVIEW_MAX_TRACKS = 4
 YOLO_EVERY_N_FRAMES = 3      # run YOLO vehicle detection every N frames
-MAX_FRAMES = 60               # cap video at ~2 s @ 30 fps; enough for plate read
+MAX_FRAMES = 300              # allow multi-vehicle fixed-camera clips to stabilize; worker may override
 OCR_MIN_PLATE_WIDTH = 20
 OCR_MIN_PLATE_HEIGHT = 6
 OCR_MIN_SHARPNESS = 2.0
@@ -147,7 +147,7 @@ class PipelineConfig:
     plate_inset_enabled: bool = True
     # Fixed-camera enforcement: issue a ticket for every sufficiently-tracked vehicle (parked car),
     # readable plate or not. Off for mobile spot-checks (which want a single subject).
-    emit_all_vehicles: bool = False
+    emit_all_vehicles: bool = True
 
 
 def hex_to_bgr(value, default: tuple[int, int, int] = (0, 255, 0)) -> tuple[int, int, int]:

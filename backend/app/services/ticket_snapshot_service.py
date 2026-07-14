@@ -80,6 +80,75 @@ def find_section_for_point(db: Session, camera_id, x: float, y: float) -> int | 
     return None
 
 
+
+def find_section_for_vehicle_box(
+    db: Session,
+    camera_id,
+    box_xyxy,
+    *,
+    min_hit_ratio: float = 0.10,
+) -> int | None:
+    """Return the active camera section for a vehicle box in calibration pixels.
+
+    This is intentionally more tolerant than a single center-point test. Vehicles
+    near a curb/section edge can have their visual center outside the polygon even
+    while their wheels/bottom area are inside it. We test:
+    - bottom-center point
+    - several points along the lower vehicle edge
+    - a small grid over the lower 35% of the vehicle box
+
+    The section with the most hits wins. This prevents missing additional parked
+    vehicles that are partially inside a configured camera segment.
+    """
+    if camera_id in (None, "", "mobile") or not box_xyxy:
+        return None
+    try:
+        cid = int(camera_id)
+        x1, y1, x2, y2 = [float(v) for v in box_xyxy]
+    except (ValueError, TypeError):
+        return None
+
+    if x2 <= x1 or y2 <= y1:
+        return None
+
+    segs = (
+        db.query(CameraSegment)
+        .filter(CameraSegment.camera_id == cid, CameraSegment.is_active.is_(True))
+        .order_by(CameraSegment.display_order)
+        .all()
+    )
+
+    # Representative wheel/ground-contact points.
+    points = []
+    # bottom center + lower edge quartiles
+    for fx in (0.25, 0.50, 0.75):
+        points.append((x1 + (x2 - x1) * fx, y2))
+    # lower 35% grid: helps when bottom-center falls just outside a slanted polygon
+    for fy in (0.70, 0.85, 0.97):
+        for fx in (0.20, 0.40, 0.60, 0.80):
+            points.append((x1 + (x2 - x1) * fx, y1 + (y2 - y1) * fy))
+
+    best_id = None
+    best_hits = 0
+    best_ratio = 0.0
+    total = max(1, len(points))
+
+    for seg in segs:
+        poly = seg.polygon_json
+        if not poly or len(poly) < 3:
+            continue
+        hits = sum(1 for px, py in points if _point_in_polygon(px, py, poly))
+        ratio = hits / total
+        if hits > best_hits or (hits == best_hits and ratio > best_ratio):
+            best_id = seg.id
+            best_hits = hits
+            best_ratio = ratio
+
+    if best_id is not None and (best_hits > 0 or best_ratio >= min_hit_ratio):
+        return best_id
+
+    return None
+
 def grid_rules_for_point(camera, x: float, y: float) -> list[str]:
     """For a grid zone-map camera, return the violation rule_ids painted on the cell containing the
     point (x, y in calibration pixels) — a cell may carry 0, 1 or many types — else []. Complements

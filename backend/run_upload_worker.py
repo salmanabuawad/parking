@@ -260,7 +260,7 @@ def process_one_job() -> bool:
         _ocr_every = 5
         _det_zoom = 1.60
         _det_roi_y0 = 0.26
-        _max_frames = 150
+        _max_frames = 300
         _min_votes_stable = 1
         _blur_except_plate = True
         if cfg:
@@ -271,6 +271,13 @@ def process_one_job() -> bool:
             _det_zoom = max(1.0, min(4.0, float(getattr(cfg, "enterprise_detection_zoom", 1.75) or 1.75)))
             _det_roi_y0 = max(0.0, min(0.85, float(getattr(cfg, "enterprise_detection_roi_y_start", 0.26) or 0.26)))
             _blur_except_plate = bool(getattr(cfg, "blur_except_plate", True))
+            # Multi-vehicle fixed-camera scenes need enough frames for all parked vehicles
+            # to be detected/tracked. The old 150-frame cap could finish before all cars
+            # stabilized, so use the configured video window with a safe cap.
+            try:
+                _max_frames = max(_max_frames, min(1800, int(float(getattr(cfg, "max_video_seconds", 30) or 30) * 30)))
+            except Exception:
+                _max_frames = max(_max_frames, 900)
         _plate_yolo_path = str(_plate_model) if _plate_model.is_file() else "models/license_plate_detector.pt"
 
         cars: list = []
@@ -312,7 +319,7 @@ def process_one_job() -> bool:
                 overlay_camera_id=(str(job.camera_id) if job.camera_id not in (None, "", "mobile") else None),
                 # Fixed camera (upload tied to a camera) surveys a whole scene → ticket every parked
                 # car. A mobile spot-check (no camera) keeps the single-subject behaviour.
-                emit_all_vehicles=(job.camera_id not in (None, "", "mobile")),
+                emit_all_vehicles=True,
             )
             # Vehicle-first: track each car (occlusion-robust) and read its plate across the clip.
             try:
@@ -427,23 +434,25 @@ def process_one_job() -> bool:
             _section_id = None
             try:
                 if job.camera_id not in (None, "", "mobile") and anpr_track and anpr_track.get("vehicle_box"):
-                    from app.services.ticket_snapshot_service import find_section_for_point
+                    from app.services.ticket_snapshot_service import find_section_for_vehicle_box
                     from app.models import Camera as _Camera
-                    _bx1, _by1, _bx2, _by2 = anpr_track["vehicle_box"]
-                    _ccx, _ccy = (_bx1 + _bx2) / 2.0, (_by1 + _by2) / 2.0
+                    _bx1, _by1, _bx2, _by2 = [float(v) for v in anpr_track["vehicle_box"]]
                     _cam = (db.query(_Camera).filter(_Camera.id == int(job.camera_id)).first()
                             if str(job.camera_id).isdigit() else None)
                     _vw = (video_params or {}).get("width")
                     _vh = (video_params or {}).get("height")
                     if _cam and _cam.calibration_width and _cam.calibration_height and _vw and _vh:
-                        _ccx *= _cam.calibration_width / float(_vw)
-                        _ccy *= _cam.calibration_height / float(_vh)
-                    _section_id = find_section_for_point(db, job.camera_id, _ccx, _ccy)
+                        _sx = _cam.calibration_width / float(_vw)
+                        _sy = _cam.calibration_height / float(_vh)
+                        _box_for_section = [_bx1 * _sx, _by1 * _sy, _bx2 * _sx, _by2 * _sy]
+                    else:
+                        _box_for_section = [_bx1, _by1, _bx2, _by2]
+                    _section_id = find_section_for_vehicle_box(db, job.camera_id, _box_for_section)
             except Exception as _sec_err:
                 print(f"[Job {job.id}] section derivation failed (non-fatal): {_sec_err}", flush=True)
             # Section gate: when the camera has sections, skip a car that falls outside all of them.
             if _has_sections and _section_id is None:
-                print(f"[Job {job.id}] car outside all sections — skipped", flush=True)
+                print(f"[Job {job.id}] track={anpr_track.get('track_id') if anpr_track else None} outside all sections — skipped box={anpr_track.get('vehicle_box') if anpr_track else None}", flush=True)
                 try:
                     proc_path.unlink(missing_ok=True)
                     (videos_dir / frame_rel).unlink(missing_ok=True)
