@@ -345,7 +345,7 @@ export default function CameraZoneConfigurator({ cameraId, rules }: { cameraId: 
               onMouseUp={onUp}
               onMouseLeave={onUp}
               onDoubleClick={() => drawing && finishDrawing()}
-              className="block cursor-crosshair max-w-full"
+              className="block cursor-crosshair max-w-full max-h-[52vh] object-contain"
             />
           </div>
           {mode === 'polygon' && (
