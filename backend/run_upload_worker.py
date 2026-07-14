@@ -364,11 +364,31 @@ def process_one_job() -> bool:
 
             # Resolve plate/registry/exemption/snapshot/window fields (logic lives in the service).
             video_params = extract_video_params(str(proc_path))
+            # #4 — which enforcement section the suspected vehicle sits in. Fixed cameras only
+            # (mobile uploads have no polygons → None). The car-centre is scaled from video pixels
+            # into the camera's calibration space when the two sizes differ. Best-effort; never fatal.
+            _section_id = None
+            try:
+                if job.camera_id not in (None, "", "mobile") and anpr_track and anpr_track.get("vehicle_box"):
+                    from app.services.ticket_snapshot_service import find_section_for_point
+                    from app.models import Camera as _Camera
+                    _bx1, _by1, _bx2, _by2 = anpr_track["vehicle_box"]
+                    _ccx, _ccy = (_bx1 + _bx2) / 2.0, (_by1 + _by2) / 2.0
+                    _cam = (db.query(_Camera).filter(_Camera.id == int(job.camera_id)).first()
+                            if str(job.camera_id).isdigit() else None)
+                    _vw = (video_params or {}).get("width")
+                    _vh = (video_params or {}).get("height")
+                    if _cam and _cam.calibration_width and _cam.calibration_height and _vw and _vh:
+                        _ccx *= _cam.calibration_width / float(_vw)
+                        _ccy *= _cam.calibration_height / float(_vh)
+                    _section_id = find_section_for_point(db, job.camera_id, _ccx, _ccy)
+            except Exception as _sec_err:
+                print(f"[Job {job.id}] section derivation failed (non-fatal): {_sec_err}", flush=True)
             from app.services.ticket_finalization import resolve_ticket_fields
             _rule_code = (violation_data or {}).get("violation_rule_id")
             fields = resolve_ticket_fields(
                 db, job=job, cfg=cfg, display_plate=display_plate, candidates=candidates,
-                video_params=video_params, rule_code=_rule_code,
+                video_params=video_params, rule_code=_rule_code, section_id=_section_id,
             )
             display_plate = fields["plate"]
             has_gps = bool(job.latitude) and bool(job.longitude)
@@ -425,6 +445,12 @@ def process_one_job() -> bool:
                 pass
             if anpr_track and anpr_track.get("track_id") is not None:
                 kw["suspected_vehicle_track_id"] = str(anpr_track["track_id"])[:40]
+            if anpr_track and anpr_track.get("vehicle_box"):
+                kw["suspected_vehicle_box"] = anpr_track["vehicle_box"]   # xyxy, video px (#10)
+            if anpr_track and anpr_track.get("plate_box"):
+                kw["plate_box"] = anpr_track["plate_box"]                 # xyxy, video px (#10)
+            if _section_id is not None:
+                kw["camera_section_id"] = _section_id                     # enforcement section (#4)
             ticket = ticket_repo.create(**kw)
 
             # #12 — audit ticket creation, the registry lookup, and any manual-review flag.
@@ -514,7 +540,7 @@ def process_one_job() -> bool:
                 _unique.append(_c)
             for idx, car in enumerate(_unique):
                 tid = car.get("track_id", idx + 1)
-                anpr_track = {k: car.get(k) for k in ("track_id", "raw_digits", "normalized_plate", "vote_count")}
+                anpr_track = {k: car.get(k) for k in ("track_id", "raw_digits", "normalized_plate", "vote_count", "vehicle_box", "plate_box")}
                 created.append(_finalize_ticket(
                     video_bytes_out=car.get("video_bytes") or b"",
                     plate=car.get("raw_digits") or "",

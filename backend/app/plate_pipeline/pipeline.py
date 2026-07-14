@@ -764,8 +764,17 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         norm = normalize_israeli_private_plate(raw)
         if not norm:
             continue
+        # #10 — surface the suspected-vehicle box (xyxy) and a representative plate box (last
+        # known, xywh→xyxy) so the worker can persist suspected_vehicle_box / plate_box.
+        _pbf = vs.get("plate_by_frame") or {}
+        _plate_xyxy = None
+        if _pbf:
+            _px, _py, _pw, _ph = _pbf[max(_pbf)]
+            _plate_xyxy = [int(_px), int(_py), int(_px + _pw), int(_py + _ph)]
+        _veh_xyxy = [int(c) for c in vs["last_bbox"]] if vs.get("last_bbox") else None
         rd = {"track_id": vs["tid"], "raw_digits": raw, "normalized_plate": norm, "vote_count": vc,
-              "candidates": [c for c, _ in vs["ocr"].most_common(5)]}
+              "candidates": [c for c, _ in vs["ocr"].most_common(5)],
+              "vehicle_box": _veh_xyxy, "plate_box": _plate_xyxy}
         track_results.append(rd)
         overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
         out_frames = []
@@ -805,7 +814,9 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
         for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
             if vs["seen"] < 3:
                 continue
-            rd = {"track_id": vs["tid"], "raw_digits": "", "normalized_plate": "", "vote_count": 0}
+            rd = {"track_id": vs["tid"], "raw_digits": "", "normalized_plate": "", "vote_count": 0,
+                  "vehicle_box": [int(c) for c in vs["last_bbox"]] if vs.get("last_bbox") else None,
+                  "plate_box": None}
             track_results.append(rd)
             out_frames = []
             for fidx, frame in enumerate(frames):

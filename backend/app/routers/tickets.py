@@ -111,6 +111,7 @@ def get_ticket_detail(
         "duplicate_of_ticket_id": getattr(ticket, "duplicate_of_ticket_id", None),
         "suspected_vehicle_track_id": getattr(ticket, "suspected_vehicle_track_id", None),
         "suspected_vehicle_box": getattr(ticket, "suspected_vehicle_box", None),
+        "plate_box": getattr(ticket, "plate_box", None),
         "camera_config_snapshot": getattr(ticket, "camera_config_snapshot", None),
         "camera_section_snapshot": getattr(ticket, "camera_section_snapshot", None),
         "violation_rule_snapshot": getattr(ticket, "violation_rule_snapshot", None),

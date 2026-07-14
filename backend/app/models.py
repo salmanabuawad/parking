@@ -250,7 +250,8 @@ class Ticket(Base):
     clear_plate_screenshot_id = Column(Integer, nullable=True)
     violation_context_screenshot_id = Column(Integer, nullable=True)
     # --- Suspected-vehicle marker (green pending -> red approved) ---
-    suspected_vehicle_box = Column(JSON, nullable=True)
+    suspected_vehicle_box = Column(JSON, nullable=True)          # car bbox [x1,y1,x2,y2], video px (#10)
+    plate_box = Column(JSON, nullable=True)                      # plate bbox [x1,y1,x2,y2], video px (#10)
     suspected_vehicle_track_id = Column(String(40), nullable=True)
     suspected_vehicle_marker_state = Column(String(20), default="pending", nullable=False)
     # --- Immutable snapshots at creation (never recomputed from live config) ---
