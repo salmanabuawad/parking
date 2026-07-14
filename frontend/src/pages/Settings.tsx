@@ -81,6 +81,7 @@ export default function Settings() {
   const [pendingColor, setPendingColor] = useState('#00FF00')
   const [approvedColor, setApprovedColor] = useState('#FF0000')
   const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
   useEffect(() => {
     settingsApi.get().then(({ data }) => {
@@ -116,6 +117,7 @@ export default function Settings() {
 
   const save = async () => {
     setSaving(true)
+    setSaveMsg(null)
     try {
       const { data } = await settingsApi.update({
         blur_kernel_size: blurSize,
@@ -146,8 +148,9 @@ export default function Settings() {
         approved_frame_color: approvedColor,
       })
       setSettings(data)
+      setSaveMsg({ kind: 'ok', text: 'ההגדרות נשמרו' })
     } catch (err) {
-      alert((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('failedToSave'))
+      setSaveMsg({ kind: 'err', text: (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || t('failedToSave') })
     } finally {
       setSaving(false)
     }
@@ -306,10 +309,15 @@ export default function Settings() {
                 </div>
               </Section>
 
-              <div className="flex pt-1">
+              <div className="flex items-center gap-3 pt-1">
                 <button type="button" onClick={save} disabled={saving} className="btn-primary">
                   {saving ? t('saving') : t('save')}
                 </button>
+                {saveMsg && (
+                  <span className={`text-theme-sm ${saveMsg.kind === 'ok' ? 'text-emerald-600' : 'text-red-600'}`}>
+                    {saveMsg.kind === 'ok' ? '✓ ' : '✗ '}{saveMsg.text}
+                  </span>
+                )}
               </div>
             </>
           )}

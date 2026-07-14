@@ -119,6 +119,8 @@ export default function Cameras() {
   const [calibFile, setCalibFile] = useState<File | null>(null)   // staged calibration image/video → uploaded on save
   const [simSources, setSimSources] = useState<SimulationSource[]>([])
   const [seeding, setSeeding] = useState(false)
+  const [formErr, setFormErr] = useState<string | null>(null)   // camera-modal validation/save error
+  const [listMsg, setListMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)   // page-level (seed/remove)
   const [view, setView] = useState<'list' | 'map'>('list')
   const [mapStyleUrl, setMapStyleUrl] = useState<string | null>(null)
   const [cities, setCities] = useState<{ key: string; label: string }[]>([])
@@ -219,18 +221,19 @@ export default function Cameras() {
     setTab('general')
     setModalOpen(true)
   }
-  const closeModal = () => { setModalOpen(false); setEditing(null); setForm(EMPTY_FORM); setCalibFile(null) }
+  const closeModal = () => { setModalOpen(false); setEditing(null); setForm(EMPTY_FORM); setCalibFile(null); setFormErr(null) }
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.name.trim()) { setTab('general'); return }
+    setFormErr(null)
+    if (!form.name.trim()) { setTab('general'); setFormErr('נדרש שם למצלמה'); return }
     try {
       const cfg = parseJson(form.connection_config)
       if (form.source_type === 'simulation' && form.simulation_source) cfg.simulation_source = form.simulation_source
       const lat = form.latitude.trim() === '' ? null : Number(form.latitude)
       const lng = form.longitude.trim() === '' ? null : Number(form.longitude)
       if ((lat !== null && Number.isNaN(lat)) || (lng !== null && Number.isNaN(lng))) {
-        setTab('location'); alert('קו רוחב / קו אורך לא תקינים'); return
+        setTab('location'); setFormErr('קו רוחב / קו אורך לא תקינים'); return
       }
       const payload = {
         ...form,
@@ -248,26 +251,29 @@ export default function Cameras() {
       else { const res = await camerasApi.create(payload); camId = res.data.id }
       await parkingZonesApi.setCameraZones(camId, form.selected_zone_ids)
       // Upload the staged calibration image/video (a frame is extracted server-side) if one was chosen.
+      let calibWarn: string | null = null
       if (calibFile) {
         try { await camerasApi.setSnapshot(camId, calibFile) }
-        catch (e) { alert('המצלמה נשמרה, אך העלאת תמונת הכיול נכשלה: ' + ((e as { message?: string })?.message || '')) }
+        catch (e) { calibWarn = 'המצלמה נשמרה, אך העלאת תמונת הכיול נכשלה: ' + ((e as { message?: string })?.message || '') }
       }
       closeModal(); load()
+      if (calibWarn) setListMsg({ kind: 'err', text: calibWarn })
     } catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
-      alert(ax.response?.data?.detail || ax.message)
+      setFormErr(ax.response?.data?.detail || ax.message || 'שגיאה בשמירת המצלמה')
     }
   }
 
   const seedSimulation = async () => {
     setSeeding(true)
+    setListMsg(null)
     try {
       const res = await simulationApi.seedCameras()
       await load()
-      alert(`נוצרו/עודכנו ${res.count} מצלמות סימולציה — פתח מצלמה לעריכה כדי לצייר מקטעים`)
+      setListMsg({ kind: 'ok', text: `נוצרו/עודכנו ${res.count} מצלמות סימולציה — פתח מצלמה לעריכה כדי לצייר מקטעים` })
     } catch (err: unknown) {
       const ax = err as { message?: string }
-      alert(ax.message || 'שגיאה ביצירת מצלמות סימולציה')
+      setListMsg({ kind: 'err', text: ax.message || 'שגיאה ביצירת מצלמות סימולציה' })
     } finally { setSeeding(false) }
   }
 
@@ -276,10 +282,11 @@ export default function Cameras() {
 
   const remove = async (id: number) => {
     if (!confirm(t('removeCameraConfirm'))) return
+    setListMsg(null)
     try { await camerasApi.delete(id); load() }
     catch (err: unknown) {
       const ax = err as { response?: { data?: { detail?: string } }; message?: string }
-      alert(ax.response?.data?.detail || ax.message)
+      setListMsg({ kind: 'err', text: ax.response?.data?.detail || ax.message || 'שגיאה במחיקת המצלמה' })
     }
   }
 
@@ -343,6 +350,13 @@ export default function Cameras() {
         )}
         <button onClick={openAdd} className="btn-primary"><Plus className="w-4 h-4" /> {t('addCamera')}</button>
       </div>
+
+      {listMsg && (
+        <div className={`flex items-start gap-2 rounded-lg px-3 py-2 text-theme-sm border ${listMsg.kind === 'ok' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+          <span className="flex-1">{listMsg.text}</span>
+          <button onClick={() => setListMsg(null)} className="shrink-0 opacity-60 hover:opacity-100 leading-none" title="סגור">✕</button>
+        </div>
+      )}
 
       {/* Camera list / map */}
       <div className="flex flex-col flex-1 min-h-0">
@@ -587,7 +601,9 @@ export default function Cameras() {
                 <>
                   <button type="submit" form="camera-form" className="btn-primary">{editing ? t('update') : t('add')}</button>
                   <button type="button" onClick={closeModal} className="btn-cancel">{t('cancel')}</button>
-                  {!editing && <span className="text-theme-xs text-theme-text-muted ms-auto">שמור כדי להגדיר מפת אכיפה</span>}
+                  {formErr
+                    ? <span className="text-red-600 text-theme-sm ms-auto">{formErr}</span>
+                    : (!editing && <span className="text-theme-xs text-theme-text-muted ms-auto">שמור כדי להגדיר מפת אכיפה</span>)}
                 </>
               )}
             </div>

@@ -68,6 +68,7 @@ export default function ViolationRules() {
   const [form, setForm] = useState<RuleForm>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [listErr, setListErr] = useState<string | null>(null)
   const [busyRow, setBusyRow] = useState<string | null>(null)
 
   const load = async () => {
@@ -145,11 +146,12 @@ export default function ViolationRules() {
   const remove = async (r: ViolationRule) => {
     if (!confirm(`למחוק את סוג העבירה "${r.title_he}" (${r.rule_id})?\nדוחות קיימים לא יושפעו (נשמר תצלום כלל בכל דוח).`)) return
     setBusyRow(r.rule_id)
+    setListErr(null)
     try {
       await violationRulesApi.remove(r.rule_id)
       setRules(prev => prev.filter(x => x.rule_id !== r.rule_id))
     } catch (e: unknown) {
-      alert((e as { message?: string })?.message || 'שגיאה במחיקה')
+      setListErr((e as { message?: string })?.message || 'שגיאה במחיקת סוג העבירה')
     } finally {
       setBusyRow(null)
     }
@@ -157,11 +159,12 @@ export default function ViolationRules() {
 
   const toggleActive = async (rule: ViolationRule) => {
     setBusyRow(rule.rule_id)
+    setListErr(null)
     try {
       const { data } = await violationRulesApi.update(rule.rule_id, { is_active: !rule.is_active })
       setRules(prev => prev.map(r => r.rule_id === rule.rule_id ? data : r))
     } catch (e: unknown) {
-      alert((e as { message?: string })?.message || 'שגיאה בעדכון')
+      setListErr((e as { message?: string })?.message || 'שגיאה בעדכון סוג העבירה')
     } finally {
       setBusyRow(null)
     }
@@ -186,6 +189,13 @@ export default function ViolationRules() {
         הוסף, ערוך או מחק סוגי עבירה. כללים מושבתים לא ייבדקו בניתוח הוידאו.
         ניתן להגדיר לכל מצלמה אילו כללים פעילים עבורה בדף המצלמות.
       </p>
+
+      {listErr && (
+        <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-theme-sm border bg-red-50 text-red-700 border-red-200">
+          <span className="flex-1">{listErr}</span>
+          <button onClick={() => setListErr(null)} className="shrink-0 opacity-60 hover:opacity-100 leading-none" title="סגור">✕</button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-theme-text-muted">{t('loading')}</p>
