@@ -489,34 +489,39 @@ export default function Cameras() {
                     </div>
                     <div>
                       <label className="label-base">ימי ושעות פעילות</label>
-                      <div className="flex flex-col gap-1.5">
+                      {/* Compact day-picker: 7 chips on one row; hours shown only for active days. */}
+                      <div className="flex flex-wrap gap-1.5 mb-2">
                         {DAYS.map(d => {
                           const on = d.key in form.active_schedule
-                          const hrs = form.active_schedule[d.key] || { from: '', to: '' }
                           return (
-                            <div key={d.key} className="flex items-center gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => toggleDay(d.key)}
-                                aria-pressed={on}
-                                className={`w-9 h-9 rounded-md border text-theme-sm font-medium shrink-0 transition-colors ${on ? 'bg-theme-accent text-white border-theme-accent' : 'bg-white text-theme-text-primary border-theme-card-border hover:bg-black/5'}`}
-                              >
-                                {d.label}
-                              </button>
-                              {on ? (
-                                <>
-                                  <span className="text-theme-sm text-theme-text-muted">משעה</span>
-                                  <input type="time" value={hrs.from} onChange={e => setDayTime(d.key, 'from', e.target.value)} className="input-base w-32" />
-                                  <span className="text-theme-sm text-theme-text-muted">עד</span>
-                                  <input type="time" value={hrs.to} onChange={e => setDayTime(d.key, 'to', e.target.value)} className="input-base w-32" />
-                                </>
-                              ) : (
-                                <span className="text-theme-xs text-theme-text-muted">לא פעיל</span>
-                              )}
-                            </div>
+                            <button
+                              key={d.key}
+                              type="button"
+                              onClick={() => toggleDay(d.key)}
+                              aria-pressed={on}
+                              className={`w-9 h-9 rounded-md border text-theme-sm font-medium shrink-0 transition-colors ${on ? 'bg-theme-accent text-white border-theme-accent' : 'bg-white text-theme-text-muted border-theme-card-border hover:bg-black/5'}`}
+                            >
+                              {d.label}
+                            </button>
                           )
                         })}
                       </div>
+                      {DAYS.some(d => d.key in form.active_schedule) && (
+                        <div className="flex flex-col gap-1.5">
+                          {DAYS.filter(d => d.key in form.active_schedule).map(d => {
+                            const hrs = form.active_schedule[d.key] || { from: '', to: '' }
+                            return (
+                              <div key={d.key} className="flex items-center gap-2 text-theme-sm">
+                                <span className="w-6 font-medium shrink-0">{d.label}</span>
+                                <input type="time" value={hrs.from} onChange={e => setDayTime(d.key, 'from', e.target.value)} className="input-base w-28" />
+                                <span className="text-theme-text-muted">–</span>
+                                <input type="time" value={hrs.to} onChange={e => setDayTime(d.key, 'to', e.target.value)} className="input-base w-28" />
+                                <span className="text-theme-xs text-theme-text-muted">{(!hrs.from && !hrs.to) ? 'כל היום' : ''}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
                       <p className="text-theme-xs text-theme-text-muted mt-1">בחר ימים והגדר שעות לכל יום. יום ללא שעות = פעיל כל היום. ללא ימים = פעיל תמיד.</p>
                     </div>
                     <label className="flex items-center gap-2 text-theme-sm"><input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} /> {t('active')}</label>
