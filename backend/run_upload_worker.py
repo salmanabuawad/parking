@@ -622,24 +622,42 @@ def process_one_job() -> bool:
             for idx, car in enumerate(_unique):
                 tid = car.get("track_id", idx + 1)
                 anpr_track = {k: car.get(k) for k in ("track_id", "raw_digits", "normalized_plate", "vote_count", "vehicle_box", "plate_box")}
-                _t = _finalize_ticket(
-                    video_bytes_out=car.get("video_bytes") or b"",
-                    plate=car.get("raw_digits") or "",
-                    anpr_track=anpr_track,
-                    suffix=f"_car{tid}",
-                    candidates=car.get("candidates"),
-                )
-                if _t is not None:   # None = section-gated out
-                    created.append(_t)
+                # Per-vehicle isolation: one bad car must never abort the rest of the job.
+                try:
+                    _t = _finalize_ticket(
+                        video_bytes_out=car.get("video_bytes") or b"",
+                        plate=car.get("raw_digits") or "",
+                        anpr_track=anpr_track,
+                        suffix=f"_car{tid}",
+                        candidates=car.get("candidates"),
+                    )
+                    if _t is not None:   # None = section-gated out
+                        created.append(_t)
+                except Exception as _car_err:
+                    print(f"[Job {job.id}] track {tid} failed — skipped, continuing with the other cars: {_car_err}", flush=True)
+                    traceback.print_exc()
+                    try:
+                        db.rollback()   # a failed insert leaves the session dirty → would break every later car
+                    except Exception:
+                        pass
+                    continue
         else:
-            _t = _finalize_ticket(
-                video_bytes_out=overall_blurred,
-                plate="",
-                anpr_track=None,
-                suffix="",
-            )
-            if _t is not None:
-                created.append(_t)
+            try:
+                _t = _finalize_ticket(
+                    video_bytes_out=overall_blurred,
+                    plate="",
+                    anpr_track=None,
+                    suffix="",
+                )
+                if _t is not None:
+                    created.append(_t)
+            except Exception as _fb_err:
+                print(f"[Job {job.id}] fallback 'not detected' ticket failed: {_fb_err}", flush=True)
+                traceback.print_exc()
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
 
         if not created:
             # Section-gated and no car fell inside a section (or nothing detected) → complete with
