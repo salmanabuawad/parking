@@ -733,6 +733,30 @@ export default function TicketReview() {
                 <ShieldCheck className="w-4 h-4 text-green-600" /> בדיקה ואישור
               </h3>
 
+              {/* 4 tagged images — directly under the header so the reviewer captures evidence first */}
+              <div className="border-b border-theme-card-border mb-2 pb-2">
+                <div className="text-[11px] text-theme-text-muted mb-1">
+                  4 תמונות לדוח (עצור את הוידאו ולחץ){ticket.require_evidence_images ? <span className="text-red-500"> — חובה לאישור</span> : null}:
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {ROLES.map((role) => {
+                    const has = screenshots.some((s) => s.role === role.key);
+                    return (
+                      <button
+                        key={role.key}
+                        type="button"
+                        onClick={() => captureScreenshotRole(role.key)}
+                        disabled={capturing || state !== "ready"}
+                        className={`text-xs px-2 py-1.5 rounded-md border flex items-center justify-center gap-1 ${has ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-theme-card-border text-theme-text-primary hover:bg-black/5"}`}
+                      >
+                        {has ? <Check className="w-3 h-3" /> : <Camera className="w-3 h-3" />}
+                        {role.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <Field label="סוג עבירה">
                 <select className="input-base" value={aRule} onChange={(e) => setARule(e.target.value)}>
                   <option value="">— בחר —</option>
@@ -770,30 +794,6 @@ export default function TicketReview() {
               <div className="flex gap-2">
                 <div className="flex-1"><Field label="תחילת עבירה"><input type="datetime-local" className="input-base" value={aStart} onChange={(e) => setAStart(e.target.value)} /></Field></div>
                 <div className="flex-1"><Field label="סיום עבירה"><input type="datetime-local" className="input-base" value={aEnd} onChange={(e) => setAEnd(e.target.value)} /></Field></div>
-              </div>
-
-              {/* 4 tagged images */}
-              <div className="border-t border-theme-card-border my-2 pt-2">
-                <div className="text-[11px] text-theme-text-muted mb-1">
-                  4 תמונות לדוח (עצור את הוידאו ולחץ){ticket.require_evidence_images ? <span className="text-red-500"> — חובה לאישור</span> : null}:
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {ROLES.map((role) => {
-                    const has = screenshots.some((s) => s.role === role.key);
-                    return (
-                      <button
-                        key={role.key}
-                        type="button"
-                        onClick={() => captureScreenshotRole(role.key)}
-                        disabled={capturing || state !== "ready"}
-                        className={`text-xs px-2 py-1.5 rounded-md border flex items-center justify-center gap-1 ${has ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-theme-card-border text-theme-text-primary hover:bg-black/5"}`}
-                      >
-                        {has ? <Check className="w-3 h-3" /> : <Camera className="w-3 h-3" />}
-                        {role.label}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
               {approveMsg && (
