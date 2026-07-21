@@ -317,33 +317,16 @@ export default function TicketReview() {
     setCapturing(true);
     setCaptureMsg(null);
     try {
-      const vw = video.videoWidth || 640;
-      const vh = video.videoHeight || 360;
-      const ctx = canvas.getContext("2d");
-      const box = role === "plate_clear" ? (ticket?.plate_box as number[] | undefined) : undefined;
-      if (box && box.length === 4 && Number(box[2]) > Number(box[0])) {
-        // "מספר רכב ברור" → crop to the detected plate (with margin) and upscale, so the evidence
-        // image shows only the plate number rather than the whole frame.
-        const [x1, y1, x2, y2] = box.map(Number);
-        const padX = Math.max(8, Math.round((x2 - x1) * 0.35));
-        const padY = Math.max(6, Math.round((y2 - y1) * 0.60));
-        const sx = Math.max(0, x1 - padX);
-        const sy = Math.max(0, y1 - padY);
-        const sw = Math.min(vw - sx, (x2 - x1) + padX * 2);
-        const sh = Math.min(vh - sy, (y2 - y1) + padY * 2);
-        const scale = Math.min(4, Math.max(1, 560 / Math.max(1, sw)));   // upscale so it stays legible
-        canvas.width = Math.max(1, Math.round(sw * scale));
-        canvas.height = Math.max(1, Math.round(sh * scale));
-        ctx?.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-      } else {
-        canvas.width = vw;
-        canvas.height = vh;
-        ctx?.drawImage(video, 0, 0);
-      }
+      // Capture the full frame — the plate is already burned in as a sharp zoomed inset (top-left),
+      // so cropping to the detected plate_box (which drifts on a panning camera) only produced wrong
+      // crops. The full frame reliably shows the plate via that inset.
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 360;
+      canvas.getContext("2d")?.drawImage(video, 0, 0);
       const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
       await ticketsApi.saveScreenshot(ticketId, dataUrl, video.currentTime, role);
       setScreenshots(await ticketsApi.listScreenshots(ticketId));
-      setCaptureMsg(box ? "✓ נשמר (חתוך ללוחית)" : "✓ נשמר");
+      setCaptureMsg("✓ נשמר");
     } catch (err: any) {
       setCaptureMsg(`✗ ${err?.message || "שגיאה"}`);
     } finally {
