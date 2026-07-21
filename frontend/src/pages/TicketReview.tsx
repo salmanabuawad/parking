@@ -237,7 +237,10 @@ export default function TicketReview() {
           setEditFine(detail.fine_amount != null ? String(detail.fine_amount) : "");
           setEditPlate(detail.license_plate || "");
           setARule(detail.inspector_violation_rule_id || detail.violation_rule_id || "");
-          setAPlate(detail.license_plate && detail.license_plate !== PLATE_UNKNOWN ? detail.license_plate : "");
+          // "מספר רכב (לאימות)" is a verification field: start empty so the inspector types the plate
+          // independently (then it's checked against the auto-detected number). Only prefill with the
+          // inspector's OWN earlier entry when re-opening an already-reviewed ticket — never the detected plate.
+          setAPlate(detail.inspector_plate && detail.inspector_plate !== PLATE_UNKNOWN ? detail.inspector_plate : "");
           setAColor(detail.vehicle_color || "");
           setAType(detail.vehicle_type || "");
           setAStart(toLocalInput(detail.violation_start_at));
