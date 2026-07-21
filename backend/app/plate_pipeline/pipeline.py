@@ -848,8 +848,26 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
             video_bytes = tmp.read_bytes() if tmp.exists() else b""
         finally:
             tmp.unlink(missing_ok=True)
+        # Plate-only evidence (role=plate_clear): the engine's single best plate crop for this car,
+        # upscaled for legibility. Saved as the ticket's clear-plate image so the inspector never has
+        # to grab it from a panning frame (which drifts to empty road). Constant per car — it is the
+        # exact crop the top-left inset shows, but standalone and zero scene.
+        _best_jpg = b""
+        _bc = vs.get("best_crop")
+        if _bc is not None and getattr(_bc, "size", 0):
+            try:
+                _bh, _bw = _bc.shape[:2]
+                if _bw > 0 and _bh > 0:
+                    _sc = max(1.0, 480.0 / float(_bw))
+                    _big = cv2.resize(_bc, (int(_bw * _sc), int(_bh * _sc)), interpolation=cv2.INTER_CUBIC)
+                    _ok, _buf = cv2.imencode(".jpg", _big, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+                    if _ok:
+                        _best_jpg = _buf.tobytes()
+            except Exception:
+                _best_jpg = b""
         track_results.append(rd)
-        tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"], "unread": not readable})
+        tracks_render.append({**rd, "video_bytes": video_bytes, "frames_seen": vs["seen"],
+                              "unread": not readable, "best_crop_jpg": _best_jpg})
 
     for vs in sorted(veh.values(), key=lambda d: d["seen"], reverse=True):
         if len(tracks_render) >= _MAX_CARS:

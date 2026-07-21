@@ -749,7 +749,15 @@ export default function TicketReview() {
                       <button
                         key={role.key}
                         type="button"
-                        onClick={() => captureScreenshotRole(role.key)}
+                        onClick={() => {
+                          // The clear-plate image is auto-filled by the engine (the exact plate crop).
+                          // Don't let a stray click replace it with a full frame — that was the wrong result.
+                          if (role.key === "plate_clear" && has) {
+                            setCaptureMsg("מספר הרכב זוהה אוטומטית מהמנוע");
+                            return;
+                          }
+                          captureScreenshotRole(role.key);
+                        }}
                         disabled={capturing || state !== "ready"}
                         className={`text-xs px-2 py-1.5 rounded-md border flex items-center justify-center gap-1 ${has ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-theme-card-border text-theme-text-primary hover:bg-black/5"}`}
                       >

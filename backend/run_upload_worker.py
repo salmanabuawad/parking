@@ -403,7 +403,7 @@ def process_one_job() -> bool:
             except Exception:
                 pass
 
-        def _finalize_ticket(*, video_bytes_out: bytes, plate: str, anpr_track, suffix: str, candidates=None):
+        def _finalize_ticket(*, video_bytes_out: bytes, plate: str, anpr_track, suffix: str, candidates=None, best_crop_jpg: bytes = b""):
             """Save one car's video + frame, sign it, create its ticket, attach violation/anpr/screenshots."""
             display_plate = "" if (not plate or plate == "11111") else plate
             proc_rel = f"processed/job_{job.id}{suffix}.mp4"
@@ -599,6 +599,33 @@ def process_one_job() -> bool:
                 db.commit()
             except Exception as ss_err:
                 print(f"[Job {job.id}] screenshots failed (non-fatal): {ss_err}", flush=True)
+
+            # #7.4 — auto clear-plate evidence (role=plate_clear): the engine's best plate crop, so the
+            # approval gate's clear-plate requirement is met with the correct plate image (never a
+            # drifting full frame). Standalone crop, zero scene. Replaces any prior plate_clear image.
+            if best_crop_jpg:
+                try:
+                    from sqlalchemy import text as _text_pc
+                    pc_dir = videos_dir / "screenshots" / f"ticket_{ticket.id}"
+                    pc_dir.mkdir(parents=True, exist_ok=True)
+                    (pc_dir / "plate_clear.jpg").write_bytes(best_crop_jpg)
+                    _pc_rel = f"screenshots/ticket_{ticket.id}/plate_clear.jpg"
+                    db.execute(_text_pc("DELETE FROM ticket_screenshots WHERE ticket_id = :t AND role = 'plate_clear'"),
+                               {"t": ticket.id})
+                    db.execute(
+                        _text_pc(
+                            "INSERT INTO ticket_screenshots"
+                            " (ticket_id, storage_path, image_path, frame_timestamp_ms, video_timestamp_text,"
+                            "  frame_time_sec, captured_at, created_by, role, is_blurred_source)"
+                            " VALUES (:t, :p, :p, 0, :tt, 0, :c, 'engine', 'plate_clear', false)"
+                        ),
+                        {"t": ticket.id, "p": _pc_rel, "tt": "00:00", "c": datetime.now(timezone.utc)},
+                    )
+                    db.commit()
+                    print(f"[Job {job.id}] ticket {ticket.id}: auto plate_clear evidence saved", flush=True)
+                except Exception as _pc_err:
+                    db.rollback()
+                    print(f"[Job {job.id}] plate_clear auto-evidence failed (non-fatal): {_pc_err}", flush=True)
             return ticket, display_plate
 
         # --- Step 3: one ticket per car (or a single 'not detected' ticket if none) ---
@@ -630,6 +657,7 @@ def process_one_job() -> bool:
                         anpr_track=anpr_track,
                         suffix=f"_car{tid}",
                         candidates=car.get("candidates"),
+                        best_crop_jpg=car.get("best_crop_jpg") or b"",
                     )
                     if _t is not None:   # None = section-gated out
                         created.append(_t)
