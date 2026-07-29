@@ -67,13 +67,6 @@ function fmtTimeMs(iso?: string): string {
   const t = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
   return `${t}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
-function fmtClockMs(iso?: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const s = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
-  return `${s}.${String(d.getMilliseconds()).padStart(3, "0")}`;
-}
 
 // The screenshot-image endpoint is auth-gated, and an <img src> can't send a Bearer header.
 // Fetch it as an authenticated blob (same pattern as the video) and render an object URL.
@@ -890,21 +883,9 @@ export default function TicketReview() {
                 <div className="flex-1"><Field label="סוג רכב"><input className="input-base" value={aType} onChange={(e) => setAType(e.target.value)} /></Field></div>
               </div>
 
-              {/* Recorded from the video clock via the תחילת/סיום עבירה buttons above (ms precision). */}
-              <div className="flex gap-2">
-                <div className="flex-1"><Field label="תחילת עבירה">
-                  <div className="input-base font-mono text-theme-sm flex items-center min-h-[2.25rem]">
-                    {aStart ? fmtClockMs(aStart) : <span className="text-theme-text-muted text-[11px]">עצור את הוידאו ולחץ "תחילת עבירה"</span>}
-                  </div>
-                </Field></div>
-                <div className="flex-1"><Field label="סיום עבירה">
-                  <div className="input-base font-mono text-theme-sm flex items-center min-h-[2.25rem]">
-                    {aEnd ? fmtClockMs(aEnd) : <span className="text-theme-text-muted text-[11px]">עצור את הוידאו ולחץ "סיום עבירה"</span>}
-                  </div>
-                </Field></div>
-              </div>
+              {/* Start/end are captured + shown by the buttons up top — only the derived duration lives here. */}
               {aStart && aEnd && !isNaN(new Date(aStart).getTime()) && !isNaN(new Date(aEnd).getTime()) && new Date(aEnd) > new Date(aStart) && (
-                <div className="text-[11px] text-theme-text-muted -mt-1">
+                <div className="text-[11px] text-theme-text-muted">
                   משך העבירה: {((new Date(aEnd).getTime() - new Date(aStart).getTime()) / 1000).toFixed(1)} שניות
                 </div>
               )}
