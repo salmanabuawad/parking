@@ -38,7 +38,6 @@ interface TicketDetail {
   vehicle_registry_lookup_status?: string;
   assigned_inspector_id?: number | null;
   require_evidence_images?: boolean;
-  plate_box?: number[] | null;   // xyxy in video px — crops the "clear plate" evidence to the plate
 }
 
 interface Screenshot {
