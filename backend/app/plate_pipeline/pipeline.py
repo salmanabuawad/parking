@@ -838,7 +838,9 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                                              box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
             if _plate_inset and vs["best_crop"] is not None:
                 of = engine.draw_preview(of, vs["best_crop"])
-            _txt_org = (12, of.shape[0] - 16)
+            # Lower-left, but lifted off the very bottom edge so the player's control bar never hides it
+            # (portrait clips are tall — text at the extreme bottom sat under the scrubber when paused).
+            _txt_org = (14, int(of.shape[0] * 0.86))
             cv2.putText(of, overlay_text, _txt_org, cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 5, cv2.LINE_AA)   # dark outline for contrast
             cv2.putText(of, overlay_text, _txt_org, cv2.FONT_HERSHEY_SIMPLEX, 0.9, _color, 2, cv2.LINE_AA)
             if _clock_on:
