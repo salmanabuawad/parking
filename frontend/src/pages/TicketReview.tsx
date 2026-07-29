@@ -32,6 +32,10 @@ interface TicketDetail {
   inspector_plate?: string;
   vehicle_color?: string;
   vehicle_type?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_year?: string | number;
+  vehicle_registry_lookup_status?: string;
   assigned_inspector_id?: number | null;
   require_evidence_images?: boolean;
   plate_box?: number[] | null;   // xyxy in video px — crops the "clear plate" evidence to the plate
@@ -840,6 +844,46 @@ export default function TicketReview() {
                     : <div className="text-[11px] text-red-600 font-semibold mt-0.5">⚠ שגיאה: אינו תואם למספר שזוהה אוטומטית ({detected})</div>;
                 })()}
               </Field>
+
+              {/* Government vehicle-registry check (מאגר ממשלתי): plate found + complete record → 100%. */}
+              <div className="rounded-md border border-theme-card-border p-2 bg-black/[0.02]">
+                {(() => {
+                  const found = ticket.vehicle_registry_lookup_status === "confirmed";
+                  const rows = [
+                    { label: "יצרן", v: ticket.vehicle_make },
+                    { label: "דגם", v: ticket.vehicle_model },
+                    { label: "צבע", v: ticket.vehicle_color },
+                    { label: "סוג", v: ticket.vehicle_type },
+                    { label: "שנה", v: ticket.vehicle_year },
+                  ];
+                  const core = [ticket.vehicle_make, ticket.vehicle_model, ticket.vehicle_color, ticket.vehicle_type];
+                  const present = core.filter((a) => a != null && String(a).trim() !== "").length;
+                  const score = found ? 60 + 10 * present : 0;
+                  const complete = found && present === 4;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5 text-theme-text-muted" />מאגר רכבים ממשלתי</span>
+                        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${complete ? "bg-green-100 text-green-700" : found ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
+                          {found ? `התאמה ${score}%` : "לא נמצא במאגר"}
+                        </span>
+                      </div>
+                      {found ? (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[11px]">
+                          {rows.map((r) => (
+                            <div key={r.label} className="flex justify-between gap-2">
+                              <span className="text-theme-text-muted">{r.label}:</span>
+                              <span className="font-medium truncate">{r.v != null && String(r.v).trim() !== "" ? r.v : "—"}</span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-theme-text-muted">מספר הרכב שזוהה אינו קיים במאגר הממשלתי — נדרשת בדיקה ידנית.</div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
 
               <div className="flex gap-2">
                 <div className="flex-1"><Field label="צבע רכב"><input className="input-base" value={aColor} onChange={(e) => setAColor(e.target.value)} /></Field></div>
