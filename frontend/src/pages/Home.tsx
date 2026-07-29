@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
-import { jobStatusBadge } from '../lib/jobStatus'
+import { ticketStatusBadge } from '../lib/ticketStatus'
 import { LayoutDashboard, RefreshCw, Layers, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
-import { uploadApi } from '../api'
+import { ticketsApi } from '../api'
 import { getFontSizeWidthMultiplier, subscribeFontSize } from '../lib/fontSizeStore'
 import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
@@ -27,7 +27,7 @@ interface UploadJob {
 }
 
 function StatusCell({ value }: { value: string }) {
-  const s = jobStatusBadge(value)
+  const s = ticketStatusBadge(value)
   return <span className={`badge ${s.cls}`}>{s.label}</span>
 }
 
@@ -64,10 +64,19 @@ export default function Home() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      const { data } = await uploadApi.listJobs()
-      setJobs(data); setError(false)
+      const { data } = await ticketsApi.list()
+      // The dashboard lists TICKETS (one processed video can yield several) — map each ticket to a row,
+      // using its capture time (not the upload time), so all tickets show with the correct clock.
+      setJobs((data || []).map((t: any) => ({
+        job_id: t.id,
+        status: t.status,
+        ticket_id: t.id,
+        license_plate: t.license_plate,
+        created_at: t.captured_at,
+      })))
+      setError(false)
     } catch (err) {
-      console.error('Failed to fetch jobs', err); setError(true)
+      console.error('Failed to fetch tickets', err); setError(true)
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -82,16 +91,16 @@ export default function Home() {
 
   const counts = {
     total: jobs.length,
-    pending: jobs.filter((j) => j.status === 'queued').length,
-    completed: jobs.filter((j) => j.status === 'completed').length,
-    failed: jobs.filter((j) => j.status === 'failed').length,
+    pending: jobs.filter((j) => j.status === 'pending_review').length,
+    completed: jobs.filter((j) => j.status === 'approved').length,
+    failed: jobs.filter((j) => j.status === 'rejected').length,
   }
   const visibleJobs = statusFilter ? jobs.filter((j) => j.status === statusFilter) : jobs
 
   const colDefs = useMemo<ColDef<UploadJob>[]>(() => {
     const w = getFontSizeWidthMultiplier()
     return [
-      { field: 'job_id', headerName: he.home.job, width: Math.round(90 * w), sort: 'desc' },
+      { field: 'job_id', headerName: 'מס׳ דוח', width: Math.round(90 * w), sort: 'desc' },
       {
         field: 'status',
         headerName: he.home.status,
@@ -106,20 +115,9 @@ export default function Home() {
       },
       {
         field: 'created_at',
-        headerName: he.home.created,
+        headerName: 'תאריך',
         flex: 1,
         valueFormatter: (p) => p.value ? new Date(p.value).toLocaleString('he-IL') : '—',
-      },
-      {
-        field: 'error_message',
-        headerName: he.home.error,
-        flex: 1.5,
-        cellRenderer: (p: ICellRendererParams<UploadJob>) =>
-          p.value
-            ? <span title={p.value} className="text-red-600 text-theme-xs">
-                {p.value.length > 70 ? `${p.value.slice(0, 70)}…` : p.value}
-              </span>
-            : <span className="text-theme-text-muted">—</span>,
       },
       {
         headerName: he.home.openTicket,
@@ -158,16 +156,16 @@ export default function Home() {
 
       {/* Stat cards */}
       <div className="flex flex-wrap gap-3">
-        <StatCard label="סה״כ"   value={counts.total}     accent="text-blue-700"  tint="bg-blue-50 text-blue-600"   icon={<Layers className="w-5 h-5" />}         active={statusFilter === null}        onClick={() => setStatusFilter(null)} />
-        <StatCard label="ממתינים" value={counts.pending}   accent="text-amber-600" tint="bg-amber-50 text-amber-600" icon={<Clock className="w-5 h-5" />}          active={statusFilter === 'queued'}    onClick={() => setStatusFilter((s) => (s === 'queued' ? null : 'queued'))} />
-        <StatCard label="הושלמו"  value={counts.completed} accent="text-green-700" tint="bg-green-50 text-green-600"  icon={<CheckCircle2 className="w-5 h-5" />}    active={statusFilter === 'completed'} onClick={() => setStatusFilter((s) => (s === 'completed' ? null : 'completed'))} />
-        <StatCard label="נכשלו"   value={counts.failed}    accent="text-red-600"   tint="bg-red-50 text-red-600"     icon={<AlertTriangle className="w-5 h-5" />}  active={statusFilter === 'failed'}    onClick={() => setStatusFilter((s) => (s === 'failed' ? null : 'failed'))} />
+        <StatCard label="סה״כ דוחות" value={counts.total}   accent="text-blue-700"  tint="bg-blue-50 text-blue-600"   icon={<Layers className="w-5 h-5" />}         active={statusFilter === null}              onClick={() => setStatusFilter(null)} />
+        <StatCard label="ממתינים לאישור" value={counts.pending} accent="text-amber-600" tint="bg-amber-50 text-amber-600" icon={<Clock className="w-5 h-5" />}          active={statusFilter === 'pending_review'}  onClick={() => setStatusFilter((s) => (s === 'pending_review' ? null : 'pending_review'))} />
+        <StatCard label="אושרו"   value={counts.completed} accent="text-green-700" tint="bg-green-50 text-green-600"  icon={<CheckCircle2 className="w-5 h-5" />}    active={statusFilter === 'approved'}        onClick={() => setStatusFilter((s) => (s === 'approved' ? null : 'approved'))} />
+        <StatCard label="נדחו"    value={counts.failed}    accent="text-red-600"   tint="bg-red-50 text-red-600"     icon={<AlertTriangle className="w-5 h-5" />}  active={statusFilter === 'rejected'}        onClick={() => setStatusFilter((s) => (s === 'rejected' ? null : 'rejected'))} />
       </div>
 
       {/* Queue grid */}
       <div className="flex flex-col flex-1 min-h-0 gap-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-base font-semibold text-theme-text-primary">{he.home.queueTitle}</h2>
+          <h2 className="text-base font-semibold text-theme-text-primary">דוחות חניה</h2>
           <div className="flex items-center gap-2">
             <div className="w-44">
               <input
