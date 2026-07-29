@@ -809,7 +809,7 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
               "vehicle_box": _veh_xyxy, "plate_box": (_plate_xyxy if readable else None)}
         if readable:
             overlay_text = (normalize_israeli_private_plate(overlay_plate_override) or overlay_plate_override) if overlay_plate_override else norm
-            _color = (0, 255, 0)
+            _color = (255, 255, 255)   # white plate text — a dark outline is drawn below, so it reads on any background (green washed out on light scenes)
         else:
             overlay_text = "??-???-??"
             _color = (0, 200, 255)
@@ -838,7 +838,9 @@ def _run_pipeline_vehicle_multi(cfg: PipelineConfig, overlay_plate_override: str
                                              box_color=getattr(cfg, "box_color_bgr", (0, 255, 0)))
             if _plate_inset and vs["best_crop"] is not None:
                 of = engine.draw_preview(of, vs["best_crop"])
-            cv2.putText(of, overlay_text, (12, of.shape[0] - 16), cv2.FONT_HERSHEY_SIMPLEX, 0.9, _color, 2, cv2.LINE_AA)
+            _txt_org = (12, of.shape[0] - 16)
+            cv2.putText(of, overlay_text, _txt_org, cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 0), 5, cv2.LINE_AA)   # dark outline for contrast
+            cv2.putText(of, overlay_text, _txt_org, cv2.FONT_HERSHEY_SIMPLEX, 0.9, _color, 2, cv2.LINE_AA)
             if _clock_on:
                 of = overlay_timestamp(of, _clock_text(cfg.clock_start_epoch, fidx, fps), position=_ts_pos, label=_overlay_label)
             out_frames.append(of)

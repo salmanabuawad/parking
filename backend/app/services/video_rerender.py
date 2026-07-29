@@ -58,7 +58,12 @@ def rerender_ticket_video(db, ticket, *, box_color, plate_override: str | None =
     tracks = result.get("tracks_render") or []
     if not tracks:
         return False
-    pick = max(tracks, key=lambda x: x.get("vote_count", 0))
+    # Pick the track that matches THIS ticket's plate — a job can have several cars, and the ticket
+    # is not necessarily the highest-vote one. Fall back to highest-vote only if none matches.
+    from app.services.israeli_plate import normalize_israeli_plate as _np
+    _target = _np(ticket.license_plate or "")
+    _matching = [t for t in tracks if _target and _np(t.get("raw_digits") or t.get("normalized_plate") or "") == _target]
+    pick = max(_matching or tracks, key=lambda x: x.get("vote_count", 0))
     vb = pick.get("video_bytes")
     if not vb:
         return False
