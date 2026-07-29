@@ -11,8 +11,13 @@ from pathlib import Path
 from app.config import settings
 
 
-def rerender_ticket_video(db, ticket, *, box_color, plate_override: str | None = None) -> bool:
-    """Re-render `ticket`'s video with the given subject-box BGR color. Returns True on success."""
+def rerender_ticket_video(db, ticket, *, box_color, plate_override: str | None = None,
+                          plate_inset: bool | None = None) -> bool:
+    """Re-render `ticket`'s video with the given subject-box BGR color. Returns True on success.
+
+    plate_inset overrides the config's top-left zoom inset for this render (e.g. False to hide it
+    when the crop mis-associated to a neighbouring vehicle on dense-parking footage).
+    """
     from app.models import AppConfig
     from app.plate_pipeline.config import PipelineConfig
     from app.plate_pipeline.pipeline import _run_pipeline_vehicle_multi
@@ -50,7 +55,8 @@ def rerender_ticket_video(db, ticket, *, box_color, plate_override: str | None =
         video_timestamp_overlay=bool(getattr(cfg, "video_timestamp_overlay", True)) if cfg else True,
         blur_except_plate=bool(getattr(cfg, "blur_except_plate", True)) if cfg else True,
         timestamp_overlay_position=(getattr(cfg, "timestamp_overlay_position", "top_right") if cfg else "top_right"),
-        plate_inset_enabled=(bool(getattr(cfg, "plate_inset_enabled", True)) if cfg else True),
+        plate_inset_enabled=(plate_inset if plate_inset is not None
+                             else (bool(getattr(cfg, "plate_inset_enabled", True)) if cfg else True)),
         overlay_ticket_id=ticket.id,
         overlay_camera_id=(str(ticket.camera_id) if ticket.camera_id not in (None, "", "mobile") else None),
     )
