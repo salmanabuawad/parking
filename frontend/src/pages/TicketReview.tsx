@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, History, Trash2 } from "lucide-react";
+import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, History, Trash2, Clock } from "lucide-react";
 import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { ticketStatusBadge } from "../lib/ticketStatus";
@@ -47,24 +47,29 @@ interface Screenshot {
 
 const PLATE_UNKNOWN = "11111";
 
+// violation_start / violation_end are TIMESTAMPS (operator pauses the video and clicks to record the
+// exact real datetime, with milliseconds), not images. plate_clear / violation_evidence are images.
 const ROLES = [
-  { key: "violation_start", label: "תחילת עבירה" },
-  { key: "violation_end", label: "סיום עבירה" },
-  { key: "plate_clear", label: "מספר רכב ברור" },
-  { key: "violation_evidence", label: "תמונת העבירה" },
+  { key: "violation_start", label: "תחילת עבירה", kind: "time" as const },
+  { key: "violation_end", label: "סיום עבירה", kind: "time" as const },
+  { key: "plate_clear", label: "מספר רכב ברור", kind: "image" as const },
+  { key: "violation_evidence", label: "תמונת העבירה", kind: "image" as const },
 ];
 
-function toLocalInput(iso?: string): string {
+// Israel-local clock with milliseconds — matches the timestamp burned into the evidence video.
+function fmtTimeMs(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const t = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
+  return `${t}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
-function fromLocalInput(v: string): string | undefined {
-  if (!v) return undefined;
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? undefined : d.toISOString();
+function fmtClockMs(iso?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const s = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(d);
+  return `${s}.${String(d.getMilliseconds()).padStart(3, "0")}`;
 }
 
 // The screenshot-image endpoint is auth-gated, and an <img src> can't send a Bearer header.
@@ -243,8 +248,9 @@ export default function TicketReview() {
           setAPlate(detail.inspector_plate && detail.inspector_plate !== PLATE_UNKNOWN ? detail.inspector_plate : "");
           setAColor(detail.vehicle_color || "");
           setAType(detail.vehicle_type || "");
-          setAStart(toLocalInput(detail.violation_start_at));
-          setAEnd(toLocalInput(detail.violation_end_at));
+          // Full ISO (with ms) — the start/end buttons record precise video-clock timestamps.
+          setAStart(detail.violation_start_at || "");
+          setAEnd(detail.violation_end_at || "");
         }
         const url = URL.createObjectURL(blob);
         currentUrl = url;
@@ -337,6 +343,20 @@ export default function TicketReview() {
     }
   }
 
+  // Violation start/end are TIMESTAMPS, not images: the operator pauses the video at the exact
+  // moment and clicks. The real datetime = the video's clock base (captured_at) + the current
+  // playhead, to millisecond precision — this matches the timestamp burned into the clip.
+  function captureViolationTime(which: "start" | "end") {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!ticket?.captured_at) { setCaptureMsg('✗ אין חותמת זמן לוידאו — לא ניתן לרשום זמן עבירה'); return; }
+    const base = new Date(ticket.captured_at).getTime();
+    if (isNaN(base)) { setCaptureMsg('✗ חותמת זמן הוידאו אינה תקינה'); return; }
+    const iso = new Date(base + video.currentTime * 1000).toISOString();
+    if (which === "start") setAStart(iso); else setAEnd(iso);
+    setCaptureMsg(`✓ ${which === "start" ? "תחילת" : "סיום"} עבירה נרשמה: ${fmtTimeMs(iso)}`);
+  }
+
   async function deleteScreenshotById(id: number) {
     if (!(await confirm({ message: "למחוק את הצילום?", confirmText: "מחק", danger: true }))) return;
     try {
@@ -369,7 +389,7 @@ export default function TicketReview() {
     if (!aStart || !aEnd) { setApproveMsg("✗ יש להזין תחילת עבירה וסיום עבירה"); return; }
     if (new Date(aEnd) <= new Date(aStart)) { setApproveMsg("✗ שעת הסיום חייבת להיות מאוחרת משעת ההתחלה"); return; }
     if (ticket.require_evidence_images) {
-      const missing = ROLES.filter((r) => !screenshots.some((s) => s.role === r.key));
+      const missing = ROLES.filter((r) => r.kind === "image" && !screenshots.some((s) => s.role === r.key));
       if (missing.length > 0) {
         setApproveMsg(`✗ חסרות תמונות ראיה: ${missing.map((m) => m.label).join(", ")}`);
         return;
@@ -384,8 +404,8 @@ export default function TicketReview() {
         vehicle_color: aColor || null,
         vehicle_type: aType || null,
       };
-      const s = fromLocalInput(aStart); if (s) payload.violation_start_at = s;
-      const e = fromLocalInput(aEnd); if (e) payload.violation_end_at = e;
+      if (aStart) payload.violation_start_at = aStart;   // full ISO with ms
+      if (aEnd) payload.violation_end_at = aEnd;
       const updated = await ticketsApi.approve(ticketId, payload);
       setTicket(updated);
       setApproveMsg("✓ הדוח אושר");
@@ -747,6 +767,26 @@ export default function TicketReview() {
                 </div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {ROLES.map((role) => {
+                    // Timestamp roles (start/end): click records the exact video-clock time (ms).
+                    if (role.kind === "time") {
+                      const which = role.key === "violation_start" ? "start" : "end";
+                      const val = which === "start" ? aStart : aEnd;
+                      const set = !!val;
+                      return (
+                        <button
+                          key={role.key}
+                          type="button"
+                          onClick={() => captureViolationTime(which)}
+                          disabled={state !== "ready"}
+                          title='עצור את הוידאו ברגע המדויק ולחץ לרישום התאריך והשעה (כולל אלפיות שנייה)'
+                          className={`text-xs px-2 py-1.5 rounded-md border flex flex-col items-center justify-center gap-0.5 ${set ? "bg-green-50 border-green-300 text-green-700" : "bg-white border-theme-card-border text-theme-text-primary hover:bg-black/5"}`}
+                        >
+                          <span className="flex items-center gap-1">{set ? <Check className="w-3 h-3" /> : <Clock className="w-3 h-3" />}{role.label}</span>
+                          {set && <span className="text-[10px] font-mono leading-none">{fmtTimeMs(val)}</span>}
+                        </button>
+                      );
+                    }
+                    // Image roles (plate_clear / violation_evidence): capture a frame.
                     const has = screenshots.some((s) => s.role === role.key);
                     return (
                       <button
@@ -806,10 +846,24 @@ export default function TicketReview() {
                 <div className="flex-1"><Field label="סוג רכב"><input className="input-base" value={aType} onChange={(e) => setAType(e.target.value)} /></Field></div>
               </div>
 
+              {/* Recorded from the video clock via the תחילת/סיום עבירה buttons above (ms precision). */}
               <div className="flex gap-2">
-                <div className="flex-1"><Field label="תחילת עבירה"><input type="datetime-local" className="input-base" value={aStart} onChange={(e) => setAStart(e.target.value)} /></Field></div>
-                <div className="flex-1"><Field label="סיום עבירה"><input type="datetime-local" className="input-base" value={aEnd} onChange={(e) => setAEnd(e.target.value)} /></Field></div>
+                <div className="flex-1"><Field label="תחילת עבירה">
+                  <div className="input-base font-mono text-theme-sm flex items-center min-h-[2.25rem]">
+                    {aStart ? fmtClockMs(aStart) : <span className="text-theme-text-muted text-[11px]">עצור את הוידאו ולחץ "תחילת עבירה"</span>}
+                  </div>
+                </Field></div>
+                <div className="flex-1"><Field label="סיום עבירה">
+                  <div className="input-base font-mono text-theme-sm flex items-center min-h-[2.25rem]">
+                    {aEnd ? fmtClockMs(aEnd) : <span className="text-theme-text-muted text-[11px]">עצור את הוידאו ולחץ "סיום עבירה"</span>}
+                  </div>
+                </Field></div>
               </div>
+              {aStart && aEnd && !isNaN(new Date(aStart).getTime()) && !isNaN(new Date(aEnd).getTime()) && new Date(aEnd) > new Date(aStart) && (
+                <div className="text-[11px] text-theme-text-muted -mt-1">
+                  משך העבירה: {((new Date(aEnd).getTime() - new Date(aStart).getTime()) / 1000).toFixed(1)} שניות
+                </div>
+              )}
 
               {approveMsg && (
                 <div className={`text-theme-sm mt-2 ${approveMsg.startsWith("✓") ? "text-green-600" : "text-red-600"}`}>{approveMsg}</div>

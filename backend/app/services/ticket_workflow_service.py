@@ -4,10 +4,12 @@ from fastapi import HTTPException
 
 def validate_ticket_before_approval(ticket) -> None:
     missing = []
-    if not ticket.start_violation_screenshot_id:
-        missing.append("start_violation_screenshot_id")
-    if not ticket.end_violation_screenshot_id:
-        missing.append("end_violation_screenshot_id")
+    # Violation start/end are TIMESTAMPS the inspector records from the video clock (pause + click),
+    # not screenshots — so the gate requires the times, plus the two evidence images.
+    if not ticket.violation_start_at:
+        missing.append("violation_start_at")
+    if not ticket.violation_end_at:
+        missing.append("violation_end_at")
     if not ticket.clear_plate_screenshot_id:
         missing.append("clear_plate_screenshot_id")
     if not ticket.violation_context_screenshot_id:
