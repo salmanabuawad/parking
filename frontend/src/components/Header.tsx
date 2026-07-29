@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, LogOut, ChevronDown, User } from 'lucide-react';
+import { Settings, LogOut, ChevronDown, User, Menu } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { ThemeSettingsDropdown } from './ThemeSettingsDropdown';
 
 interface HeaderProps {
   title: string;
   logo?:  React.ReactNode;
+  onToggleSidebar?: () => void;
 }
 
-export function Header({ title, logo }: HeaderProps) {
+export function Header({ title, logo, onToggleSidebar }: HeaderProps) {
   const { user, logout } = useAuth();
 
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -30,6 +31,18 @@ export function Header({ title, logo }: HeaderProps) {
 
   return (
     <header className="flex-shrink-0 bg-theme-header border-b border-white/20 px-4 h-12 flex items-center gap-3 z-40">
+
+      {/* Sidebar toggle (collapse for more content width — responsive) */}
+      {onToggleSidebar && (
+        <button
+          onClick={onToggleSidebar}
+          className="flex-shrink-0 p-1.5 rounded-md text-white/80 hover:text-white hover:bg-white/10 transition-all"
+          title="הצג/הסתר תפריט"
+          aria-label="הצג/הסתר תפריט"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Logo */}
       {logo && <div className="flex-shrink-0">{logo}</div>}

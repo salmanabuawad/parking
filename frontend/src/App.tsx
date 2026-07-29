@@ -134,6 +134,8 @@ function AppShell() {
   const activeId  = pathnameToActiveId(location.pathname)
   const isMobile  = useIsMobile()
   const navItems  = buildNavItems(user?.user_type)
+  // Collapsible sidebar — open on desktop, auto-collapsed on narrower screens for more content width.
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 1024)
 
   if (loading) return <div dir="rtl" style={{ padding: 24 }}>{he.app.loading}</div>
 
@@ -175,6 +177,7 @@ function AppShell() {
       {/* ── Header ── */}
       <Header
         title={he.app.title}
+        onToggleSidebar={() => setSidebarOpen(v => !v)}
         logo={
           <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
             <Camera className="w-4 h-4 text-white" />
@@ -185,20 +188,22 @@ function AppShell() {
       {/* ── Body ── */}
       <div className="app-body">
 
-        <Sidebar
-          items={navItems}
-          activeId={activeId}
-          onSelect={id => {
-            const path = ID_TO_PATH[id]
-            if (path) navigate(path)
-          }}
-          footer={
-            <div className="text-center leading-tight" dir="ltr">
-              <div>© {new Date().getFullYear()} Kortex Digital</div>
-              <div className="text-white/40" dir="rtl">כל הזכויות שמורות</div>
-            </div>
-          }
-        />
+        {sidebarOpen && (
+          <Sidebar
+            items={navItems}
+            activeId={activeId}
+            onSelect={id => {
+              const path = ID_TO_PATH[id]
+              if (path) navigate(path)
+            }}
+            footer={
+              <div className="text-center leading-tight" dir="ltr">
+                <div>© {new Date().getFullYear()} Kortex Digital</div>
+                <div className="text-white/40" dir="rtl">כל הזכויות שמורות</div>
+              </div>
+            }
+          />
+        )}
 
         <main className="app-content bg-theme-content">
           <Routes>
