@@ -7,7 +7,7 @@ import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
 import { ticketsApi } from '../api'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
-import { formatLocation } from '../lib/format'
+import { formatLocation, formatPlate } from '../lib/format'
 import { useRtl } from '../hooks/useRtl'
 import { useFieldConfig } from '../lib/useFieldConfig'
 import { useFieldConfigVersion } from '../context/FieldConfigContext'
@@ -51,7 +51,7 @@ export default function Inbox() {
 
   const cols = useMemo<ColDef<Ticket>[]>(() => [
     { field: 'id', headerName: 'מזהה', width: 90, sort: 'desc' },
-    { field: 'license_plate', headerName: 'לוחית רישוי', flex: 1, valueFormatter: p => (p.value && p.value !== '11111' ? p.value : 'לא זוהה') },
+    { field: 'license_plate', headerName: 'לוחית רישוי', flex: 1, valueFormatter: p => (p.value && p.value !== '11111' ? formatPlate(p.value) : 'לא זוהה') },
     { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: p => formatLocation(p.value) },
     { field: 'status', headerName: 'סטטוס', width: 140, valueFormatter: p => STATUS[p.value] || p.value },
     { field: 'created_at', headerName: 'התקבל', width: 150, valueFormatter: p => (p.value ? new Date(p.value).toLocaleString('he-IL') : '—') },

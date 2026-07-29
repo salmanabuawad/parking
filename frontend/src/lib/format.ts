@@ -11,6 +11,15 @@ export function formatLocation(s?: string | null): string {
   return isBlankLocation(s) ? "אין מיקום" : (s as string);
 }
 
+// Israeli plate number for display: 7 digits → XX-XXX-XX, 8 digits → XXX-XX-XXX.
+// Other lengths (or non-digits) are returned as-is so nothing is ever hidden.
+export function formatPlate(value?: string | null): string {
+  const d = String(value ?? "").replace(/\D/g, "");
+  if (d.length === 7) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`;
+  if (d.length === 8) return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`;
+  return d || String(value ?? "");
+}
+
 // Camera connection protocol → friendly label (raw enum should never reach a user).
 export const CONNECTION_TYPE_LABELS: Record<string, string> = {
   ip: "IP",

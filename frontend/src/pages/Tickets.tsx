@@ -11,7 +11,7 @@ import { he } from '../i18n/he'
 import { useRtl } from '../hooks/useRtl'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { ticketStatusBadge } from '../lib/ticketStatus'
-import { formatLocation } from '../lib/format'
+import { formatLocation, formatPlate } from '../lib/format'
 import { useFieldConfig } from '../lib/useFieldConfig'
 import { useFieldConfigVersion } from '../context/FieldConfigContext'
 
@@ -91,7 +91,7 @@ export default function Tickets() {
         headerName: 'לוחית רישוי',
         flex: 1,
         valueFormatter: (p) =>
-          p.value && p.value !== '11111' ? p.value : he.tickets.plateNotIdentified,
+          p.value && p.value !== '11111' ? formatPlate(p.value) : he.tickets.plateNotIdentified,
       },
       { field: 'location', headerName: 'מיקום', flex: 1.5, valueFormatter: (p) => formatLocation(p.value) },
       {

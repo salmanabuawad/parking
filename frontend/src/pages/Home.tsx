@@ -4,6 +4,7 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { ticketStatusBadge } from '../lib/ticketStatus'
+import { formatPlate } from '../lib/format'
 import { LayoutDashboard, RefreshCw, Layers, Clock, CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAgGridTheme } from '../lib/agGridTheme'
@@ -111,7 +112,7 @@ export default function Home() {
         field: 'license_plate',
         headerName: he.home.plate,
         width: Math.round(140 * w),
-        valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : he.home.plateNotIdentified),
+        valueFormatter: (p) => (p.value && p.value !== '11111' ? formatPlate(p.value) : he.home.plateNotIdentified),
       },
       {
         field: 'created_at',

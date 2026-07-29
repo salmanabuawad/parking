@@ -4,6 +4,7 @@ import { AgGridReact } from 'ag-grid-react'
 import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community'
 import { DEFAULT_COL_DEF, emptyOverlay } from '../lib/gridConfig'
 import { jobStatusBadge } from '../lib/jobStatus'
+import { formatPlate } from '../lib/format'
 import { ListOrdered } from 'lucide-react'
 import { useAgGridTheme } from '../lib/agGridTheme'
 import type { ColDef, ICellRendererParams } from 'ag-grid-community'
@@ -158,7 +159,7 @@ export default function QueueMaintenance() {
         field: 'license_plate',
         headerName: t('plate'),
         width: Math.round(130 * w),
-        valueFormatter: (p) => (p.value && p.value !== '11111' ? p.value : t('plateNotIdentified')),
+        valueFormatter: (p) => (p.value && p.value !== '11111' ? formatPlate(p.value) : t('plateNotIdentified')),
       },
       {
         field: 'ticket_id',

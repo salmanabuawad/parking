@@ -4,6 +4,7 @@ import { ClipboardCheck, Camera, Download, Check, X, Pencil, Send, ShieldCheck, 
 import { ticketsApi, violationRulesApi, inspectorsApi } from "../api";
 import { useAuth } from "../context/AuthContext";
 import { ticketStatusBadge } from "../lib/ticketStatus";
+import { formatPlate } from "../lib/format";
 import { useConfirm } from "../components/ConfirmDialog";
 
 type LoadState = "idle" | "loading" | "ready" | "error";
@@ -323,12 +324,20 @@ export default function TicketReview() {
     setCapturing(true);
     setCaptureMsg(null);
     try {
-      // Capture the full frame — the plate is already burned in as a sharp zoomed inset (top-left),
-      // so cropping to the detected plate_box (which drifts on a panning camera) only produced wrong
-      // crops. The full frame reliably shows the plate via that inset.
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 360;
-      canvas.getContext("2d")?.drawImage(video, 0, 0);
+      // "Clear plate" (plate_clear) captures JUST the plate — the sharp zoomed plate inset burned into
+      // the top-left corner (max 0.28w × 0.20h at a 10px offset) — not the whole frame. Cropping to the
+      // detected plate_box drifts on a panning camera, so we take the fixed inset region instead. Other
+      // roles keep the full frame.
+      const ctx = canvas.getContext("2d");
+      const vw = video.videoWidth || 640, vh = video.videoHeight || 360;
+      if (role === "plate_clear") {
+        const cw = Math.round(vw * 0.31), ch = Math.round(vh * 0.22), sc = 2;
+        canvas.width = cw * sc; canvas.height = ch * sc;
+        ctx?.drawImage(video, 0, 0, cw, ch, 0, 0, cw * sc, ch * sc);
+      } else {
+        canvas.width = vw; canvas.height = vh;
+        ctx?.drawImage(video, 0, 0);
+      }
       const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
       await ticketsApi.saveScreenshot(ticketId, dataUrl, video.currentTime, role);
       setScreenshots(await ticketsApi.listScreenshots(ticketId));
@@ -609,7 +618,7 @@ export default function TicketReview() {
                 ) : plateOk ? (
                   <div>
                     <span className="font-bold text-xl tracking-[3px] font-mono">
-                      {ticket.license_plate}
+                      {formatPlate(ticket.license_plate)}
                     </span>
                     {ticket.plate_detection_reason && (
                       <div className="text-theme-xs mt-1 rounded px-2 py-1 bg-amber-50 text-amber-700 line-clamp-2" title={displayPlateReason(ticket.plate_detection_reason) || undefined}>
@@ -829,12 +838,12 @@ export default function TicketReview() {
                   const detected = (ticket.license_plate || "").replace(/\D/g, "");
                   const typed = aPlate.replace(/\D/g, "");
                   if (!typed)
-                    return <div className="text-[11px] text-theme-text-muted mt-0.5">חייב להתאים למספר שזוהה אוטומטית{detected && detected !== PLATE_UNKNOWN ? ` (${detected})` : ""}</div>;
+                    return <div className="text-[11px] text-theme-text-muted mt-0.5">חייב להתאים למספר שזוהה אוטומטית{detected && detected !== PLATE_UNKNOWN ? ` (${formatPlate(detected)})` : ""}</div>;
                   if (!detected || detected === PLATE_UNKNOWN)
                     return <div className="text-[11px] text-theme-text-muted mt-0.5">אין מספר מזוהה אוטומטית להשוואה</div>;
                   return typed === detected
                     ? <div className="text-[11px] text-green-600 font-semibold mt-0.5">✓ תואם למספר שזוהה אוטומטית</div>
-                    : <div className="text-[11px] text-red-600 font-semibold mt-0.5">⚠ שגיאה: אינו תואם למספר שזוהה אוטומטית ({detected})</div>;
+                    : <div className="text-[11px] text-red-600 font-semibold mt-0.5">⚠ שגיאה: אינו תואם למספר שזוהה אוטומטית ({formatPlate(detected)})</div>;
                 })()}
               </Field>
 
