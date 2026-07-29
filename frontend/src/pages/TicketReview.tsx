@@ -252,9 +252,10 @@ export default function TicketReview() {
           setAPlate(detail.inspector_plate && detail.inspector_plate !== PLATE_UNKNOWN ? detail.inspector_plate : "");
           setAColor(detail.vehicle_color || "");
           setAType(detail.vehicle_type || "");
-          // Full ISO (with ms) — the start/end buttons record precise video-clock timestamps.
-          setAStart(detail.violation_start_at || "");
-          setAEnd(detail.violation_end_at || "");
+          // Empty by default: the inspector records the exact start/end by pausing the video and
+          // clicking. The pipeline's rough auto-times are NOT pre-filled, so the buttons start unmarked.
+          setAStart("");
+          setAEnd("");
         }
         const url = URL.createObjectURL(blob);
         currentUrl = url;
